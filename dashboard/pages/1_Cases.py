@@ -12,13 +12,17 @@ inject_styles("Cases")
 
 st.markdown("""<style>
 .page-wrap { padding: 24px 32px; }
-.toolbar { display:flex; align-items:center; gap:10px; margin-bottom:20px; }
+.toolbar { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
 .toolbar-title { font-size:18px; font-weight:600; color:#16293F; margin:0; }
-.count-badge { font-family:'IBM Plex Mono',monospace; font-size:11px; color:#878E99; background:#EEF0F3; border:1px solid #D5DAE1; border-radius:20px; padding:3px 10px; }
 .spacer { flex:1; }
-.chip { font-size:12px; font-weight:500; color:#525862; background:#fff; border:1px solid #D5DAE1; border-radius:20px; padding:4px 13px; cursor:pointer; }
-.chip-active { font-size:12px; font-weight:500; color:#fff; background:#1E3A5F; border:1px solid #1E3A5F; border-radius:20px; padding:4px 13px; }
+.filter-pill { font-size:12px; font-weight:500; color:#525862; background:#fff; border:1px solid #D5DAE1; border-radius:20px; padding:4px 13px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+.filter-pill-active { font-size:12px; font-weight:500; color:#fff; background:#1E3A5F; border:1px solid #1E3A5F; border-radius:20px; padding:4px 13px; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+.pill-count { font-size:10px; font-weight:700; padding:1px 6px; border-radius:20px; }
+.filter-pill .pill-count { background:#EEF0F3; color:#525862; }
+.filter-pill-active .pill-count { background:rgba(255,255,255,0.22); color:#fff; }
 .btn-new { font-size:13px; font-weight:600; color:#fff; background:#1E3A5F; border:none; border-radius:7px; padding:8px 18px; cursor:pointer; font-family:'IBM Plex Sans',sans-serif; white-space:nowrap; }
+.search-wrap { margin-bottom:16px; }
+.search-input { width:100%; background:#F6F7F9; border:1px solid #D5DAE1; border-radius:7px; height:34px; padding:0 14px; font-size:13px; color:#878E99; display:flex; align-items:center; }
 .stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px; }
 .stat-card { background:#fff; border:1px solid #D5DAE1; border-left:3px solid #D5DAE1; border-radius:8px; padding:16px 18px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
 .stat-card.teal { border-left-color:#0E7C86; }
@@ -32,15 +36,17 @@ st.markdown("""<style>
 .tbl td { padding:13px 16px; border-bottom:1px solid #EEF0F3; vertical-align:middle; color:#2A2E35; }
 .tbl tr:last-child td { border-bottom:none; }
 .tbl tr:hover td { background:#F6F7F9; }
+.tbl tr.stale-row td:first-child { border-left:3px solid #C77A12; }
 .case-id { font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600; color:#1E3A5F; }
 .title-main { font-weight:500; color:#2A2E35; }
 .title-sub  { font-size:11px; color:#878E99; margin-top:2px; }
 .type-badge { display:inline-block; font-size:11px; font-weight:500; color:#2C4F78; background:#EEF0F3; border:1px solid #C2C9D2; border-radius:4px; padding:2px 9px; white-space:nowrap; }
 .badge { display:inline-block; border-radius:20px; font-size:11px; font-weight:600; padding:3px 11px; white-space:nowrap; }
-.badge-amber { background:#FBF1E2; color:#C77A12; }
+.badge-amber { background:#FBF1E2; color:#C77A12; border:1px solid #EAD3AC; }
 .badge-green { background:#E9F3EE; color:#2E7D52; }
 .badge-teal  { background:#E0F2F4; color:#0E7C86; }
 .badge-grey  { background:#EEF0F3; color:#878E99; }
+.badge-stale { display:inline-block; background:#EEF0F3; color:#878E99; border-radius:20px; font-size:10px; font-weight:600; padding:2px 8px; margin-left:6px; white-space:nowrap; }
 .risk-wrap  { display:flex; align-items:center; gap:8px; }
 .risk-track { width:68px; height:5px; background:#EEF0F3; border-radius:3px; overflow:hidden; }
 .risk-fill  { height:100%; border-radius:3px; }
@@ -50,13 +56,15 @@ st.markdown("""<style>
 <div class="page-wrap">
 <div class="toolbar">
 <h3 class="toolbar-title">Cases</h3>
-<span class="count-badge">14 active · 3 archived</span>
 <div class="spacer"></div>
-<span class="chip-active">All</span>
-<span class="chip">Active</span>
-<span class="chip">Pending Review</span>
-<span class="chip">Archived</span>
+<span class="filter-pill-active">All <span class="pill-count">17</span></span>
+<span class="filter-pill">Active <span class="pill-count">14</span></span>
+<span class="filter-pill">Pending Review <span class="pill-count">5</span></span>
+<span class="filter-pill">Archived <span class="pill-count">3</span></span>
 <span class="btn-new">+ New Case</span>
+</div>
+<div class="search-wrap">
+<div class="search-input">Search cases, entities, leads…</div>
 </div>
 <div class="stat-grid">
 <div class="stat-card teal">
@@ -121,14 +129,14 @@ st.markdown("""<style>
 <td><div class="risk-wrap"><div class="risk-track"><div class="risk-fill" style="width:41%;background:#0E7C86;"></div></div><span class="risk-num" style="color:#0E7C86;">41</span></div></td>
 <td><span class="ts">4h ago</span></td>
 </tr>
-<tr>
+<tr class="stale-row">
 <td><span class="case-id">INV-2026-0031</span></td>
 <td><div class="title-main">Grant Disbursement Audit — Regional Office</div><div class="title-sub">Lead: Y. Tadesse · Created 28 Dec 2025</div></td>
 <td><span class="type-badge">Audit</span></td>
 <td><span class="badge badge-grey">Intake</span></td>
 <td><span class="ts">68</span></td>
 <td><div class="risk-wrap"><div class="risk-track"><div class="risk-fill" style="width:18%;background:#878E99;"></div></div><span class="risk-num" style="color:#878E99;">18</span></div></td>
-<td><span class="ts">3d ago</span></td>
+<td><span class="ts">3d ago</span><span class="badge-stale">Stale</span></td>
 </tr>
 </tbody>
 </table>

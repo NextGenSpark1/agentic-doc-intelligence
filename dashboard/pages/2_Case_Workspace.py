@@ -20,11 +20,21 @@ st.markdown("""
   display: flex; align-items: center; gap: 0;
   height: 46px;
 }
-.case-title {
-  font-size: 13px; font-weight: 600; color: var(--text);
-  margin-right: 28px; white-space: nowrap;
+.breadcrumb {
+  display:flex; align-items:center; gap:8px; margin-right:24px; min-width:0; flex-shrink:0;
 }
-.case-title span { font-family: var(--font-mono); color: var(--navy); }
+.breadcrumb-back {
+  font-size:13px; font-weight:500; color:var(--teal); text-decoration:none; white-space:nowrap;
+}
+.breadcrumb-sep {
+  font-size:13px; color:var(--border-strong); flex-shrink:0;
+}
+.breadcrumb-id {
+  font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600; color:var(--navy); white-space:nowrap;
+}
+.breadcrumb-title {
+  font-size:13px; font-weight:400; color:var(--text-mid); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:260px;
+}
 .ws-tab {
   font-size: 13px; font-weight: 500; color: var(--text-mute);
   padding: 0 16px; height: 46px; display: flex; align-items: center;
@@ -32,19 +42,18 @@ st.markdown("""
   white-space: nowrap; text-decoration: none;
 }
 .ws-tab.active { color: var(--navy); border-bottom-color: var(--teal); }
-
 /* Three-panel layout */
 .workspace-grid {
   display: grid;
   grid-template-columns: 260px 1fr 340px;
-  height: calc(100vh - 98px); /* navbar + subheader */
+  height: calc(100vh - 98px);
   overflow: hidden;
 }
 .panel-left {
   background: var(--panel);
   border-right: 1px solid var(--border);
   display: flex; flex-direction: column;
-  padding: 20px 16px;
+  padding: 16px 16px 20px;
   overflow-y: auto;
 }
 .panel-center {
@@ -56,14 +65,22 @@ st.markdown("""
   background: var(--panel);
   border-left: 1px solid var(--border);
   display: flex; flex-direction: column;
-  padding: 20px 16px;
+  padding: 16px 16px 20px;
   overflow-y: auto;
 }
-.panel-heading {
+.panel-header {
+  display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-shrink:0;
+}
+.panel-heading-txt {
   font-size: 11px; font-weight: 600; color: var(--text-mute);
   text-transform: uppercase; letter-spacing: .7px;
-  margin-bottom: 14px;
 }
+.collapse-btn {
+  font-size:12px; color:var(--text-mute); cursor:pointer;
+  padding:2px 7px; background:var(--panel-2); border:1px solid var(--border);
+  border-radius:4px; line-height:1.4; user-select:none; flex-shrink:0;
+}
+.collapse-btn:hover { background:var(--panel-3); color:var(--text-mid); }
 .placeholder-box {
   background: var(--panel-2);
   border: 1px dashed var(--border-strong);
@@ -77,7 +94,6 @@ st.markdown("""
   display: flex; align-items: center; gap: 10px;
   padding: 9px 10px; border-radius: 7px;
   cursor: pointer; margin-bottom: 4px;
-  color: var(--text-mid); font-size: 13px;
 }
 .doc-item:hover { background: var(--panel-2); }
 .doc-icon {
@@ -86,6 +102,13 @@ st.markdown("""
   display: flex; align-items: center; justify-content: center;
   font-size: 11px; font-weight: 600; color: var(--navy); flex-shrink: 0;
 }
+.doc-info { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; }
+.doc-name { font-size:13px; color:var(--text-mid); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.doc-meta { display:flex; align-items:center; gap:8px; }
+.doc-pages { font-size:10px; color:var(--text-mute); font-family:'IBM Plex Mono',monospace; }
+.doc-status-ok   { font-size:10px; color:var(--green); font-weight:600; }
+.doc-status-prog { font-size:10px; color:var(--amber); font-weight:600; }
+.doc-status-pend { font-size:10px; color:var(--text-mute); }
 .chat-bubble {
   background: var(--panel-2);
   border: 1px solid var(--border);
@@ -104,8 +127,12 @@ st.markdown("""
 
 <!-- Sub-header -->
 <div class="case-subheader">
-  <div class="case-title">
-    <span>INV-2026-0047</span> · Ministry of Public Works
+  <div class="breadcrumb">
+    <a class="breadcrumb-back" href="#">← Cases</a>
+    <span class="breadcrumb-sep">·</span>
+    <span class="breadcrumb-id">INV-2026-0047</span>
+    <span class="breadcrumb-sep">·</span>
+    <span class="breadcrumb-title">Ministry of Public Works — Infrastructure Procurement</span>
   </div>
   <a class="ws-tab active" href="#">Workspace</a>
   <a class="ws-tab" href="#">Entity Graph</a>
@@ -115,26 +142,41 @@ st.markdown("""
 </div>
 
 <!-- Three-panel layout -->
-<div class="workspace-grid">
+<div class="workspace-grid" id="ws-grid">
 
   <!-- Left: Documents -->
   <div class="panel-left">
-    <div class="panel-heading">Documents</div>
-    <div class="doc-item">
-      <div class="doc-icon">PDF</div>
-      Contract_MoW_2024_Annex.pdf
+    <div class="panel-header">
+      <span class="panel-heading-txt">Documents</span>
+      <span class="collapse-btn" title="Collapse panel" onclick="var g=document.getElementById('ws-grid');g.style.gridTemplateColumns=g.style.gridTemplateColumns==='0px 1fr 340px'?'260px 1fr 340px':'0px 1fr 340px'">◀</span>
     </div>
     <div class="doc-item">
       <div class="doc-icon">PDF</div>
-      Tender_Evaluation_Report.pdf
+      <div class="doc-info">
+        <div class="doc-name">Contract_MoW_2024_Annex.pdf</div>
+        <div class="doc-meta"><span class="doc-pages">24 pp</span><span class="doc-status-ok">✓ Extracted</span></div>
+      </div>
+    </div>
+    <div class="doc-item">
+      <div class="doc-icon">PDF</div>
+      <div class="doc-info">
+        <div class="doc-name">Tender_Evaluation_Report.pdf</div>
+        <div class="doc-meta"><span class="doc-pages">18 pp</span><span class="doc-status-ok">✓ Extracted</span></div>
+      </div>
     </div>
     <div class="doc-item">
       <div class="doc-icon">XLS</div>
-      Payment_Register_Q3.xlsx
+      <div class="doc-info">
+        <div class="doc-name">Payment_Register_Q3.xlsx</div>
+        <div class="doc-meta"><span class="doc-pages">3 sheets</span><span class="doc-status-prog">◐ Processing</span></div>
+      </div>
     </div>
     <div class="doc-item">
       <div class="doc-icon">PDF</div>
-      Company_Registration_NovaBuild.pdf
+      <div class="doc-info">
+        <div class="doc-name">Company_Registration_NovaBuild.pdf</div>
+        <div class="doc-meta"><span class="doc-pages">8 pp</span><span class="doc-status-pend">○ Pending</span></div>
+      </div>
     </div>
     <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
       <div style="font-size:12px; color:var(--teal); cursor:pointer;">+ Upload document</div>
@@ -153,7 +195,10 @@ st.markdown("""
 
   <!-- Right: Case Assistant -->
   <div class="panel-right">
-    <div class="panel-heading">Case Assistant</div>
+    <div class="panel-header">
+      <span class="collapse-btn" title="Collapse panel" onclick="var g=document.getElementById('ws-grid');g.style.gridTemplateColumns=g.style.gridTemplateColumns==='260px 1fr 0px'?'260px 1fr 340px':'260px 1fr 0px'">▶</span>
+      <span class="panel-heading-txt">Case Assistant</span>
+    </div>
     <div class="chat-bubble">
       Hello. I'm ready to answer questions about <strong>INV-2026-0047</strong>.
       Ask me about documents, entities, or findings.

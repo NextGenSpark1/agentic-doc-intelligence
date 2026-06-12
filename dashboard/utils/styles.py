@@ -110,9 +110,8 @@ def get_global_css() -> str:
 
 def get_navbar_html(active_page: str) -> str:
     nav_items = [
-        ("Cases",          "/Cases"),
-        ("Case Workspace", "/Case_Workspace"),
-        ("Settings",       "/Case_Settings"),
+        ("Cases",    "/Cases"),
+        ("Settings", "/Case_Settings"),
     ]
 
     tabs_html = ""
@@ -158,10 +157,8 @@ def inject_styles(active_page: str = "Cases") -> None:
     # The CSS above positions this block fixed at top:52px left:24px (tab row start).
     # Each column auto-shrinks to content width, matching the visual tab widths.
     # opacity:0 keeps them invisible; Streamlit's router handles same-tab navigation.
-    col1, col2, col3 = st.columns([1, 1, 1])
+    col1, col2 = st.columns([1, 1])
     with col1:
         st.page_link("pages/1_Cases.py", label="Cases")
     with col2:
-        st.page_link("pages/2_Case_Workspace.py", label="Case Workspace")
-    with col3:
         st.page_link("pages/3_Case_Settings.py", label="Settings")
