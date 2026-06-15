@@ -1,0 +1,19 @@
+# Local one-command run of both services. Supabase is a managed/external service, so it is
+# NOT a container here — point .env at your Supabase project.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports: ["8000:8000"]
+    env_file: .env
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    ports: ["8501:8501"]
+    env_file: .env
+    environment:
+      - API_BASE=http://api:8000
+    depends_on: [api]

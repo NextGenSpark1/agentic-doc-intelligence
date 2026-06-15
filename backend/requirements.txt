@@ -1,5 +1,14 @@
+# --- API ---
 fastapi
-uvicorn
-supabase
+uvicorn[standard]
+python-multipart        # multipart file uploads
 pydantic
+pydantic-settings
 python-dotenv
+
+# --- Storage / DB (Postgres + Storage + pgvector, managed) ---
+supabase
+
+# --- AI layer ---
+agentic-doc             # LandingAI ADE (isolated in ade_client.py; migrate to landingai-ade later)
+litellm                 # provider-agnostic LLM + embeddings router
