@@ -4,14 +4,14 @@ services:
   api:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: backend/Dockerfile.api
     ports: ["8000:8000"]
     env_file: .env
 
   dashboard:
     build:
       context: .
-      dockerfile: dashboard/Dockerfile
+      dockerfile: dashboard/Dockerfile.dashboard
     ports: ["8501:8501"]
     env_file: .env
     environment:
