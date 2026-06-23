@@ -32,6 +32,11 @@ export async function fetchDocuments(caseId: string): Promise<CaseDocument[]> {
   return (response.data as { documents: CaseDocument[] }).documents
 }
 
+export async function fetchFileUrl(caseId: string, documentId: string): Promise<string> {
+  const response = await client.get<{ url: string }>(`/cases/${caseId}/documents/${documentId}/file-url`)
+  return response.data.url
+}
+
 export async function uploadDocument(caseId: string, file: File): Promise<CaseDocument> {
   const formData = new FormData()
   formData.append('file', file)

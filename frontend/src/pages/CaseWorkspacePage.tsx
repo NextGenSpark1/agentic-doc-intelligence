@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { fetchDocuments, uploadDocument } from '../api'
 import type { Document as CaseDocument } from '../types'
+import DocumentViewer from '../components/DocumentViewer'
 
 const SUBTABS = ['Workspace', 'Entity Graph', 'Timeline', 'Findings', 'Report']
 
@@ -34,6 +35,7 @@ export default function CaseWorkspacePage() {
   const [docsLoading, setDocsLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [selectedDoc, setSelectedDoc] = useState<CaseDocument | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -117,10 +119,17 @@ export default function CaseWorkspacePage() {
               {docs.map((doc) => {
                 const ext = fileExt(doc.filename)
                 const isPdf = ext === 'PDF'
+                const isSelected = selectedDoc?.document_id === doc.document_id
                 return (
                   <div
                     key={doc.document_id}
-                    className="flex items-start gap-2 px-2 py-2 rounded hover:bg-panel-2 cursor-pointer transition-colors duration-150"
+                    onClick={() => setSelectedDoc(doc)}
+                    className={`
+                      flex items-start gap-2 px-2 py-2 rounded cursor-pointer transition-colors duration-150
+                      ${isSelected
+                        ? 'bg-navy/10 border border-navy/20'
+                        : 'hover:bg-panel-2 border border-transparent'}
+                    `}
                   >
                     <span
                       className={`
@@ -131,7 +140,9 @@ export default function CaseWorkspacePage() {
                       {ext}
                     </span>
                     <div className="flex flex-col gap-0.5 min-w-0">
-                      <span className="text-xs text-text truncate">{doc.filename}</span>
+                      <span className={`text-xs truncate ${isSelected ? 'text-navy font-medium' : 'text-text'}`}>
+                        {doc.filename}
+                      </span>
                       <StatusDot status={doc.extraction_status} />
                     </div>
                   </div>
@@ -161,31 +172,37 @@ export default function CaseWorkspacePage() {
           </div>
         </aside>
 
-        {/* Center panel — Document Viewer */}
-        <main className="flex-1 bg-canvas-deep flex items-center justify-center overflow-auto">
-          <div className="flex flex-col items-center gap-3 text-center px-6">
-            <div className="w-14 h-14 bg-panel border border-border rounded-xl flex items-center justify-center shadow-sm">
-              <svg
-                width="28"
-                height="28"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#878E99"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="9" y1="13" x2="15" y2="13" />
-                <line x1="9" y1="17" x2="15" y2="17" />
-              </svg>
+        {/* Center panel — Document Viewer or empty state */}
+        <main className="flex-1 overflow-hidden">
+          {selectedDoc && caseId ? (
+            <DocumentViewer doc={selectedDoc} caseId={caseId} />
+          ) : (
+            <div className="h-full bg-canvas-deep flex items-center justify-center">
+              <div className="flex flex-col items-center gap-3 text-center px-6">
+                <div className="w-14 h-14 bg-panel border border-border rounded-xl flex items-center justify-center shadow-sm">
+                  <svg
+                    width="28"
+                    height="28"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#878E99"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="9" y1="13" x2="15" y2="13" />
+                    <line x1="9" y1="17" x2="15" y2="17" />
+                  </svg>
+                </div>
+                <h3 className="text-sm font-semibold text-text">Document Viewer</h3>
+                <p className="text-xs text-text-mute max-w-[220px]">
+                  Select a document from the left panel to view its contents here.
+                </p>
+              </div>
             </div>
-            <h3 className="text-sm font-semibold text-text">Document Viewer</h3>
-            <p className="text-xs text-text-mute max-w-[220px]">
-              Select a document from the left panel to view its contents here.
-            </p>
-          </div>
+          )}
         </main>
 
         {/* Right panel — Case Assistant */}
