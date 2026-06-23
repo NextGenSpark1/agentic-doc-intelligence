@@ -8,6 +8,8 @@ const client = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // Timeout after 15s to surface backend-not-running errors quickly
+  timeout: 15_000,
 })
 
 export async function fetchCases(): Promise<CasesListResponse> {
