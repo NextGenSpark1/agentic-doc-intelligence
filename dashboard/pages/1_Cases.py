@@ -149,7 +149,7 @@ with st.expander("+ New Case"):
         submitted = st.form_submit_button("Create Case")
         if submitted:
             if not title.strip() or not lead.strip():
-                st.warning("Case Title and Lead Investigator are required.")
+                st.markdown('<div class="banner banner-warning">Case Title and Lead Investigator are required.</div>', unsafe_allow_html=True)
             else:
                 result, err = create_case({
                     "title": title.strip(),
@@ -158,56 +158,13 @@ with st.expander("+ New Case"):
                     "allegation_summary": allegation.strip(),
                 })
                 if err:
-                    st.error(f"Could not create case: {err}")
+                    st.markdown(f'<div class="banner banner-error">Could not create case: {err}</div>', unsafe_allow_html=True)
                 else:
-                    st.success(f"Case {result['case_id']} created.")
+                    st.markdown(f'<div class="banner banner-success">Case {result["case_id"]} created.</div>', unsafe_allow_html=True)
                     st.rerun()
 
 
-# ── build table rows ──────────────────────────────────────────────
-
-if error:
-    rows_html = (
-        f'<tr><td colspan="7" style="text-align:center;padding:40px 16px;color:#878E99;">'
-        f'Backend unavailable — {error}</td></tr>'
-    )
-elif not cases:
-    rows_html = (
-        '<tr><td colspan="7" style="text-align:center;padding:40px 16px;color:#878E99;">'
-        'No cases yet. Use &ldquo;+ New Case&rdquo; above to create the first one.</td></tr>'
-    )
-else:
-    parts = []
-    for c in cases:
-        stale    = _is_stale(c)
-        row_cls  = "stale-row" if stale else ""
-        score    = int(c.get("risk_score") or 0)
-        color    = _risk_color(score)
-        stale_badge = '<span class="badge-stale">Stale</span>' if stale else ""
-        activity = _relative_time(c.get("last_analysed_at") or c.get("created_at"))
-        parts.append(
-            f'<tr class="{row_cls}">'
-            f'<td><span class="case-id">{c["case_id"]}</span></td>'
-            f'<td>'
-            f'<div class="title-main">{c.get("title", "")}</div>'
-            f'<div class="title-sub">Lead: {c.get("lead_investigator", "—")} · Created {_fmt_date(c.get("created_at"))}</div>'
-            f'</td>'
-            f'<td><span class="type-badge">{_fmt_type(c.get("case_type", ""))}</span></td>'
-            f'<td>{_status_badge(c.get("status", ""))}</td>'
-            f'<td><span class="ts">—</span></td>'
-            f'<td>'
-            f'<div class="risk-wrap">'
-            f'<div class="risk-track"><div class="risk-fill" style="width:{score}%;background:{color};"></div></div>'
-            f'<span class="risk-num" style="color:{color};">{score}</span>'
-            f'</div>'
-            f'</td>'
-            f'<td><span class="ts">{activity}</span>{stale_badge}</td>'
-            f'</tr>'
-        )
-    rows_html = "\n".join(parts)
-
-
-# ── search + stat cards + table (dynamic) ────────────────────────
+# ── search + stat cards ───────────────────────────────────────────
 
 st.markdown(f"""<div class="page-wrap" style="padding-top:8px;">
 <div class="search-wrap">
@@ -235,22 +192,61 @@ st.markdown(f"""<div class="page-wrap" style="padding-top:8px;">
 <div class="stat-note">connects in Phase 2</div>
 </div>
 </div>
-<div class="table-card">
-<table class="tbl">
-<thead>
-<tr>
-<th>Case ID</th>
-<th>Title</th>
-<th>Type</th>
-<th>Status</th>
-<th>Docs</th>
-<th>Risk</th>
-<th>Last Activity</th>
-</tr>
-</thead>
-<tbody>
-{rows_html}
-</tbody>
-</table>
-</div>
 </div>""", unsafe_allow_html=True)
+
+
+# ── table ─────────────────────────────────────────────────────────
+
+st.markdown("""<div class="tbl-grid-head">
+<span>Case ID</span><span>Title</span><span>Type</span><span>Status</span>
+<span>Docs</span><span>Risk</span><span>Last Activity</span><span></span>
+</div>""", unsafe_allow_html=True)
+
+if error:
+    st.markdown(f'<div class="tbl-empty">Backend unavailable — {error}</div>', unsafe_allow_html=True)
+elif not cases:
+    st.markdown('<div class="tbl-empty">No cases yet. Use "+ New Case" above to create the first one.</div>', unsafe_allow_html=True)
+else:
+    for i, c in enumerate(cases):
+        stale    = _is_stale(c)
+        score    = int(c.get("risk_score") or 0)
+        color    = _risk_color(score)
+        activity = _relative_time(c.get("last_analysed_at") or c.get("created_at"))
+        stale_badge = '<span class="badge-stale">Stale</span>' if stale else ""
+        is_last  = (i == len(cases) - 1)
+
+        # Marker classes drive CSS :has() targeting for border/hover/stale/last-row styling
+        marker_cls = "case-row-marker"
+        if stale:   marker_cls += " case-row-stale"
+        if is_last: marker_cls += " case-row-last"
+        marker = f'<span class="{marker_cls}" style="display:none;"></span>'
+
+        cols = st.columns([1.0, 2.2, 1.3, 1.2, 0.5, 0.85, 1.15, 0.4], gap="small")
+        with cols[0]:
+            st.markdown(f'{marker}<span class="case-id">{c["case_id"]}</span>', unsafe_allow_html=True)
+        with cols[1]:
+            st.markdown(
+                f'<div class="title-main">{c.get("title","")}</div>'
+                f'<div class="title-sub">Lead: {c.get("lead_investigator","—")} · Created {_fmt_date(c.get("created_at"))}</div>',
+                unsafe_allow_html=True,
+            )
+        with cols[2]:
+            st.markdown(f'<span class="type-badge">{_fmt_type(c.get("case_type",""))}</span>', unsafe_allow_html=True)
+        with cols[3]:
+            st.markdown(_status_badge(c.get("status", "")), unsafe_allow_html=True)
+        with cols[4]:
+            st.markdown('<span class="ts">—</span>', unsafe_allow_html=True)
+        with cols[5]:
+            st.markdown(
+                f'<div class="risk-wrap">'
+                f'<div class="risk-track"><div class="risk-fill" style="width:{score}%;background:{color};"></div></div>'
+                f'<span class="risk-num" style="color:{color};">{score}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        with cols[6]:
+            st.markdown(f'<span class="ts">{activity}</span>{stale_badge}', unsafe_allow_html=True)
+        with cols[7]:
+            if st.button("›", key=f"open_{c['case_id']}"):
+                st.session_state["active_case_id"] = c["case_id"]
+                st.switch_page("pages/2_Case_Workspace.py")
