@@ -129,6 +129,20 @@ async def list_documents(case_id: str):
     return {"documents": await asyncio.to_thread(db.list_documents, case_id)}
 
 
+@app.get("/cases/{case_id}/documents/{document_id}/file-url")
+async def get_document_file_url(case_id: str, document_id: str):
+    doc = await asyncio.to_thread(db.get_document, document_id)
+    if not doc or doc.get("case_id") != case_id:
+        raise HTTPException(404, "document not found")
+    url = await asyncio.to_thread(db.signed_url, doc["storage_path"])
+    if not url:
+        raise HTTPException(
+            500,
+            "could not generate signed URL — verify storage_bucket config and Supabase storage permissions",
+        )
+    return {"url": url}
+
+
 # ------------------------- case analysis --------------------------
 @app.post("/cases/{case_id}/analysis", status_code=202)
 async def run_analysis(case_id: str, background: BackgroundTasks):
