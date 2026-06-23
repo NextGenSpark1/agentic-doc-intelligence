@@ -8,7 +8,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-from utils.styles import inject_styles  # noqa: E402
+from utils.styles import inject_styles, get_cases_page_css  # noqa: E402
 
 API_BASE = "http://localhost:8000"
 
@@ -113,50 +113,7 @@ open_cases       = stats.get("open_cases", count_active)
 findings_pending = stats.get("findings_pending_review", 0)
 
 
-# ── page CSS (plain string — no f-string needed) ──────────────────
-
-st.markdown("""<style>
-.page-wrap { padding: 24px 32px; }
-.toolbar { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
-.toolbar-title { font-size:18px; font-weight:600; color:#16293F; margin:0; }
-.spacer { flex:1; }
-.filter-pill { font-size:12px; font-weight:500; color:#525862; background:#fff; border:1px solid #D5DAE1; border-radius:20px; padding:4px 13px; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
-.filter-pill-active { font-size:12px; font-weight:500; color:#fff; background:#1E3A5F; border:1px solid #1E3A5F; border-radius:20px; padding:4px 13px; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
-.pill-count { font-size:10px; font-weight:700; padding:1px 6px; border-radius:20px; }
-.filter-pill .pill-count { background:#EEF0F3; color:#525862; }
-.filter-pill-active .pill-count { background:rgba(255,255,255,0.22); color:#fff; }
-.search-wrap { margin-bottom:16px; }
-.search-input { width:100%; background:#F6F7F9; border:1px solid #D5DAE1; border-radius:7px; height:34px; padding:0 14px; font-size:13px; color:#878E99; display:flex; align-items:center; }
-.stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px; }
-.stat-card { background:#fff; border:1px solid #D5DAE1; border-left:3px solid #D5DAE1; border-radius:8px; padding:16px 18px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
-.stat-card.teal { border-left-color:#0E7C86; }
-.stat-card.red  { border-left-color:#B4232A; }
-.stat-label { font-size:10px; font-weight:600; color:#878E99; text-transform:uppercase; letter-spacing:.7px; margin-bottom:8px; }
-.stat-value { font-size:26px; font-weight:700; color:#2A2E35; line-height:1; margin-bottom:4px; }
-.stat-note  { font-size:11px; color:#878E99; }
-.table-card { background:#fff; border:1px solid #D5DAE1; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.04); }
-.tbl { width:100%; border-collapse:collapse; font-size:13px; }
-.tbl th { background:#F6F7F9; color:#878E99; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.6px; padding:10px 16px; text-align:left; border-bottom:1px solid #D5DAE1; }
-.tbl td { padding:13px 16px; border-bottom:1px solid #EEF0F3; vertical-align:middle; color:#2A2E35; }
-.tbl tr:last-child td { border-bottom:none; }
-.tbl tr:hover td { background:#F6F7F9; }
-.tbl tr.stale-row td:first-child { border-left:3px solid #C77A12; }
-.case-id { font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600; color:#1E3A5F; }
-.title-main { font-weight:500; color:#2A2E35; }
-.title-sub  { font-size:11px; color:#878E99; margin-top:2px; }
-.type-badge { display:inline-block; font-size:11px; font-weight:500; color:#2C4F78; background:#EEF0F3; border:1px solid #C2C9D2; border-radius:4px; padding:2px 9px; white-space:nowrap; }
-.badge { display:inline-block; border-radius:20px; font-size:11px; font-weight:600; padding:3px 11px; white-space:nowrap; }
-.badge-amber { background:#FBF1E2; color:#C77A12; border:1px solid #EAD3AC; }
-.badge-green { background:#E9F3EE; color:#2E7D52; }
-.badge-teal  { background:#E0F2F4; color:#0E7C86; }
-.badge-grey  { background:#EEF0F3; color:#878E99; }
-.badge-stale { display:inline-block; background:#EEF0F3; color:#878E99; border-radius:20px; font-size:10px; font-weight:600; padding:2px 8px; margin-left:6px; white-space:nowrap; }
-.risk-wrap  { display:flex; align-items:center; gap:8px; }
-.risk-track { width:68px; height:5px; background:#EEF0F3; border-radius:3px; overflow:hidden; }
-.risk-fill  { height:100%; border-radius:3px; }
-.risk-num   { font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600; }
-.ts { font-family:'IBM Plex Mono',monospace; font-size:12px; color:#878E99; }
-</style>""", unsafe_allow_html=True)
+st.markdown(get_cases_page_css(), unsafe_allow_html=True)
 
 
 # ── toolbar (dynamic pill counts) ────────────────────────────────
