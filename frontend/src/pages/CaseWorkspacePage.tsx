@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchDocuments, uploadDocument } from '../api'
+import { fetchDocuments, uploadDocument, deleteDocument } from '../api'
 import type { Document as CaseDocument } from '../types'
 import DocumentViewer from '../components/DocumentViewer'
 
@@ -48,6 +48,8 @@ export default function CaseWorkspacePage() {
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [selectedDoc, setSelectedDoc] = useState<CaseDocument | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -59,6 +61,21 @@ export default function CaseWorkspacePage() {
       .catch(() => {})
       .finally(() => setDocsLoading(false))
   }, [caseId])
+
+  async function handleDelete(doc: CaseDocument) {
+    if (!caseId) return
+    setDeletingId(doc.document_id)
+    setConfirmDeleteId(null)
+    try {
+      await deleteDocument(caseId, doc.document_id)
+      setDocs((prev) => prev.filter((d) => d.document_id !== doc.document_id))
+      if (selectedDoc?.document_id === doc.document_id) setSelectedDoc(null)
+    } catch (err: unknown) {
+      setUploadError(err instanceof Error ? err.message : 'Delete failed')
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -134,24 +151,51 @@ export default function CaseWorkspacePage() {
                     const ext = fileExt(doc.filename)
                     const isPdf = ext === 'PDF'
                     const isSelected = selectedDoc?.document_id === doc.document_id
+                    const isDeleting = deletingId === doc.document_id
+                    const isConfirming = confirmDeleteId === doc.document_id
+
+                    if (isDeleting) return (
+                      <div key={doc.document_id} className="flex items-center gap-2 px-2 py-2 rounded bg-panel-2">
+                        <span className="text-xs text-text-mute italic">Deleting…</span>
+                      </div>
+                    )
+
+                    if (isConfirming) return (
+                      <div key={doc.document_id} className="flex items-center gap-1.5 px-2 py-2 rounded bg-red-bg border border-red/20">
+                        <span className="text-[10px] text-red flex-1 leading-tight">Delete this document?</span>
+                        <button onClick={() => handleDelete(doc)} className="text-[10px] font-semibold text-red hover:underline shrink-0">Yes</button>
+                        <button onClick={() => setConfirmDeleteId(null)} className="text-[10px] text-text-mute hover:underline shrink-0">Cancel</button>
+                      </div>
+                    )
+
                     return (
                       <div
                         key={doc.document_id}
                         onClick={() => setSelectedDoc(doc)}
                         title={doc.filename}
-                        className={`flex items-start gap-2 px-2 py-2 rounded cursor-pointer transition-colors duration-150
+                        className={`group flex items-start gap-2 px-2 py-2 rounded cursor-pointer transition-colors duration-150
                           ${isSelected ? 'bg-navy/10 border border-navy/20' : 'hover:bg-panel-2 border border-transparent'}`}
                       >
                         <span className={`text-xs font-mono font-semibold px-1.5 py-0.5 rounded shrink-0 mt-0.5
                           ${isPdf ? 'bg-red-bg text-red' : 'bg-green-bg text-green'}`}>
                           {ext}
                         </span>
-                        <div className="flex flex-col gap-0.5 min-w-0">
+                        <div className="flex flex-col gap-0.5 min-w-0 flex-1">
                           <span className={`text-xs truncate ${isSelected ? 'text-navy font-medium' : 'text-text'}`}>
                             {doc.filename}
                           </span>
                           <StatusDot status={doc.extraction_status} />
                         </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(doc.document_id) }}
+                          title="Delete document"
+                          className="opacity-0 group-hover:opacity-100 shrink-0 mt-0.5 text-text-mute hover:text-red transition-opacity duration-150"
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                          </svg>
+                        </button>
                       </div>
                     )
                   })}

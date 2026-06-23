@@ -148,3 +148,14 @@ def signed_url(storage_path: str, expires_in: int = 3600) -> str:
     s = get_settings()
     res = get_client().storage.from_(s.storage_bucket).create_signed_url(storage_path, expires_in)
     return res.get("signedURL") or res.get("signedUrl", "")
+
+
+def delete_document(document_id: str, storage_path: str) -> None:
+    """Delete file from Storage then drop the documents row.
+
+    Related rows (extractions, chunks) are not cascade-deleted here — add
+    ON DELETE CASCADE FK constraints in schema.sql and remove this note then.
+    """
+    s = get_settings()
+    get_client().storage.from_(s.storage_bucket).remove([storage_path])
+    get_client().table("documents").delete().eq("document_id", document_id).execute()

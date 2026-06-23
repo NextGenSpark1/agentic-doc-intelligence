@@ -32,6 +32,10 @@ export async function fetchDocuments(caseId: string): Promise<CaseDocument[]> {
   return (response.data as { documents: CaseDocument[] }).documents
 }
 
+export async function deleteDocument(caseId: string, documentId: string): Promise<void> {
+  await client.delete(`/cases/${caseId}/documents/${documentId}`)
+}
+
 export async function fetchFileUrl(caseId: string, documentId: string): Promise<string> {
   const response = await client.get<{ url: string }>(`/cases/${caseId}/documents/${documentId}/file-url`)
   return response.data.url
