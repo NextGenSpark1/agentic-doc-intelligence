@@ -125,14 +125,31 @@ st.markdown("""
   border-radius: 8px; padding: 10px 14px;
   font-size: 13px; color: var(--text-mute);
 }
+/* ── ← Cases invisible page_link overlay ── */
+[data-testid="stPageLink"]:not([data-testid="stHorizontalBlock"] [data-testid="stPageLink"]) {
+  position: fixed !important;
+  top: 96px !important;
+  left: 0 !important;
+  width: 140px !important;
+  height: 46px !important;
+  z-index: 999 !important;
+}
+[data-testid="stPageLink"]:not([data-testid="stHorizontalBlock"] [data-testid="stPageLink"]) a {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  cursor: pointer !important;
+}
 </style>
 """, unsafe_allow_html=True)
+
+st.page_link("pages/1_Cases.py", label="← Cases")
 
 st.markdown(f"""
 <!-- Sub-header -->
 <div class="case-subheader">
   <div class="breadcrumb">
-    <a class="breadcrumb-back" href="#">← Cases</a>
+    <span class="breadcrumb-back">← Cases</span>
     <span class="breadcrumb-sep">·</span>
     <span class="breadcrumb-id">{active_case_id}</span>
     <span class="breadcrumb-sep">·</span>

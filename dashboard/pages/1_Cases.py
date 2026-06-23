@@ -115,6 +115,10 @@ findings_pending = stats.get("findings_pending_review", 0)
 
 st.markdown(get_cases_page_css(), unsafe_allow_html=True)
 
+if "_success_msg" in st.session_state:
+    msg = st.session_state.pop("_success_msg")
+    st.markdown(f'<div class="banner banner-success">{msg}</div>', unsafe_allow_html=True)
+
 
 # ── toolbar (dynamic pill counts) ────────────────────────────────
 
@@ -160,7 +164,7 @@ with st.expander("+ New Case"):
                 if err:
                     st.markdown(f'<div class="banner banner-error">Could not create case: {err}</div>', unsafe_allow_html=True)
                 else:
-                    st.markdown(f'<div class="banner banner-success">Case {result["case_id"]} created.</div>', unsafe_allow_html=True)
+                    st.session_state["_success_msg"] = f"Case {result['case_id']} created."
                     st.rerun()
 
 
