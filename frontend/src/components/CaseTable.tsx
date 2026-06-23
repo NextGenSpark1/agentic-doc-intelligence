@@ -7,7 +7,7 @@ interface CaseTableProps {
   cases: Case[]
 }
 
-const columns = ['Case ID', 'Title', 'Type', 'Status', 'Docs', 'Risk', 'Last Activity', '']
+const columns = ['Case ID', 'Title', 'Type', 'Status', 'Docs', 'Risk', 'Last Activity']
 
 export default function CaseTable({ cases }: CaseTableProps) {
   const navigate = useNavigate()
@@ -23,7 +23,7 @@ export default function CaseTable({ cases }: CaseTableProps) {
   return (
     <div className="bg-panel border border-border rounded-lg overflow-hidden">
       {/* Header */}
-      <div className="grid grid-cols-[160px_1fr_140px_140px_70px_120px_130px_32px] bg-panel-2 border-b border-border px-4 py-2">
+      <div className="grid grid-cols-[160px_1fr_140px_160px_90px_120px_130px] gap-x-4 bg-panel-2 border-b border-border px-4 py-2">
         {columns.map((col) => (
           <span key={col} className="text-xs font-semibold text-text-mute uppercase tracking-wide">
             {col}
@@ -43,7 +43,7 @@ export default function CaseTable({ cases }: CaseTableProps) {
             key={c.case_id}
             onClick={() => navigate(`/cases/${c.case_id}`)}
             className={`
-              grid grid-cols-[160px_1fr_140px_140px_70px_120px_130px_32px]
+              grid grid-cols-[160px_1fr_140px_160px_90px_120px_130px] gap-x-4
               items-center px-4 py-3 cursor-pointer
               hover:bg-panel-2 transition-colors duration-150
               ${!isLast ? 'border-b border-border' : ''}
@@ -54,7 +54,7 @@ export default function CaseTable({ cases }: CaseTableProps) {
             <span className="font-mono text-sm text-navy font-medium truncate">{c.case_id}</span>
 
             {/* Title + subtitle */}
-            <div className="flex flex-col min-w-0 pr-4">
+            <div className="flex flex-col min-w-0">
               <span className="text-sm font-medium text-text truncate">{c.title}</span>
               <span className="text-xs text-text-mute truncate">{c.lead_investigator}</span>
             </div>
@@ -82,8 +82,6 @@ export default function CaseTable({ cases }: CaseTableProps) {
             {/* Last Activity */}
             <span className="text-xs text-text-mute">{relativeTime(c.created_at)}</span>
 
-            {/* Chevron */}
-            <span className="text-text-mute text-sm">›</span>
           </div>
         )
       })}
