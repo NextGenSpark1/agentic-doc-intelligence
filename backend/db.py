@@ -67,6 +67,34 @@ def insert_extraction(data: dict) -> dict:
     return get_client().table("extractions").insert(data).execute().data[0]
 
 
+def get_extraction_by_document(document_id: str) -> Optional[dict]:
+    rows = (
+        get_client()
+        .table("extractions")
+        .select("*")
+        .eq("document_id", document_id)
+        .order("extracted_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None
+
+
+def get_document_raw_text(document_id: str) -> str:
+    """Reconstruct raw text from indexed chunks in page order."""
+    rows = (
+        get_client()
+        .table("chunks")
+        .select("text, page")
+        .eq("document_id", document_id)
+        .order("page")
+        .execute()
+        .data
+    )
+    return "\n\n".join(r["text"] for r in rows if r.get("text"))
+
+
 def list_extractions(case_id: str) -> list[dict]:
     # join via documents to scope by case
     docs = list_documents(case_id)
@@ -148,3 +176,14 @@ def signed_url(storage_path: str, expires_in: int = 3600) -> str:
     s = get_settings()
     res = get_client().storage.from_(s.storage_bucket).create_signed_url(storage_path, expires_in)
     return res.get("signedURL") or res.get("signedUrl", "")
+
+
+def delete_document(document_id: str, storage_path: str) -> None:
+    """Delete file from Storage then drop the documents row.
+
+    Related rows (extractions, chunks) are not cascade-deleted here — add
+    ON DELETE CASCADE FK constraints in schema.sql and remove this note then.
+    """
+    s = get_settings()
+    get_client().storage.from_(s.storage_bucket).remove([storage_path])
+    get_client().table("documents").delete().eq("document_id", document_id).execute()

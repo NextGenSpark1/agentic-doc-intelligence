@@ -23,6 +23,9 @@ class Settings(BaseSettings):
 
     # --- LandingAI ADE ---
     landingai_api_key: str = ""
+    # Set MOCK_ADE=true to skip real API calls and return plausible fake extraction data.
+    # Use this when the LandingAI account is on the free plan or during UI/pipeline testing.
+    mock_ade: bool = False
 
     # --- LLM routing (LiteLLM model strings). Swap freely; agents don't care. ---
     llm_reasoning_model: str = "anthropic/claude-sonnet-4-5"   # summaries, anomaly reasoning

@@ -14,6 +14,7 @@ put it behind Temporal when a run must survive process restarts. Neither is need
 """
 from __future__ import annotations
 
+import traceback
 from datetime import datetime, timezone
 
 
@@ -33,6 +34,7 @@ def process_document(document_id: str) -> None:
         db.write_audit(case["case_id"], "system", "document_extracted",
                        {"document_id": document_id, "type": doc_type})
     except Exception as exc:  # noqa: BLE001 — record failure, don't crash the worker
+        traceback.print_exc()
         db.update_document(document_id, {"extraction_status": "failed"})
         db.write_audit(document.get("case_id", ""), "system", "extraction_failed",
                        {"document_id": document_id, "error": str(exc)})

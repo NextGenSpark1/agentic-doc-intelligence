@@ -10,5 +10,5 @@ python-dotenv
 supabase
 
 # --- AI layer ---
-agentic-doc             # LandingAI ADE (isolated in ade_client.py; migrate to landingai-ade later)
+landingai-ade           # LandingAI ADE — replaces deprecated agentic-doc
 litellm                 # provider-agnostic LLM + embeddings router
