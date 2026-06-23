@@ -137,6 +137,26 @@ async def delete_document(case_id: str, document_id: str):
     await asyncio.to_thread(db.delete_document, document_id, doc["storage_path"])
 
 
+@app.get("/cases/{case_id}/documents/{document_id}/extraction")
+async def get_document_extraction(case_id: str, document_id: str):
+    doc = await asyncio.to_thread(db.get_document, document_id)
+    if not doc or doc.get("case_id") != case_id:
+        raise HTTPException(404, "document not found")
+    extraction = await asyncio.to_thread(db.get_extraction_by_document, document_id)
+    if not extraction:
+        raise HTTPException(404, "no extraction available for this document")
+    raw_text = await asyncio.to_thread(db.get_document_raw_text, document_id)
+    return {
+        "extraction_id": extraction["extraction_id"],
+        "document_id": extraction["document_id"],
+        "schema_name": extraction["schema_name"],
+        "extracted_json": extraction.get("extracted_json") or {},
+        "visual_grounding_json": extraction.get("visual_grounding_json") or {},
+        "extracted_at": extraction["extracted_at"],
+        "raw_text": raw_text,
+    }
+
+
 @app.get("/cases/{case_id}/documents/{document_id}/file-url")
 async def get_document_file_url(case_id: str, document_id: str):
     doc = await asyncio.to_thread(db.get_document, document_id)

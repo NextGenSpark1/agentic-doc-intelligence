@@ -67,6 +67,34 @@ def insert_extraction(data: dict) -> dict:
     return get_client().table("extractions").insert(data).execute().data[0]
 
 
+def get_extraction_by_document(document_id: str) -> Optional[dict]:
+    rows = (
+        get_client()
+        .table("extractions")
+        .select("*")
+        .eq("document_id", document_id)
+        .order("extracted_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None
+
+
+def get_document_raw_text(document_id: str) -> str:
+    """Reconstruct raw text from indexed chunks in page order."""
+    rows = (
+        get_client()
+        .table("chunks")
+        .select("text, page")
+        .eq("document_id", document_id)
+        .order("page")
+        .execute()
+        .data
+    )
+    return "\n\n".join(r["text"] for r in rows if r.get("text"))
+
+
 def list_extractions(case_id: str) -> list[dict]:
     # join via documents to scope by case
     docs = list_documents(case_id)
