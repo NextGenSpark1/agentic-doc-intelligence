@@ -212,8 +212,9 @@ def get_cases_page_css() -> str:
 .banner-warning { background:#FBF1E2; color:#C77A12; border:1px solid #EAD3AC; }
 .banner-error   { background:#FBEDED; color:#B4232A; border:1px solid #EAC2C2; }
 /* ── Clickable table rows via st.columns ── */
-.tbl-grid-head { display:grid; grid-template-columns:100px 1fr 130px 120px 50px 80px 110px 44px; background:#F6F7F9; padding:10px 16px; gap:0; border:1px solid #D5DAE1; border-radius:8px 8px 0 0; border-bottom:1px solid #D5DAE1; box-shadow:0 1px 3px rgba(0,0,0,.04); margin:0 32px; }
-.tbl-grid-head > span { font-size:10px; font-weight:600; color:#878E99; text-transform:uppercase; letter-spacing:.6px; }
+.tbl-head-cell { font-size:10px; font-weight:600; color:#878E99; text-transform:uppercase; letter-spacing:.6px; }
+div[data-testid="stHorizontalBlock"]:has(.tbl-head-cell) { width:calc(100% - 64px) !important; margin:0 32px !important; background:#F6F7F9 !important; border:1px solid #D5DAE1 !important; border-radius:8px 8px 0 0 !important; border-bottom:1px solid #D5DAE1 !important; box-shadow:0 1px 3px rgba(0,0,0,.04) !important; gap:0 !important; }
+div[data-testid="stHorizontalBlock"]:has(.tbl-head-cell) > div[data-testid="stColumn"] { padding:10px 16px !important; }
 /* Each case row is a stHorizontalBlock identified by a hidden .case-row-marker span */
 div[data-testid="stHorizontalBlock"]:has(.case-row-marker) { width:calc(100% - 64px) !important; margin:0 32px !important; border-left:1px solid #D5DAE1 !important; border-right:1px solid #D5DAE1 !important; border-bottom:1px solid #EEF0F3 !important; background:#fff !important; gap:0 !important; padding:0 !important; }
 div[data-testid="stHorizontalBlock"]:has(.case-row-marker):hover { background:#F6F7F9 !important; }

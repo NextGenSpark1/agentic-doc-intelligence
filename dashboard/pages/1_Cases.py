@@ -201,10 +201,10 @@ st.markdown(f"""<div class="page-wrap" style="padding-top:8px;">
 
 # ── table ─────────────────────────────────────────────────────────
 
-st.markdown("""<div class="tbl-grid-head">
-<span>Case ID</span><span>Title</span><span>Type</span><span>Status</span>
-<span>Docs</span><span>Risk</span><span>Last Activity</span><span></span>
-</div>""", unsafe_allow_html=True)
+_hdr = st.columns([1.0, 2.2, 1.3, 1.2, 0.5, 0.85, 1.15, 0.4], gap="small")
+for _col, _lbl in zip(_hdr, ["Case ID", "Title", "Type", "Status", "Docs", "Risk", "Last Activity", ""]):
+    with _col:
+        st.markdown(f'<span class="tbl-head-cell">{_lbl}</span>', unsafe_allow_html=True)
 
 if error:
     st.markdown(f'<div class="tbl-empty">Backend unavailable — {error}</div>', unsafe_allow_html=True)

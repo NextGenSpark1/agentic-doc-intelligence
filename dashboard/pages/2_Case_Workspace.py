@@ -125,32 +125,41 @@ st.markdown("""
   border-radius: 8px; padding: 10px 14px;
   font-size: 13px; color: var(--text-mute);
 }
-/* ── ← Cases invisible page_link overlay ── */
-[data-testid="stPageLink"]:not([data-testid="stHorizontalBlock"] [data-testid="stPageLink"]) {
-  position: fixed !important;
-  top: 96px !important;
-  left: 0 !important;
-  width: 140px !important;
-  height: 46px !important;
-  z-index: 999 !important;
-}
-[data-testid="stPageLink"]:not([data-testid="stHorizontalBlock"] [data-testid="stPageLink"]) a {
-  display: block !important;
-  width: 100% !important;
-  height: 100% !important;
+/* ── ← Cases back button ── */
+[data-testid="stButton"]:has(button.ws-back) button,
+div[data-testid="element-container"]:has(.ws-back-marker) + div[data-testid="element-container"] [data-testid="stButton"] button {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #0E7C86 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  padding: 4px 28px !important;
   cursor: pointer !important;
+  min-width: 0 !important;
+}
+div[data-testid="element-container"]:has(.ws-back-marker) + div[data-testid="element-container"] [data-testid="stButton"] button:hover {
+  text-decoration: underline !important;
+  background: transparent !important;
+}
+div[data-testid="element-container"]:has(.ws-back-marker) {
+  display: none !important;
+}
+div[data-testid="element-container"]:has(.ws-back-marker) + div[data-testid="element-container"] {
+  margin: 0 !important;
+  padding: 0 !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.page_link("pages/1_Cases.py", label="← Cases")
+st.markdown('<span class="ws-back-marker" style="display:none;"></span>', unsafe_allow_html=True)
+if st.button("← Cases", key="ws_back"):
+    st.switch_page("pages/1_Cases.py")
 
 st.markdown(f"""
 <!-- Sub-header -->
 <div class="case-subheader">
   <div class="breadcrumb">
-    <span class="breadcrumb-back">← Cases</span>
-    <span class="breadcrumb-sep">·</span>
     <span class="breadcrumb-id">{active_case_id}</span>
     <span class="breadcrumb-sep">·</span>
     <span class="breadcrumb-title">Case Workspace</span>
