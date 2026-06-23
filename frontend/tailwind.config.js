@@ -33,6 +33,12 @@ export default {
         sans: ['IBM Plex Sans', 'sans-serif'],
         mono: ['IBM Plex Mono', 'monospace'],
       },
+      spacing: {
+        '13': '3.25rem', // 52px — used for top navbar bar height
+      },
+      borderWidth: {
+        '3': '3px',
+      },
     },
   },
   plugins: [],
