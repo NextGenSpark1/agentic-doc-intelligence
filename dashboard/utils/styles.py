@@ -195,11 +195,36 @@ def get_cases_page_css() -> str:
 /* ── New Case form ── */
 .form-card { background:#fff; border:1px solid #D5DAE1; border-radius:8px; padding:20px 24px; margin-bottom:16px; }
 .form-label { font-size:11px; font-weight:600; color:#878E99; text-transform:uppercase; letter-spacing:.6px; margin-bottom:6px; }
+/* Style native Streamlit form inputs */
+[data-testid="stTextInput"] label,
+[data-testid="stTextArea"] label,
+[data-testid="stSelectbox"] label { font-size:11px !important; font-weight:600 !important; color:#878E99 !important; text-transform:uppercase !important; letter-spacing:.6px !important; }
+[data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea { background:#fff !important; border:1px solid #C2C9D2 !important; border-radius:6px !important; font-family:'IBM Plex Sans',sans-serif !important; font-size:13px !important; color:#2A2E35 !important; }
+[data-testid="stTextInput"] input:focus,
+[data-testid="stTextArea"] textarea:focus { border-color:#1E3A5F !important; box-shadow:0 0 0 2px rgba(30,58,95,0.10) !important; outline:none !important; }
+[data-testid="stSelectbox"] [data-baseweb="select"] > div:first-child { background:#fff !important; border:1px solid #C2C9D2 !important; border-radius:6px !important; font-family:'IBM Plex Sans',sans-serif !important; font-size:13px !important; }
+[data-testid="stFormSubmitButton"] button { background:#1E3A5F !important; color:#fff !important; border:none !important; border-radius:6px !important; font-family:'IBM Plex Sans',sans-serif !important; font-size:13px !important; font-weight:600 !important; padding:8px 20px !important; cursor:pointer !important; }
+[data-testid="stFormSubmitButton"] button:hover { background:#16293F !important; }
 /* ── inline banners ── */
 .banner { border-radius:7px; padding:11px 16px; font-size:13px; font-weight:500; margin-bottom:12px; }
 .banner-success { background:#E9F3EE; color:#2E7D52; border:1px solid #B6D9C6; }
 .banner-warning { background:#FBF1E2; color:#C77A12; border:1px solid #EAD3AC; }
 .banner-error   { background:#FBEDED; color:#B4232A; border:1px solid #EAC2C2; }
+/* ── Clickable table rows via st.columns ── */
+.tbl-grid-head { display:grid; grid-template-columns:100px 1fr 130px 120px 50px 80px 110px 44px; background:#F6F7F9; padding:10px 16px; gap:0; border:1px solid #D5DAE1; border-radius:8px 8px 0 0; border-bottom:1px solid #D5DAE1; box-shadow:0 1px 3px rgba(0,0,0,.04); margin:0 32px; }
+.tbl-grid-head > span { font-size:10px; font-weight:600; color:#878E99; text-transform:uppercase; letter-spacing:.6px; }
+/* Each case row is a stHorizontalBlock identified by a hidden .case-row-marker span */
+div[data-testid="stHorizontalBlock"]:has(.case-row-marker) { margin:0 32px !important; border-left:1px solid #D5DAE1 !important; border-right:1px solid #D5DAE1 !important; border-bottom:1px solid #EEF0F3 !important; background:#fff !important; gap:0 !important; padding:0 !important; }
+div[data-testid="stHorizontalBlock"]:has(.case-row-marker):hover { background:#F6F7F9 !important; }
+div[data-testid="stHorizontalBlock"]:has(.case-row-marker) > div[data-testid="stColumn"] { padding:12px 16px !important; }
+div[data-testid="stHorizontalBlock"]:has(.case-row-stale) { border-left:3px solid #C77A12 !important; }
+div[data-testid="stHorizontalBlock"]:has(.case-row-last) { border-bottom:1px solid #D5DAE1 !important; border-radius:0 0 8px 8px !important; box-shadow:0 1px 3px rgba(0,0,0,.04) !important; }
+/* Open arrow button */
+div[data-testid="stHorizontalBlock"]:has(.case-row-marker) [data-testid="stButton"] button { background:transparent !important; border:none !important; box-shadow:none !important; color:#C2C9D2 !important; font-size:18px !important; padding:0 !important; line-height:1 !important; cursor:pointer !important; width:100% !important; }
+div[data-testid="stHorizontalBlock"]:has(.case-row-marker) [data-testid="stButton"] button:hover { color:#1E3A5F !important; background:transparent !important; }
+/* Empty/error state */
+.tbl-empty { border:1px solid #D5DAE1; border-top:none; border-radius:0 0 8px 8px; background:#fff; text-align:center; padding:40px 16px; color:#878E99; font-size:13px; box-shadow:0 1px 3px rgba(0,0,0,.04); margin:0 32px; }
 </style>"""
 
 
