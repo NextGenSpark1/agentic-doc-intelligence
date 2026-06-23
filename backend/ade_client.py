@@ -1,28 +1,22 @@
 """LandingAI ADE wrapper — migrated from agentic-doc to landingai-ade (v1.x).
 
-MIGRATION SUMMARY
-  Old library : agentic-doc  (import: agentic_doc.parse.parse)
-  New library : landingai-ade (import: landingai_ade.LandingAIADE — class-based client)
-
-API DIFFERENCES
-  - parse() and extract() are now SEPARATE methods on the client class.
-  - parse() requires an explicit model="dpt-2-latest" parameter.
-  - extract() takes markdown text (output of parse) + a JSON schema dict; it does NOT
-    accept a Pydantic class directly — use pydantic_to_json_schema() from landingai_ade.lib.
-  - extract() does NOT document per-field confidence scores. The confidence dict returned by
-    extract_fields() and parse_and_extract() will be empty until confirmed otherwise.
-  - parse() accepts Path or URL; raw bytes must be written to a temp file first.
+API FACTS (verified against venv/Lib/site-packages/landingai_ade/):
+  - parse(document=<Path|FileTypes>, model=<str|None>) -> ParseResponse
+      ParseResponse.chunks: List[Chunk]
+        Chunk.id         str
+        Chunk.type       str
+        Chunk.markdown   str   (the text; NOT .text)
+        Chunk.grounding  ChunkGrounding(.page int, .box ParseGroundingBox)
+          ParseGroundingBox.left/top/right/bottom  float
+      ParseResponse.markdown  str
+  - extract(schema=<json_str>, markdown=<str|FileTypes|None>) -> ExtractResponse
+      ExtractResponse.extraction  object   (the extracted key-value pairs as dict)
+  - pydantic_to_json_schema(model) -> str  (already JSON-encoded; pass directly to extract())
+  - Constructor reads VISION_AGENT_API_KEY automatically; we pass it explicitly for clarity.
+  - Per-field confidence is not exposed in v1.x.
 
 ENV VAR
   Still VISION_AGENT_API_KEY — no change to config.py needed.
-
-UNCONFIRMED (verify with a live test call before relying on these):
-  - Exact chunk attribute names for grounding (bbox vs box vs grounding object).
-    The defensive getattr() patterns are kept throughout until live data confirms.
-  - Whether extract() accepts a markdown string directly (rather than a file Path).
-    Currently piped through a NamedTemporaryFile to be safe.
-  - Whether the client constructor reads VISION_AGENT_API_KEY automatically or requires
-    apikey=os.environ["VISION_AGENT_API_KEY"] explicitly. The code passes it explicitly.
 """
 from __future__ import annotations
 
@@ -69,32 +63,36 @@ def _source_to_path(source: Source) -> tuple[Path, bool]:
 
 
 def _grounding_to_dict(chunk: Any) -> dict:
-    """Extract grounding info from a chunk object into a plain dict.
+    """Extract grounding from a landingai-ade v1.x Chunk into a plain dict.
 
-    landingai-ade v1.x exposes bbox and page directly on the chunk. The old
-    agentic-doc library nested them under a grounding sub-object. We try both
-    layouts so the code survives either.
+    ParseResponse.Chunk.grounding is a ChunkGrounding with:
+      .page (int)
+      .box  (ParseGroundingBox with .left/.top/.right/.bottom)
     """
-    # Direct attributes (new layout)
-    bbox = getattr(chunk, "bbox", None)
-    page = getattr(chunk, "page", None)
+    g = getattr(chunk, "grounding", None)
+    if g is None:
+        return {"page": None, "bbox": []}
 
-    # Nested grounding object (old layout / fallback)
-    if bbox is None:
-        g = getattr(chunk, "grounding", None)
-        if g:
-            g0 = g[0] if isinstance(g, (list, tuple)) and g else g
-            page = page if page is not None else getattr(g0, "page", getattr(g0, "page_index", None))
-            box = getattr(g0, "bbox", None) or getattr(g0, "box", None)
-            if box is not None:
-                bbox = list(box) if isinstance(box, (list, tuple)) else [
-                    getattr(box, "l", getattr(box, "x1", 0)),
-                    getattr(box, "t", getattr(box, "y1", 0)),
-                    getattr(box, "r", getattr(box, "x2", 0)),
-                    getattr(box, "b", getattr(box, "y2", 0)),
-                ]
+    # grounding is a ChunkGrounding object (not a list), but tolerate list layout too
+    g0 = g[0] if isinstance(g, (list, tuple)) and g else g
+    page = getattr(g0, "page", None)
+    box = getattr(g0, "box", None) or getattr(g0, "bbox", None)
 
-    return {"page": page, "bbox": bbox or []}
+    if box is None:
+        return {"page": page, "bbox": []}
+
+    if isinstance(box, (list, tuple)):
+        bbox = list(box)
+    else:
+        # ParseGroundingBox uses left/top/right/bottom (not l/t/r/b or x1/y1/x2/y2)
+        bbox = [
+            getattr(box, "left",   getattr(box, "l", getattr(box, "x1", 0))),
+            getattr(box, "top",    getattr(box, "t", getattr(box, "y1", 0))),
+            getattr(box, "right",  getattr(box, "r", getattr(box, "x2", 0))),
+            getattr(box, "bottom", getattr(box, "b", getattr(box, "y2", 0))),
+        ]
+
+    return {"page": page, "bbox": bbox}
 
 
 def parse_document(source: Source) -> dict:
@@ -114,9 +112,9 @@ def parse_document(source: Source) -> dict:
         if isinstance(g.get("page"), int):
             max_page = max(max_page, g["page"] + 1)
         chunks.append({
-            "chunk_id": getattr(c, "chunk_id", None),
-            "type": str(getattr(c, "chunk_type", getattr(c, "type", "text"))),
-            "text": getattr(c, "text", "") or "",
+            "chunk_id": getattr(c, "id", None),           # Chunk.id (not chunk_id)
+            "type": str(getattr(c, "type", "text")),
+            "text": getattr(c, "markdown", "") or "",     # Chunk.markdown (not text)
             "grounding": [g],
         })
     return {"markdown": result.markdown, "chunks": chunks, "page_count": max_page or 1}
@@ -154,28 +152,21 @@ def parse_and_extract(source: Source, model: Type[BaseModel]) -> dict:
 def _extract_from_markdown(markdown: str, model: Type[BaseModel]) -> dict:
     """Run client.extract() against a markdown string.
 
-    extract() expects a file path; we write the markdown to a temp file.
-    If a future SDK version accepts a string directly, remove the tempfile dance.
+    extract() accepts a string directly for the markdown parameter.
+    Returns only the extracted key-value pairs from ExtractResponse.extraction
+    (not the full response including metadata).
     """
     from landingai_ade.lib import pydantic_to_json_schema
     schema = pydantic_to_json_schema(model)
     client = _get_client()
 
-    tmp = tempfile.NamedTemporaryFile(
-        delete=False, suffix=".md", mode="w", encoding="utf-8"
-    )
-    tmp.write(markdown)
-    tmp.flush()
-    tmp.close()
-    md_path = Path(tmp.name)
-    try:
-        result = client.extract(schema=schema, markdown=md_path)
-    finally:
-        md_path.unlink(missing_ok=True)
+    result = client.extract(schema=schema, markdown=markdown)
 
-    # result is a Pydantic model; convert to plain dict
-    if hasattr(result, "model_dump"):
-        return result.model_dump()
-    if hasattr(result, "to_dict"):
-        return result.to_dict()
-    return vars(result) if not isinstance(result, dict) else result
+    # ExtractResponse.extraction holds the extracted key-value pairs as a dict.
+    # model_dump() would return the full structure including metadata — don't use it.
+    extraction = getattr(result, "extraction", None)
+    if isinstance(extraction, dict):
+        return extraction
+    if hasattr(extraction, "model_dump"):
+        return extraction.model_dump()
+    return {}
