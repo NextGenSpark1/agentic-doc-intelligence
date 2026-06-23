@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocument } from './types'
+import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocument, Extraction } from './types'
 
 const BASE_URL = 'http://localhost:8000'
 
@@ -34,6 +34,16 @@ export async function fetchDocuments(caseId: string): Promise<CaseDocument[]> {
 
 export async function deleteDocument(caseId: string, documentId: string): Promise<void> {
   await client.delete(`/cases/${caseId}/documents/${documentId}`)
+}
+
+export async function fetchExtraction(caseId: string, documentId: string): Promise<Extraction | null> {
+  try {
+    const response = await client.get<Extraction>(`/cases/${caseId}/documents/${documentId}/extraction`)
+    return response.data
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) return null
+    throw err
+  }
 }
 
 export async function fetchFileUrl(caseId: string, documentId: string): Promise<string> {

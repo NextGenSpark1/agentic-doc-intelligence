@@ -30,6 +30,7 @@ export interface Extraction {
   extracted_json: Record<string, unknown>
   visual_grounding_json: Record<string, unknown>
   extracted_at: string
+  raw_text?: string  // reconstructed from chunks; absent if document has no chunks yet
 }
 
 export interface Citation {
