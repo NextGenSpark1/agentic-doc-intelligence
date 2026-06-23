@@ -10,6 +10,8 @@ from utils.styles import inject_styles  # noqa: E402
 
 inject_styles("Case Workspace")
 
+active_case_id = st.session_state.get("active_case_id", "—")
+
 st.markdown("""
 <style>
 /* Sub-header bar */
@@ -124,15 +126,17 @@ st.markdown("""
   font-size: 13px; color: var(--text-mute);
 }
 </style>
+""", unsafe_allow_html=True)
 
+st.markdown(f"""
 <!-- Sub-header -->
 <div class="case-subheader">
   <div class="breadcrumb">
     <a class="breadcrumb-back" href="#">← Cases</a>
     <span class="breadcrumb-sep">·</span>
-    <span class="breadcrumb-id">INV-2026-0047</span>
+    <span class="breadcrumb-id">{active_case_id}</span>
     <span class="breadcrumb-sep">·</span>
-    <span class="breadcrumb-title">Ministry of Public Works — Infrastructure Procurement</span>
+    <span class="breadcrumb-title">Case Workspace</span>
   </div>
   <a class="ws-tab active" href="#">Workspace</a>
   <a class="ws-tab" href="#">Entity Graph</a>
@@ -200,7 +204,7 @@ st.markdown("""
       <span class="panel-heading-txt">Case Assistant</span>
     </div>
     <div class="chat-bubble">
-      Hello. I'm ready to answer questions about <strong>INV-2026-0047</strong>.
+      Hello. I'm ready to answer questions about <strong>{active_case_id}</strong>.
       Ask me about documents, entities, or findings.
     </div>
     <div class="chat-bubble" style="background:var(--panel-3);">
