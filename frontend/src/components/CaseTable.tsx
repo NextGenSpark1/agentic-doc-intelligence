@@ -66,7 +66,9 @@ export default function CaseTable({ cases }: CaseTableProps) {
             <Badge status={c.status} />
 
             {/* Docs */}
-            <span className="text-sm text-text-mute">—</span>
+            <span className="text-sm text-text-mid tabular-nums">
+              {c.doc_count ?? '—'}
+            </span>
 
             {/* Risk */}
             <div className="flex items-center gap-2">

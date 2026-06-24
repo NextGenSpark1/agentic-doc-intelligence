@@ -95,6 +95,10 @@ def get_document_raw_text(document_id: str) -> str:
     return "\n\n".join(r["text"] for r in rows if r.get("text"))
 
 
+def update_extraction(extraction_id: str, patch: dict) -> dict:
+    return get_client().table("extractions").update(patch).eq("extraction_id", extraction_id).execute().data[0]
+
+
 def list_extractions(case_id: str) -> list[dict]:
     # join via documents to scope by case
     docs = list_documents(case_id)

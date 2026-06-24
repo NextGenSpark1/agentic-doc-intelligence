@@ -9,6 +9,7 @@ export interface Case {
   allegation_summary: string
   risk_score: number
   created_at: string
+  doc_count?: number
 }
 
 export interface Document {
