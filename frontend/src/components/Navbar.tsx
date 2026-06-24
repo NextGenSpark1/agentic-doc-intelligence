@@ -1,17 +1,49 @@
-import { NavLink } from 'react-router-dom'
+import { useState, useRef, useEffect } from 'react'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { LogOut } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
+
+function getInitials(email: string): string {
+  const local = email.split('@')[0]
+  const parts = local.split(/[._-]/).filter(Boolean)
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+  return local.slice(0, 2).toUpperCase()
+}
 
 export default function Navbar() {
+  const { user, signOut } = useAuth()
+  const navigate = useNavigate()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    if (menuOpen) document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [menuOpen])
+
+  async function handleSignOut() {
+    setMenuOpen(false)
+    await signOut()
+    navigate('/login', { replace: true })
+  }
+
+  const initials = user?.email ? getInitials(user.email) : '??'
+  const email = user?.email ?? ''
+
   return (
     <>
-      {/* Fixed two-bar header */}
       <header className="fixed top-0 left-0 right-0 z-50">
         {/* Top bar */}
         <div className="bg-navy-deep h-13 flex items-center px-4 gap-3">
-          {/* Brand square */}
+          {/* Brand */}
           <div className="bg-teal text-white font-mono font-semibold text-sm w-8 h-8 flex items-center justify-center rounded shrink-0">
             II
           </div>
-          {/* Title */}
           <span className="text-white font-medium text-sm tracking-wide flex-1">
             Investigation Intelligence
           </span>
@@ -28,9 +60,32 @@ export default function Navbar() {
               "
             />
           </div>
-          {/* Avatar */}
-          <div className="bg-teal text-white font-semibold text-sm w-8 h-8 flex items-center justify-center rounded-full shrink-0">
-            H
+          {/* Avatar + dropdown */}
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen((o) => !o)}
+              className="bg-teal hover:bg-teal-soft text-white font-semibold text-sm w-8 h-8 flex items-center justify-center rounded-full shrink-0 transition-colors"
+              aria-label="Account menu"
+            >
+              {initials}
+            </button>
+
+            {menuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-56 bg-panel border border-border rounded-xl shadow-lg overflow-hidden z-50">
+                {/* Email row */}
+                <div className="px-4 py-3 border-b border-border">
+                  <p className="text-xs text-text-mute truncate">{email}</p>
+                </div>
+                {/* Sign out */}
+                <button
+                  onClick={handleSignOut}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-text-mid hover:bg-panel-2 hover:text-text transition-colors"
+                >
+                  <LogOut size={14} className="text-text-mute" />
+                  Sign out
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -58,7 +113,7 @@ export default function Navbar() {
         </div>
       </header>
 
-      {/* Spacer so content starts below fixed header (h-13 + h-11 = 52+44=96px) */}
+      {/* Spacer */}
       <div className="h-24" />
     </>
   )
