@@ -2,7 +2,7 @@ const NAV_ITEMS = ['Case Details', 'Case Configuration', 'Audit Log']
 
 export default function SettingsPage() {
   return (
-    <div className="max-w-screen-xl mx-auto px-6 py-6">
+    <div className="max-w-screen-xl mx-auto px-6 py-8">
       <div className="mb-5">
         <h1 className="text-xl font-semibold text-text">Case Settings</h1>
         <p className="text-sm text-text-mute mt-0.5">Manage case configuration and preferences</p>
@@ -11,7 +11,7 @@ export default function SettingsPage() {
       <div className="flex gap-5">
         {/* Left nav rail */}
         <aside className="w-48 shrink-0">
-          <nav className="bg-panel border border-border rounded-lg overflow-hidden">
+          <nav className="bg-panel border border-border rounded-xl shadow-sm overflow-hidden">
             {NAV_ITEMS.map((item, idx) => (
               <button
                 key={item}
@@ -33,7 +33,7 @@ export default function SettingsPage() {
         {/* Right content area */}
         <div className="flex-1 flex flex-col gap-4">
           {/* Case Details card */}
-          <div className="bg-panel border border-border rounded-lg p-5">
+          <div className="bg-panel border border-border rounded-xl shadow-sm p-6">
             <h2 className="text-sm font-semibold text-text mb-3">Case Details</h2>
             <div className="flex items-center justify-center py-10">
               <div className="text-center">
@@ -61,7 +61,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Case Configuration card */}
-          <div className="bg-panel border border-border rounded-lg p-5">
+          <div className="bg-panel border border-border rounded-xl shadow-sm p-6">
             <h2 className="text-sm font-semibold text-text mb-3">Case Configuration</h2>
             <div className="flex items-center justify-center py-10">
               <div className="text-center">

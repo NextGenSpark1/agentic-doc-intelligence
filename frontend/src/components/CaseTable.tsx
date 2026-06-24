@@ -14,14 +14,14 @@ export default function CaseTable({ cases }: CaseTableProps) {
 
   if (cases.length === 0) {
     return (
-      <div className="bg-panel border border-border rounded-lg px-6 py-10 text-center text-text-mute text-sm">
+      <div className="bg-panel border border-border rounded-xl shadow-sm px-6 py-10 text-center text-text-mute text-sm">
         No cases found.
       </div>
     )
   }
 
   return (
-    <div className="bg-panel border border-border rounded-lg overflow-hidden">
+    <div className="bg-panel border border-border rounded-xl shadow-sm overflow-hidden">
       {/* Header */}
       <div className="grid grid-cols-[160px_1fr_140px_160px_90px_120px_130px] gap-x-4 bg-panel-2 border-b border-border px-4 py-2">
         {columns.map((col) => (

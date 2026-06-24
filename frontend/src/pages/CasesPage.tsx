@@ -73,7 +73,7 @@ export default function CasesPage() {
   const pendingReview = data?.stats.findings_pending_review ?? counts.pendingReview
 
   return (
-    <div className="max-w-screen-xl mx-auto px-6 py-6 flex flex-col gap-5">
+    <div className="max-w-screen-xl mx-auto px-6 py-8 flex flex-col gap-6">
       {/* Banners */}
       {error && (
         <div className="bg-red-bg border border-red/20 text-red text-sm px-4 py-3 rounded-lg">

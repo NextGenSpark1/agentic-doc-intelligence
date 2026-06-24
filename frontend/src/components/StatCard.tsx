@@ -16,7 +16,7 @@ export default function StatCard({ label, value, note, accent = 'default' }: Sta
 
   return (
     <div
-      className="bg-panel border border-border shadow-sm rounded-lg px-4 py-3 flex flex-col gap-1"
+      className="bg-panel border border-border shadow-sm rounded-xl px-5 py-4 flex flex-col gap-1 hover:-translate-y-0.5 hover:shadow-md transition-all duration-150"
       style={{ borderLeft: `3px solid ${borderColor}` }}
     >
       <span className="text-xs text-text-mute font-medium uppercase tracking-wide">{label}</span>
