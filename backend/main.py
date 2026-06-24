@@ -13,7 +13,7 @@ import hashlib
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from shared.schemas import ChatRequest, ChatResponse, CitationSchema  # platform contract
 
 from . import db, llm, pipeline
+from .auth import get_current_user
 from .config import get_settings
 
 app = FastAPI(title="Investigation Intelligence API", version="0.1.0")
@@ -86,7 +87,7 @@ async def health():
 
 # ------------------------------ cases -----------------------------
 @app.post("/cases", status_code=201)
-async def create_case(body: CaseCreate):
+async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
     case_id = f"INV-{datetime.now().year}-{uuid.uuid4().hex[:4].upper()}"
     record = {
         "case_id": case_id,
@@ -104,7 +105,7 @@ async def create_case(body: CaseCreate):
 
 
 @app.get("/cases")
-async def list_cases():
+async def list_cases(user: dict = Depends(get_current_user)):
     cases = await asyncio.to_thread(db.list_cases)
     # Stats for the Cases page header cards
     docs_total = 0
@@ -119,7 +120,7 @@ async def list_cases():
 
 
 @app.get("/cases/{case_id}")
-async def get_case(case_id: str):
+async def get_case(case_id: str, user: dict = Depends(get_current_user)):
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
@@ -128,7 +129,7 @@ async def get_case(case_id: str):
 
 # ---------------------------- documents ---------------------------
 @app.post("/cases/{case_id}/documents", status_code=202)
-async def upload_document(case_id: str, background: BackgroundTasks, file: UploadFile = File(...)):
+async def upload_document(case_id: str, background: BackgroundTasks, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
@@ -160,12 +161,12 @@ async def upload_document(case_id: str, background: BackgroundTasks, file: Uploa
 
 
 @app.get("/cases/{case_id}/documents")
-async def list_documents(case_id: str):
+async def list_documents(case_id: str, user: dict = Depends(get_current_user)):
     return {"documents": await asyncio.to_thread(db.list_documents, case_id)}
 
 
 @app.delete("/cases/{case_id}/documents/{document_id}", status_code=204)
-async def delete_document(case_id: str, document_id: str):
+async def delete_document(case_id: str, document_id: str, user: dict = Depends(get_current_user)):
     doc = await asyncio.to_thread(db.get_document, document_id)
     if not doc or doc.get("case_id") != case_id:
         raise HTTPException(404, "document not found")
@@ -173,7 +174,7 @@ async def delete_document(case_id: str, document_id: str):
 
 
 @app.get("/cases/{case_id}/documents/{document_id}/extraction")
-async def get_document_extraction(case_id: str, document_id: str):
+async def get_document_extraction(case_id: str, document_id: str, user: dict = Depends(get_current_user)):
     doc = await asyncio.to_thread(db.get_document, document_id)
     if not doc or doc.get("case_id") != case_id:
         raise HTTPException(404, "document not found")
@@ -193,7 +194,7 @@ async def get_document_extraction(case_id: str, document_id: str):
 
 
 @app.get("/cases/{case_id}/documents/{document_id}/summary")
-async def get_document_summary(case_id: str, document_id: str):
+async def get_document_summary(case_id: str, document_id: str, user: dict = Depends(get_current_user)):
     doc = await asyncio.to_thread(db.get_document, document_id)
     if not doc or doc.get("case_id") != case_id:
         raise HTTPException(404, "document not found")
@@ -233,7 +234,7 @@ async def get_document_summary(case_id: str, document_id: str):
 
 
 @app.get("/cases/{case_id}/documents/{document_id}/file-url")
-async def get_document_file_url(case_id: str, document_id: str):
+async def get_document_file_url(case_id: str, document_id: str, user: dict = Depends(get_current_user)):
     doc = await asyncio.to_thread(db.get_document, document_id)
     if not doc or doc.get("case_id") != case_id:
         raise HTTPException(404, "document not found")
@@ -248,7 +249,7 @@ async def get_document_file_url(case_id: str, document_id: str):
 
 # ------------------------- case analysis --------------------------
 @app.post("/cases/{case_id}/analysis", status_code=202)
-async def run_analysis(case_id: str, background: BackgroundTasks):
+async def run_analysis(case_id: str, background: BackgroundTasks, user: dict = Depends(get_current_user)):
     """Trigger the agentic layer (Phase 4) across all extracted documents."""
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
@@ -258,7 +259,7 @@ async def run_analysis(case_id: str, background: BackgroundTasks):
 
 
 @app.get("/cases/{case_id}/entities")
-async def get_entities(case_id: str):
+async def get_entities(case_id: str, user: dict = Depends(get_current_user)):
     return {
         "entities": await asyncio.to_thread(db.list_entities, case_id),
         "relationships": await asyncio.to_thread(db.list_relationships, case_id),
@@ -266,7 +267,7 @@ async def get_entities(case_id: str):
 
 
 @app.get("/cases/{case_id}/timeline")
-async def get_timeline(case_id: str):
+async def get_timeline(case_id: str, user: dict = Depends(get_current_user)):
     rows = await asyncio.to_thread(
         lambda: db.get_client().table("timeline_events").select("*")
         .eq("case_id", case_id).order("event_date").execute().data
@@ -275,12 +276,12 @@ async def get_timeline(case_id: str):
 
 
 @app.get("/cases/{case_id}/findings")
-async def get_findings(case_id: str):
+async def get_findings(case_id: str, user: dict = Depends(get_current_user)):
     return {"findings": await asyncio.to_thread(db.list_findings, case_id)}
 
 
 @app.patch("/findings/{finding_id}/review")
-async def review_finding(finding_id: str, body: FindingReview):
+async def review_finding(finding_id: str, body: FindingReview, user: dict = Depends(get_current_user)):
     """Phase 5 — human-in-the-loop. Investigator confirms or dismisses a finding."""
     if body.status not in ("confirmed", "dismissed"):
         raise HTTPException(400, "status must be 'confirmed' or 'dismissed'")
@@ -296,7 +297,7 @@ async def review_finding(finding_id: str, body: FindingReview):
 
 # ------------------------------ chat (RAG) ------------------------
 @app.post("/cases/{case_id}/chat", response_model=ChatResponse)
-async def chat(case_id: str, body: ChatRequest):
+async def chat(case_id: str, body: ChatRequest, user: dict = Depends(get_current_user)):
     """Grounded Q&A over a case's documents. Retrieved chunks become the citations,
     each carrying the page + bbox from ADE's visual grounding."""
     settings = get_settings()
