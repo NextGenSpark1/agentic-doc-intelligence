@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocument, Extraction } from './types'
+import { supabase } from './lib/supabaseClient'
 
 const BASE_URL = 'http://localhost:8000'
 
@@ -10,6 +11,16 @@ const client = axios.create({
   },
   // Timeout after 15s to surface backend-not-running errors quickly
   timeout: 15_000,
+})
+
+// Attach the current Supabase session token to every request automatically
+client.interceptors.request.use(async (config) => {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
 })
 
 export async function fetchCases(): Promise<CasesListResponse> {
@@ -64,11 +75,12 @@ export async function fetchFileUrl(caseId: string, documentId: string): Promise<
 export async function uploadDocument(caseId: string, file: File): Promise<CaseDocument> {
   const formData = new FormData()
   formData.append('file', file)
-  // Use axios directly (not client) so Content-Type is unset and browser sets multipart boundary
-  const response = await axios.post<CaseDocument>(
-    `${BASE_URL}/cases/${caseId}/documents`,
+  // Omit Content-Type header so the browser sets multipart boundary automatically.
+  // Auth interceptor on `client` adds the Bearer token.
+  const response = await client.post<CaseDocument>(
+    `/cases/${caseId}/documents`,
     formData,
-    { timeout: 60_000 },
+    { headers: { 'Content-Type': undefined }, timeout: 60_000 },
   )
   return response.data
 }
