@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
-import { fetchFileUrl, fetchExtraction } from '../api'
+import { fetchFileUrl, fetchExtraction, fetchSummary } from '../api'
 import type { Document as CaseDocument, Extraction } from '../types'
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -10,7 +10,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString()
 
-type Tab = 'document' | 'fields' | 'raw'
+type Tab = 'document' | 'fields' | 'raw' | 'summary'
 
 interface Props {
   doc: CaseDocument
@@ -65,6 +65,10 @@ export default function DocumentViewer({ doc, caseId }: Props) {
   const [extraction, setExtraction] = useState<Extraction | null | undefined>(undefined) // undefined = loading
   const [extractionError, setExtractionError] = useState<string | null>(null)
 
+  // Summary tab state
+  const [summary, setSummary] = useState<string | null | undefined>(undefined) // undefined = loading
+  const [summaryError, setSummaryError] = useState<string | null>(null)
+
   // Reset everything when document changes
   useEffect(() => {
     setActiveTab('document')
@@ -75,6 +79,8 @@ export default function DocumentViewer({ doc, caseId }: Props) {
     setPageNumber(1)
     setExtraction(undefined)
     setExtractionError(null)
+    setSummary(undefined)
+    setSummaryError(null)
 
     fetchFileUrl(caseId, doc.document_id)
       .then((url) => { setFileUrl(url); setUrlLoading(false) })
@@ -83,6 +89,10 @@ export default function DocumentViewer({ doc, caseId }: Props) {
     fetchExtraction(caseId, doc.document_id)
       .then(setExtraction)
       .catch((err: Error) => { setExtractionError(err.message); setExtraction(null) })
+
+    fetchSummary(caseId, doc.document_id)
+      .then((data) => setSummary(data?.summary ?? null))
+      .catch((err: Error) => { setSummaryError(err.message); setSummary(null) })
   }, [doc.document_id, caseId])
 
   // Track container width for Phase 2 overlays
@@ -101,6 +111,7 @@ export default function DocumentViewer({ doc, caseId }: Props) {
     { id: 'document', label: 'Document' },
     { id: 'fields',   label: 'Extracted Fields' },
     { id: 'raw',      label: 'Raw Text' },
+    { id: 'summary',  label: 'Summary' },
   ]
 
   return (
@@ -236,6 +247,31 @@ export default function DocumentViewer({ doc, caseId }: Props) {
             <pre className="p-4 text-[11px] font-mono text-text-mid leading-relaxed whitespace-pre-wrap break-words">
               {extraction.raw_text}
             </pre>
+          )}
+        </div>
+      )}
+
+      {/* ── Summary tab ── */}
+      {activeTab === 'summary' && (
+        <div className="flex-1 overflow-y-auto bg-panel">
+          {summary === undefined && (
+            <p className="text-xs text-text-mute text-center mt-10">Loading…</p>
+          )}
+          {summaryError && (
+            <p className="text-xs text-red text-center mt-10 px-6">{summaryError}</p>
+          )}
+          {summary === null && !summaryError && (
+            <EmptyState status={doc.extraction_status} />
+          )}
+          {summary && (
+            <div className="p-5">
+              <div className="rounded-lg border border-border bg-canvas p-5 flex flex-col gap-3">
+                <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">
+                  AI Summary
+                </p>
+                <p className="text-sm leading-relaxed text-text">{summary}</p>
+              </div>
+            </div>
           )}
         </div>
       )}

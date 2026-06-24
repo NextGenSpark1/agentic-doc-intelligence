@@ -25,6 +25,38 @@ from .config import get_settings
 
 app = FastAPI(title="Investigation Intelligence API", version="0.1.0")
 
+
+def _fallback_summary(fields: dict, schema_name: str) -> str:
+    """Build a readable sentence from extracted fields when the LLM is unavailable."""
+    present = {k: v for k, v in fields.items()
+               if v is not None and v != "" and v != []}
+    if not present:
+        return f"Document processed as '{schema_name}'. No field data available for summary."
+
+    parts: list[str] = []
+    if "vendor_name" in present:
+        parts.append(f"Invoice from {present['vendor_name']}")
+    if "awarded_vendor" in present:
+        parts.append(f"Procurement awarded to {present['awarded_vendor']}")
+    if "amount" in present:
+        currency = present.get("currency", "")
+        parts.append(f"for {currency} {present['amount']}".strip())
+    if "payment_date" in present:
+        parts.append(f"dated {present['payment_date']}")
+    if "invoice_number" in present:
+        parts.append(f"ref {present['invoice_number']}")
+    if "tender_id" in present:
+        parts.append(f"tender {present['tender_id']}")
+
+    if parts:
+        return (". ".join(parts[:3])).capitalize() + "."
+
+    # Generic: describe first few non-empty fields
+    sample = list(present.items())[:3]
+    desc = "; ".join(f"{k.replace('_', ' ')}: {v}" for k, v in sample)
+    return f"Extracted {len(present)} field(s) — {desc}."
+
+
 # Dashboard calls the API server-side, so CORS isn't strictly required, but this keeps
 # local browser tools working. Tighten allow_origins before any real deployment.
 app.add_middleware(
@@ -155,6 +187,46 @@ async def get_document_extraction(case_id: str, document_id: str):
         "extracted_at": extraction["extracted_at"],
         "raw_text": raw_text,
     }
+
+
+@app.get("/cases/{case_id}/documents/{document_id}/summary")
+async def get_document_summary(case_id: str, document_id: str):
+    doc = await asyncio.to_thread(db.get_document, document_id)
+    if not doc or doc.get("case_id") != case_id:
+        raise HTTPException(404, "document not found")
+    extraction = await asyncio.to_thread(db.get_extraction_by_document, document_id)
+    if not extraction:
+        raise HTTPException(404, "no extraction available for this document")
+
+    # Return cached summary if already generated
+    if extraction.get("summary"):
+        return {"summary": extraction["summary"]}
+
+    fields = extraction.get("extracted_json") or {}
+    schema_name = extraction.get("schema_name", "")
+    fields_text = "\n".join(f"{k}: {v}" for k, v in fields.items() if v is not None)
+
+    try:
+        summary = llm.complete(
+            tier="fast",
+            messages=[
+                {"role": "system", "content": (
+                    "Summarize this document in 2-3 plain sentences for an investigator "
+                    "reviewing case evidence. Be factual, don't speculate beyond what's given."
+                )},
+                {"role": "user", "content": f"Document type: {schema_name}\n\nExtracted fields:\n{fields_text}"},
+            ],
+        )
+    except Exception:
+        summary = _fallback_summary(fields, schema_name)
+
+    # Cache — wrapped so a missing 'summary' column doesn't break the response
+    try:
+        await asyncio.to_thread(db.update_extraction, extraction["extraction_id"], {"summary": summary})
+    except Exception:
+        pass
+
+    return {"summary": summary}
 
 
 @app.get("/cases/{case_id}/documents/{document_id}/file-url")

@@ -46,6 +46,16 @@ export async function fetchExtraction(caseId: string, documentId: string): Promi
   }
 }
 
+export async function fetchSummary(caseId: string, documentId: string): Promise<{ summary: string } | null> {
+  try {
+    const response = await client.get<{ summary: string }>(`/cases/${caseId}/documents/${documentId}/summary`)
+    return response.data
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) return null
+    throw err
+  }
+}
+
 export async function fetchFileUrl(caseId: string, documentId: string): Promise<string> {
   const response = await client.get<{ url: string }>(`/cases/${caseId}/documents/${documentId}/file-url`)
   return response.data.url
