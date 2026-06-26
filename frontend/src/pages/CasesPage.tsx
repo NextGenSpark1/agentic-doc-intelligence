@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { FolderOpen, Activity, Clock, Archive, Plus } from 'lucide-react'
 import type { Case, CasesListResponse } from '../types'
 import { fetchCases } from '../api'
 import StatCard from '../components/StatCard'
@@ -73,7 +74,7 @@ export default function CasesPage() {
   const pendingReview = data?.stats.findings_pending_review ?? counts.pendingReview
 
   return (
-    <div className="max-w-screen-xl mx-auto px-6 py-6 flex flex-col gap-5">
+    <div className="max-w-screen-xl mx-auto px-6 py-8 flex flex-col gap-6">
       {/* Banners */}
       {error && (
         <div className="bg-red-bg border border-red/20 text-red text-sm px-4 py-3 rounded-lg">
@@ -89,23 +90,23 @@ export default function CasesPage() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-text">Cases</h1>
+          <h1 className="text-2xl font-bold text-text">Cases</h1>
           <p className="text-sm text-text-mute mt-0.5">Manage and track all active investigations</p>
         </div>
         <button
           onClick={() => setModalOpen(true)}
-          className="bg-navy text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-navy-soft transition-colors duration-150 flex items-center gap-2"
+          className="bg-teal hover:bg-teal-soft text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all duration-150 flex items-center gap-2 shadow-sm hover:shadow-md hover:-translate-y-0.5"
         >
-          <span className="text-base leading-none">+</span> New Case
+          <Plus size={15} strokeWidth={2.5} /> New Case
         </button>
       </div>
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard label="Total Cases" value={cases.length} note="All time" accent="default" />
-        <StatCard label="Open Cases" value={openCases} note="Currently active" accent="teal" />
-        <StatCard label="Pending Review" value={pendingReview} note="Findings awaiting action" accent="red" />
-        <StatCard label="Archived" value={counts.archived} note="Closed investigations" accent="default" />
+        <StatCard label="Total Cases"    value={cases.length}  note="All time"               accent="default" icon={FolderOpen} />
+        <StatCard label="Open Cases"     value={openCases}     note="Currently active"       accent="teal"    icon={Activity} />
+        <StatCard label="Pending Review" value={pendingReview} note="Findings awaiting action" accent="red"   icon={Clock} />
+        <StatCard label="Archived"       value={counts.archived} note="Closed investigations" accent="default" icon={Archive} />
       </div>
 
       {/* Filters + search row */}

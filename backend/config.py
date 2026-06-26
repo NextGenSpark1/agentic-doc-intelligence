@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     supabase_service_key: str = ""          # service role — backend only, NEVER ship to the dashboard
     storage_bucket: str = "evidence"
 
+    # --- Supabase Auth (server-side JWT verification) ---
+    # Find in: Supabase Dashboard → Project Settings → API → JWT Settings → JWT Secret
+    supabase_jwt_secret: str = ""
+
     # --- LandingAI ADE ---
     landingai_api_key: str = ""
     # Set MOCK_ADE=true to skip real API calls and return plausible fake extraction data.

@@ -1,27 +1,37 @@
+import type { LucideIcon } from 'lucide-react'
+
 interface StatCardProps {
   label: string
   value: string | number
   note?: string
   accent?: 'teal' | 'red' | 'default'
+  icon?: LucideIcon
 }
 
-const accentBorder: Record<string, string> = {
-  teal: '#0E7C86',
-  red: '#B4232A',
-  default: '#D5DAE1',
+const accentMap = {
+  teal:    { border: '#0E7C86', iconClass: 'bg-teal/10 text-teal' },
+  red:     { border: '#B4232A', iconClass: 'bg-red-bg text-red' },
+  default: { border: '#D5DAE1', iconClass: 'bg-panel-3 text-text-mute' },
 }
 
-export default function StatCard({ label, value, note, accent = 'default' }: StatCardProps) {
-  const borderColor = accentBorder[accent]
+export default function StatCard({ label, value, note, accent = 'default', icon: Icon }: StatCardProps) {
+  const { border, iconClass } = accentMap[accent]
 
   return (
     <div
-      className="bg-panel border border-border shadow-sm rounded-lg px-4 py-3 flex flex-col gap-1"
-      style={{ borderLeft: `3px solid ${borderColor}` }}
+      className="bg-panel border border-border shadow-sm rounded-xl px-5 py-4 flex items-start justify-between gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-150"
+      style={{ borderLeft: `4px solid ${border}` }}
     >
-      <span className="text-xs text-text-mute font-medium uppercase tracking-wide">{label}</span>
-      <span className="text-2xl font-semibold text-text">{value}</span>
-      {note && <span className="text-xs text-text-mute">{note}</span>}
+      <div className="flex flex-col min-w-0">
+        <span className="text-[11px] font-semibold text-text-mute uppercase tracking-widest">{label}</span>
+        <span className="text-3xl font-bold text-text tabular-nums leading-none mt-2">{value}</span>
+        {note && <span className="text-xs text-text-mute mt-1.5">{note}</span>}
+      </div>
+      {Icon && (
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${iconClass}`}>
+          <Icon size={17} strokeWidth={1.75} />
+        </div>
+      )}
     </div>
   )
 }
