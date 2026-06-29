@@ -1,20 +1,21 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchDocuments, uploadDocument, deleteDocument } from '../api'
+import { fetchDocuments, uploadDocument, deleteDocument, extractDocument } from '../api'
 import type { Document as CaseDocument } from '../types'
 import DocumentViewer from '../components/DocumentViewer'
 
 const SUBTABS = ['Workspace', 'Entity Graph', 'Timeline', 'Findings', 'Report']
 
 const STATUS_MAP: Record<string, { color: string; label: string }> = {
-  queued:     { color: '#878E99', label: 'Queued' },
+  uploaded:   { color: '#9CA3AF', label: 'Uploaded' },
+  queued:     { color: '#C77A12', label: 'Queued' },
   processing: { color: '#C77A12', label: 'Processing' },
   done:       { color: '#2E7D52', label: 'Done' },
   failed:     { color: '#B4232A', label: 'Failed' },
 }
 
 function StatusDot({ status }: { status: string }) {
-  const { color, label } = STATUS_MAP[status] ?? STATUS_MAP.queued
+  const { color, label } = STATUS_MAP[status] ?? STATUS_MAP.uploaded
   return (
     <span className="flex items-center gap-1">
       <span className="shrink-0 rounded-full" style={{ width: 6, height: 6, backgroundColor: color }} />
@@ -53,6 +54,7 @@ export default function CaseWorkspacePage() {
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     if (!caseId) return
@@ -61,6 +63,38 @@ export default function CaseWorkspacePage() {
       .catch(() => {})
       .finally(() => setDocsLoading(false))
   }, [caseId])
+
+  // Poll every 4 s while any doc is queued or processing; stop when none remain
+  useEffect(() => {
+    const hasInProgress = docs.some(d => d.extraction_status === 'queued' || d.extraction_status === 'processing')
+
+    if (!hasInProgress) {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+        pollIntervalRef.current = null
+      }
+      return
+    }
+
+    if (pollIntervalRef.current) return  // already polling
+
+    pollIntervalRef.current = setInterval(async () => {
+      if (!caseId) return
+      try {
+        const updated = await fetchDocuments(caseId)
+        setDocs(updated)
+        setSelectedDoc(prev => {
+          if (!prev) return prev
+          return updated.find(d => d.document_id === prev.document_id) ?? prev
+        })
+      } catch {}
+    }, 4000)
+  }, [docs, caseId])
+
+  // Cleanup interval on unmount
+  useEffect(() => {
+    return () => { if (pollIntervalRef.current) clearInterval(pollIntervalRef.current) }
+  }, [])
 
   async function handleDelete(doc: CaseDocument) {
     if (!caseId) return
@@ -91,6 +125,20 @@ export default function CaseWorkspacePage() {
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function handleExtract(documentId: string) {
+    if (!caseId) return
+    try {
+      await extractDocument(caseId, documentId)
+      // Optimistic update — polling will sync actual status
+      const patch = (d: CaseDocument) =>
+        d.document_id === documentId ? { ...d, extraction_status: 'queued' } : d
+      setDocs(prev => prev.map(patch))
+      setSelectedDoc(prev => (prev?.document_id === documentId ? { ...prev, extraction_status: 'queued' } : prev))
+    } catch (err: unknown) {
+      setUploadError(err instanceof Error ? err.message : 'Failed to start extraction')
     }
   }
 
@@ -186,6 +234,15 @@ export default function CaseWorkspacePage() {
                           </span>
                           <StatusDot status={doc.extraction_status} />
                         </div>
+                        {(doc.extraction_status === 'uploaded' || doc.extraction_status === 'failed') && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleExtract(doc.document_id) }}
+                            title="Start extraction"
+                            className="shrink-0 mt-0.5 text-[10px] font-semibold text-teal hover:text-teal-soft opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                          >
+                            {doc.extraction_status === 'failed' ? 'Retry' : 'Extract'}
+                          </button>
+                        )}
                         <button
                           onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(doc.document_id) }}
                           title="Delete document"
@@ -226,7 +283,7 @@ export default function CaseWorkspacePage() {
         {/* ── Center panel — Document Viewer ── */}
         <main className="flex-1 overflow-hidden">
           {selectedDoc && caseId ? (
-            <DocumentViewer doc={selectedDoc} caseId={caseId} />
+            <DocumentViewer doc={selectedDoc} caseId={caseId} onExtract={() => handleExtract(selectedDoc.document_id)} />
           ) : (
             <div className="h-full bg-canvas-deep flex items-center justify-center">
               <div className="flex flex-col items-center gap-3 text-center px-6">
