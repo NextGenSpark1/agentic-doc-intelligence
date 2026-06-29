@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchCase, fetchDocuments, uploadDocument, deleteDocument, extractDocument } from '../api'
+import { fetchCase, fetchDocuments, uploadDocumentWithProgress, deleteDocument, extractDocument } from '../api'
 import type { Case, Document as CaseDocument } from '../types'
+
+type PendingUpload = { tempId: string; filename: string; progress: number; error: string | null }
 import DocumentViewer from '../components/DocumentViewer'
 
 const SUBTABS = ['Workspace', 'Entity Graph', 'Timeline', 'Findings', 'Report', 'Settings']
@@ -58,7 +60,7 @@ export default function CaseWorkspacePage() {
   const [caseData, setCaseData] = useState<Case | null>(null)
   const [docs, setDocs] = useState<CaseDocument[]>([])
   const [docsLoading, setDocsLoading] = useState(true)
-  const [uploading, setUploading] = useState(false)
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([])
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [selectedDoc, setSelectedDoc] = useState<CaseDocument | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -122,20 +124,33 @@ export default function CaseWorkspacePage() {
   }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file || !caseId) return
+    const files = Array.from(e.target.files ?? [])
+    if (!files.length || !caseId) return
     setUploadError(null)
-    setUploading(true)
-    try {
-      await uploadDocument(caseId, file)
-      const updated = await fetchDocuments(caseId)
-      setDocs(updated)
-    } catch (err: unknown) {
-      setUploadError(err instanceof Error ? err.message : 'Upload failed')
-    } finally {
-      setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
+    const newPending: PendingUpload[] = files.map(f => ({
+      tempId: crypto.randomUUID(),
+      filename: f.name,
+      progress: 0,
+      error: null,
+    }))
+    setPendingUploads(prev => [...prev, ...newPending])
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    await Promise.allSettled(
+      files.map((file, i) => {
+        const tempId = newPending[i].tempId
+        return uploadDocumentWithProgress(caseId, file, (pct) => {
+          setPendingUploads(prev => prev.map(p => p.tempId === tempId ? { ...p, progress: pct } : p))
+        }).then(doc => {
+          setPendingUploads(prev => prev.filter(p => p.tempId !== tempId))
+          setDocs(prev => [...prev, doc])
+        }).catch((err: unknown) => {
+          setPendingUploads(prev => prev.map(p => p.tempId === tempId
+            ? { ...p, error: err instanceof Error ? err.message : 'Upload failed' }
+            : p
+          ))
+        })
+      })
+    )
   }
 
   async function handleExtract(documentId: string) {
@@ -391,24 +406,42 @@ export default function CaseWorkspacePage() {
                         </div>
                       )
                     })}
-                    {uploading && (
-                      <div className="flex items-center gap-2 px-2 py-2 rounded bg-panel-2">
-                        <span className="text-xs font-mono font-semibold px-1.5 py-0.5 rounded bg-panel-3 text-text-mute shrink-0">…</span>
-                        <span className="text-xs text-text-mute italic">Uploading…</span>
+                    {pendingUploads.map(({ tempId, filename, progress, error }) => (
+                      <div key={tempId} className="flex items-center gap-2 px-2 py-2 rounded bg-panel-2 border border-transparent">
+                        <span className="text-xs font-mono font-semibold px-1.5 py-0.5 rounded bg-panel-3 text-text-mute shrink-0 uppercase">
+                          {filename.split('.').pop()?.toUpperCase() ?? '…'}
+                        </span>
+                        <div className="flex flex-col gap-1 min-w-0 flex-1">
+                          <span className="text-xs text-text-mute truncate">{filename}</span>
+                          {error ? (
+                            <span className="text-[10px] text-red truncate">{error}</span>
+                          ) : (
+                            <div className="h-1 bg-panel-3 rounded-full overflow-hidden">
+                              <div className="h-full bg-teal transition-all duration-300 rounded-full" style={{ width: `${progress}%` }} />
+                            </div>
+                          )}
+                        </div>
+                        {error && (
+                          <button
+                            onClick={() => setPendingUploads(prev => prev.filter(p => p.tempId !== tempId))}
+                            className="shrink-0 text-sm text-text-mute hover:text-text"
+                          >
+                            ×
+                          </button>
+                        )}
                       </div>
-                    )}
+                    ))}
                   </div>
                 </div>
 
                 <div className="px-4 py-3 border-t border-border shrink-0 flex flex-col gap-1">
                   {uploadError && <p className="text-[10px] text-red leading-tight break-words">{uploadError}</p>}
-                  <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} />
+                  <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileChange} />
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                    className="text-teal text-xs font-medium hover:text-teal-soft transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed text-left"
+                    className="text-teal text-xs font-medium hover:text-teal-soft transition-colors duration-150 text-left"
                   >
-                    + Upload document
+                    + Upload document(s)
                   </button>
                 </div>
               </>
