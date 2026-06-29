@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchCase, fetchDocuments, uploadDocumentWithProgress, deleteDocument, extractDocument } from '../api'
+import { fetchCase, fetchDocuments, uploadDocumentWithProgress, deleteDocument, extractDocument, updateCase } from '../api'
 import type { Case, Document as CaseDocument } from '../types'
 
 type PendingUpload = { tempId: string; filename: string; progress: number; error: string | null }
@@ -39,6 +39,121 @@ function CollapseBtn({ onClick, title, children }: { onClick: () => void; title:
     >
       {children}
     </button>
+  )
+}
+
+const CASE_STATUSES = ['Intake', 'Active', 'Pending Review', 'Closed', 'Archived']
+const CASE_TYPES = ['procurement_fraud', 'financial_crime', 'corruption', 'general']
+const INPUT_CLS = 'border border-border-strong rounded-lg px-3 py-2 text-sm text-text bg-panel placeholder:text-text-mute focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal transition-colors duration-150 w-full'
+
+function CaseSettingsPanel({ caseData, caseId, onUpdate }: { caseData: Case; caseId: string; onUpdate: (c: Case) => void }) {
+  const [form, setForm] = useState({
+    title: caseData.title,
+    case_type: caseData.case_type,
+    lead_investigator: caseData.lead_investigator,
+    allegation_summary: caseData.allegation_summary,
+    status: caseData.status,
+  })
+  const [saving, setSaving] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
+
+  useEffect(() => {
+    setForm({
+      title: caseData.title,
+      case_type: caseData.case_type,
+      lead_investigator: caseData.lead_investigator,
+      allegation_summary: caseData.allegation_summary,
+      status: caseData.status,
+    })
+  }, [caseData.case_id])
+
+  async function handleSave() {
+    setSaving(true)
+    setSaveStatus('idle')
+    try {
+      const updated = await updateCase(caseId, form)
+      onUpdate(updated)
+      setSaveStatus('success')
+      setTimeout(() => setSaveStatus('idle'), 3000)
+    } catch {
+      setSaveStatus('error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-canvas-deep py-8 px-6">
+      <div className="max-w-2xl mx-auto flex flex-col gap-4">
+        {/* Read-only info */}
+        <div className="bg-panel border border-border rounded-xl p-5 flex flex-col gap-3">
+          <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Case Information</p>
+          <div className="flex gap-8 flex-wrap">
+            <div>
+              <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wide mb-1">Case ID</p>
+              <p className="text-sm font-mono text-text">{caseData.case_id}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wide mb-1">Created</p>
+              <p className="text-sm text-text">
+                {new Date(caseData.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wide mb-1">Risk Score</p>
+              <p className="text-sm text-text">{caseData.risk_score}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Editable fields */}
+        <div className="bg-panel border border-border rounded-xl p-5 flex flex-col gap-4">
+          <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Edit Details</p>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Case Title</label>
+            <input className={INPUT_CLS} value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+          </div>
+
+          <div className="flex gap-4">
+            <div className="flex flex-col gap-1.5 flex-1">
+              <label className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Status</label>
+              <select className={INPUT_CLS} value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+                {CASE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5 flex-1">
+              <label className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Case Type</label>
+              <select className={INPUT_CLS} value={form.case_type} onChange={e => setForm(f => ({ ...f, case_type: e.target.value }))}>
+                {CASE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Lead Investigator</label>
+            <input className={INPUT_CLS} value={form.lead_investigator} onChange={e => setForm(f => ({ ...f, lead_investigator: e.target.value }))} />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Allegation Summary</label>
+            <textarea className={`${INPUT_CLS} resize-none`} rows={3} value={form.allegation_summary} onChange={e => setForm(f => ({ ...f, allegation_summary: e.target.value }))} />
+          </div>
+
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="text-sm font-semibold text-white bg-teal hover:bg-teal-soft px-5 py-2 rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+            {saveStatus === 'success' && <span className="text-xs text-green">Changes saved</span>}
+            {saveStatus === 'error' && <span className="text-xs text-red">Save failed — try again</span>}
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -243,9 +358,13 @@ export default function CaseWorkspacePage() {
         <PlaceholderPanel name={activeSubtab} />
       )}
 
-      {/* Settings tab — placeholder until next commit */}
+      {/* Case Settings tab */}
       {activeSubtab === 'Settings' && (
-        <PlaceholderPanel name="Case Settings" />
+        caseData
+          ? <CaseSettingsPanel caseData={caseData} caseId={caseId!} onUpdate={setCaseData} />
+          : <div className="flex-1 bg-canvas-deep flex items-center justify-center">
+              <div className="w-5 h-5 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
+            </div>
       )}
 
       {/* Workspace — three-panel layout */}
