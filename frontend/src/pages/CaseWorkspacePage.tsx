@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { fetchCase, fetchDocuments, uploadDocument, deleteDocument, extractDocument } from '../api'
 import type { Case, Document as CaseDocument } from '../types'
@@ -66,6 +66,8 @@ export default function CaseWorkspacePage() {
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [activeSubtab, setActiveSubtab] = useState('Workspace')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [docSearch, setDocSearch] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -148,6 +150,23 @@ export default function CaseWorkspacePage() {
     }
   }
 
+  const filteredDocs = useMemo(() =>
+    docSearch.trim()
+      ? docs.filter(d => d.filename.toLowerCase().includes(docSearch.toLowerCase()))
+      : docs,
+    [docs, docSearch]
+  )
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  const allFilteredSelected = filteredDocs.length > 0 && filteredDocs.every(d => selectedIds.has(d.document_id))
+
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 96px)' }}>
       {/* Single-row header: breadcrumb left, sub-tabs right */}
@@ -208,18 +227,51 @@ export default function CaseWorkspacePage() {
                   <CollapseBtn onClick={() => setLeftCollapsed(true)} title="Collapse panel">‹</CollapseBtn>
                 </div>
 
+                {/* Search */}
+                <div className="px-2 pt-2 pb-1 shrink-0">
+                  <input
+                    type="text"
+                    value={docSearch}
+                    onChange={e => setDocSearch(e.target.value)}
+                    placeholder="Filter by filename…"
+                    className="w-full border border-border rounded-md px-2.5 py-1.5 text-xs text-text bg-panel-2 placeholder:text-text-mute focus:outline-none focus:ring-1 focus:ring-teal/30 focus:border-teal transition-colors duration-150"
+                  />
+                </div>
+
+                {/* Select all / clear */}
+                {docs.length > 0 && (
+                  <div className="px-3 py-1 shrink-0 flex items-center gap-2">
+                    <button
+                      onClick={() =>
+                        allFilteredSelected
+                          ? setSelectedIds(new Set())
+                          : setSelectedIds(new Set(filteredDocs.map(d => d.document_id)))
+                      }
+                      className="text-[10px] text-teal hover:text-teal-soft font-medium"
+                    >
+                      {allFilteredSelected ? 'Clear' : 'Select all'}
+                    </button>
+                    {selectedIds.size > 0 && (
+                      <span className="text-[10px] text-text-mute">{selectedIds.size} selected</span>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex-1 overflow-y-auto">
                   <div className="flex flex-col gap-0.5 p-2">
                     {docsLoading && <p className="text-xs text-text-mute px-2 py-2">Loading…</p>}
-                    {!docsLoading && docs.length === 0 && !uploading && (
-                      <p className="text-xs text-text-mute px-2 py-2">No documents yet.</p>
+                    {!docsLoading && filteredDocs.length === 0 && !uploading && (
+                      <p className="text-xs text-text-mute px-2 py-2">
+                        {docSearch ? 'No matches.' : 'No documents yet.'}
+                      </p>
                     )}
-                    {docs.map((doc) => {
+                    {filteredDocs.map((doc) => {
                       const ext = fileExt(doc.filename)
                       const isPdf = ext === 'PDF'
                       const isSelected = selectedDoc?.document_id === doc.document_id
                       const isDeleting = deletingId === doc.document_id
                       const isConfirming = confirmDeleteId === doc.document_id
+                      const isChecked = selectedIds.has(doc.document_id)
 
                       if (isDeleting) return (
                         <div key={doc.document_id} className="flex items-center gap-2 px-2 py-2 rounded bg-panel-2">
@@ -243,6 +295,13 @@ export default function CaseWorkspacePage() {
                           className={`group flex items-start gap-2 px-2 py-2 rounded cursor-pointer transition-colors duration-150
                             ${isSelected ? 'bg-navy/10 border border-navy/20' : 'hover:bg-panel-2 border border-transparent'}`}
                         >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onClick={e => e.stopPropagation()}
+                            onChange={() => toggleSelect(doc.document_id)}
+                            className="mt-0.5 shrink-0 accent-teal cursor-pointer"
+                          />
                           <span className={`text-xs font-mono font-semibold px-1.5 py-0.5 rounded shrink-0 mt-0.5
                             ${isPdf ? 'bg-red-bg text-red' : 'bg-green-bg text-green'}`}>
                             {ext}
