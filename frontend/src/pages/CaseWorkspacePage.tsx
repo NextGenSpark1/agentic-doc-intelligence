@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchDocuments, uploadDocument, deleteDocument, extractDocument } from '../api'
-import type { Document as CaseDocument } from '../types'
+import { fetchCase, fetchDocuments, uploadDocument, deleteDocument, extractDocument } from '../api'
+import type { Case, Document as CaseDocument } from '../types'
 import DocumentViewer from '../components/DocumentViewer'
 
-const SUBTABS = ['Workspace', 'Entity Graph', 'Timeline', 'Findings', 'Report']
+const SUBTABS = ['Workspace', 'Entity Graph', 'Timeline', 'Findings', 'Report', 'Settings']
 
 const STATUS_MAP: Record<string, { color: string; label: string }> = {
   uploaded:   { color: '#9CA3AF', label: 'Uploaded' },
@@ -40,10 +40,22 @@ function CollapseBtn({ onClick, title, children }: { onClick: () => void; title:
   )
 }
 
+function PlaceholderPanel({ name }: { name: string }) {
+  return (
+    <div className="flex-1 bg-canvas-deep flex items-center justify-center">
+      <div className="flex flex-col items-center gap-2 text-center px-6">
+        <p className="text-sm font-semibold text-text-mid">{name}</p>
+        <p className="text-xs text-text-mute">This section is coming soon.</p>
+      </div>
+    </div>
+  )
+}
+
 export default function CaseWorkspacePage() {
   const { caseId } = useParams<{ caseId: string }>()
   const navigate = useNavigate()
 
+  const [caseData, setCaseData] = useState<Case | null>(null)
   const [docs, setDocs] = useState<CaseDocument[]>([])
   const [docsLoading, setDocsLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -53,31 +65,27 @@ export default function CaseWorkspacePage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
+  const [activeSubtab, setActiveSubtab] = useState('Workspace')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     if (!caseId) return
+    fetchCase(caseId).then(setCaseData).catch(() => {})
     fetchDocuments(caseId)
       .then(setDocs)
       .catch(() => {})
       .finally(() => setDocsLoading(false))
   }, [caseId])
 
-  // Poll every 4 s while any doc is queued or processing; stop when none remain
+  // Poll while any doc is queued/processing
   useEffect(() => {
     const hasInProgress = docs.some(d => d.extraction_status === 'queued' || d.extraction_status === 'processing')
-
     if (!hasInProgress) {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
-        pollIntervalRef.current = null
-      }
+      if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null }
       return
     }
-
-    if (pollIntervalRef.current) return  // already polling
-
+    if (pollIntervalRef.current) return
     pollIntervalRef.current = setInterval(async () => {
       if (!caseId) return
       try {
@@ -91,7 +99,6 @@ export default function CaseWorkspacePage() {
     }, 4000)
   }, [docs, caseId])
 
-  // Cleanup interval on unmount
   useEffect(() => {
     return () => { if (pollIntervalRef.current) clearInterval(pollIntervalRef.current) }
   }, [])
@@ -102,7 +109,7 @@ export default function CaseWorkspacePage() {
     setConfirmDeleteId(null)
     try {
       await deleteDocument(caseId, doc.document_id)
-      setDocs((prev) => prev.filter((d) => d.document_id !== doc.document_id))
+      setDocs(prev => prev.filter(d => d.document_id !== doc.document_id))
       if (selectedDoc?.document_id === doc.document_id) setSelectedDoc(null)
     } catch (err: unknown) {
       setUploadError(err instanceof Error ? err.message : 'Delete failed')
@@ -132,7 +139,6 @@ export default function CaseWorkspacePage() {
     if (!caseId) return
     try {
       await extractDocument(caseId, documentId)
-      // Optimistic update — polling will sync actual status
       const patch = (d: CaseDocument) =>
         d.document_id === documentId ? { ...d, extraction_status: 'queued' } : d
       setDocs(prev => prev.map(patch))
@@ -144,207 +150,218 @@ export default function CaseWorkspacePage() {
 
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 96px)' }}>
-      {/* Sub-header */}
-      <div className="bg-panel border-b border-border px-6 py-3 flex flex-col gap-2 shrink-0">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/cases')}
-            className="text-teal text-sm font-medium hover:text-teal-soft transition-colors duration-150"
-          >
-            ← Cases
-          </button>
-          <span className="text-text-mute text-sm">/</span>
-          <span className="text-sm font-mono text-text-mid">{caseId}</span>
-          <span className="text-sm font-semibold text-text">Case Workspace</span>
-        </div>
-        <div className="flex items-center gap-1">
-          {SUBTABS.map((tab) => (
-            <span
+      {/* Single-row header: breadcrumb left, sub-tabs right */}
+      <div className="bg-panel border-b border-border px-4 h-12 flex items-center gap-3 shrink-0">
+        <button
+          onClick={() => navigate('/cases')}
+          className="text-teal text-sm font-medium hover:text-teal-soft transition-colors duration-150 shrink-0"
+        >
+          ← Cases
+        </button>
+        <span className="text-text-mute text-sm">/</span>
+        <span className="text-xs font-mono text-text-mute shrink-0">{caseId}</span>
+        {caseData && (
+          <span className="text-sm font-semibold text-text truncate">{caseData.title}</span>
+        )}
+        <div className="flex-1" />
+        <div className="flex items-center gap-0.5 shrink-0">
+          {SUBTABS.map(tab => (
+            <button
               key={tab}
-              className={`px-3 py-1 rounded text-sm font-medium cursor-pointer transition-colors duration-150
-                ${tab === 'Workspace' ? 'bg-navy text-white' : 'text-text-mute hover:text-text hover:bg-panel-2'}`}
+              onClick={() => setActiveSubtab(tab)}
+              className={`px-3 py-1.5 rounded text-xs font-medium transition-colors duration-150
+                ${activeSubtab === tab ? 'bg-navy text-white' : 'text-text-mute hover:text-text hover:bg-panel-2'}`}
             >
               {tab}
-            </span>
+            </button>
           ))}
         </div>
       </div>
 
-      {/* Three-panel layout */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Placeholder tabs */}
+      {!['Workspace', 'Settings'].includes(activeSubtab) && (
+        <PlaceholderPanel name={activeSubtab} />
+      )}
 
-        {/* ── Left panel — Documents ── */}
-        <aside
-          className="bg-panel border-r border-border flex flex-col shrink-0 overflow-hidden transition-all duration-200"
-          style={{ width: leftCollapsed ? 32 : 240 }}
-        >
-          {leftCollapsed ? (
-            <div className="flex flex-col items-center pt-3">
-              <CollapseBtn onClick={() => setLeftCollapsed(false)} title="Expand documents">›</CollapseBtn>
-            </div>
-          ) : (
-            <>
-              <div className="px-3 py-3 border-b border-border shrink-0 flex items-center justify-between">
-                <span className="text-xs font-semibold text-text-mute uppercase tracking-wide">Documents</span>
-                <CollapseBtn onClick={() => setLeftCollapsed(true)} title="Collapse panel">‹</CollapseBtn>
+      {/* Settings tab — placeholder until next commit */}
+      {activeSubtab === 'Settings' && (
+        <PlaceholderPanel name="Case Settings" />
+      )}
+
+      {/* Workspace — three-panel layout */}
+      {activeSubtab === 'Workspace' && (
+        <div className="flex flex-1 overflow-hidden">
+
+          {/* Left panel */}
+          <aside
+            className="bg-panel border-r border-border flex flex-col shrink-0 overflow-hidden transition-all duration-200"
+            style={{ width: leftCollapsed ? 32 : 240 }}
+          >
+            {leftCollapsed ? (
+              <div className="flex flex-col items-center pt-3">
+                <CollapseBtn onClick={() => setLeftCollapsed(false)} title="Expand documents">›</CollapseBtn>
               </div>
+            ) : (
+              <>
+                <div className="px-3 py-3 border-b border-border shrink-0 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-text-mute uppercase tracking-wide">Documents</span>
+                  <CollapseBtn onClick={() => setLeftCollapsed(true)} title="Collapse panel">‹</CollapseBtn>
+                </div>
 
-              <div className="flex-1 overflow-y-auto">
-                <div className="flex flex-col gap-0.5 p-2">
-                  {docsLoading && <p className="text-xs text-text-mute px-2 py-2">Loading…</p>}
-                  {!docsLoading && docs.length === 0 && !uploading && (
-                    <p className="text-xs text-text-mute px-2 py-2">No documents yet.</p>
-                  )}
-                  {docs.map((doc) => {
-                    const ext = fileExt(doc.filename)
-                    const isPdf = ext === 'PDF'
-                    const isSelected = selectedDoc?.document_id === doc.document_id
-                    const isDeleting = deletingId === doc.document_id
-                    const isConfirming = confirmDeleteId === doc.document_id
+                <div className="flex-1 overflow-y-auto">
+                  <div className="flex flex-col gap-0.5 p-2">
+                    {docsLoading && <p className="text-xs text-text-mute px-2 py-2">Loading…</p>}
+                    {!docsLoading && docs.length === 0 && !uploading && (
+                      <p className="text-xs text-text-mute px-2 py-2">No documents yet.</p>
+                    )}
+                    {docs.map((doc) => {
+                      const ext = fileExt(doc.filename)
+                      const isPdf = ext === 'PDF'
+                      const isSelected = selectedDoc?.document_id === doc.document_id
+                      const isDeleting = deletingId === doc.document_id
+                      const isConfirming = confirmDeleteId === doc.document_id
 
-                    if (isDeleting) return (
-                      <div key={doc.document_id} className="flex items-center gap-2 px-2 py-2 rounded bg-panel-2">
-                        <span className="text-xs text-text-mute italic">Deleting…</span>
-                      </div>
-                    )
-
-                    if (isConfirming) return (
-                      <div key={doc.document_id} className="flex items-center gap-1.5 px-2 py-2 rounded bg-red-bg border border-red/20">
-                        <span className="text-[10px] text-red flex-1 leading-tight">Delete this document?</span>
-                        <button onClick={() => handleDelete(doc)} className="text-[10px] font-semibold text-red hover:underline shrink-0">Yes</button>
-                        <button onClick={() => setConfirmDeleteId(null)} className="text-[10px] text-text-mute hover:underline shrink-0">Cancel</button>
-                      </div>
-                    )
-
-                    return (
-                      <div
-                        key={doc.document_id}
-                        onClick={() => setSelectedDoc(doc)}
-                        title={doc.filename}
-                        className={`group flex items-start gap-2 px-2 py-2 rounded cursor-pointer transition-colors duration-150
-                          ${isSelected ? 'bg-navy/10 border border-navy/20' : 'hover:bg-panel-2 border border-transparent'}`}
-                      >
-                        <span className={`text-xs font-mono font-semibold px-1.5 py-0.5 rounded shrink-0 mt-0.5
-                          ${isPdf ? 'bg-red-bg text-red' : 'bg-green-bg text-green'}`}>
-                          {ext}
-                        </span>
-                        <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                          <span className={`text-xs truncate ${isSelected ? 'text-navy font-medium' : 'text-text'}`}>
-                            {doc.filename}
-                          </span>
-                          <StatusDot status={doc.extraction_status} />
+                      if (isDeleting) return (
+                        <div key={doc.document_id} className="flex items-center gap-2 px-2 py-2 rounded bg-panel-2">
+                          <span className="text-xs text-text-mute italic">Deleting…</span>
                         </div>
-                        {(doc.extraction_status === 'uploaded' || doc.extraction_status === 'failed') && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleExtract(doc.document_id) }}
-                            title="Start extraction"
-                            className="shrink-0 mt-0.5 text-[10px] font-semibold text-teal hover:text-teal-soft opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          >
-                            {doc.extraction_status === 'failed' ? 'Retry' : 'Extract'}
-                          </button>
-                        )}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(doc.document_id) }}
-                          title="Delete document"
-                          className="opacity-0 group-hover:opacity-100 shrink-0 mt-0.5 text-text-mute hover:text-red transition-opacity duration-150"
+                      )
+
+                      if (isConfirming) return (
+                        <div key={doc.document_id} className="flex items-center gap-1.5 px-2 py-2 rounded bg-red-bg border border-red/20">
+                          <span className="text-[10px] text-red flex-1 leading-tight">Delete this document?</span>
+                          <button onClick={() => handleDelete(doc)} className="text-[10px] font-semibold text-red hover:underline shrink-0">Yes</button>
+                          <button onClick={() => setConfirmDeleteId(null)} className="text-[10px] text-text-mute hover:underline shrink-0">Cancel</button>
+                        </div>
+                      )
+
+                      return (
+                        <div
+                          key={doc.document_id}
+                          onClick={() => setSelectedDoc(doc)}
+                          title={doc.filename}
+                          className={`group flex items-start gap-2 px-2 py-2 rounded cursor-pointer transition-colors duration-150
+                            ${isSelected ? 'bg-navy/10 border border-navy/20' : 'hover:bg-panel-2 border border-transparent'}`}
                         >
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3 6 5 6 21 6" />
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                          </svg>
-                        </button>
+                          <span className={`text-xs font-mono font-semibold px-1.5 py-0.5 rounded shrink-0 mt-0.5
+                            ${isPdf ? 'bg-red-bg text-red' : 'bg-green-bg text-green'}`}>
+                            {ext}
+                          </span>
+                          <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                            <span className={`text-xs truncate ${isSelected ? 'text-navy font-medium' : 'text-text'}`}>
+                              {doc.filename}
+                            </span>
+                            <StatusDot status={doc.extraction_status} />
+                          </div>
+                          {(doc.extraction_status === 'uploaded' || doc.extraction_status === 'failed') && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleExtract(doc.document_id) }}
+                              title="Start extraction"
+                              className="shrink-0 mt-0.5 text-[10px] font-semibold text-teal hover:text-teal-soft opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                            >
+                              {doc.extraction_status === 'failed' ? 'Retry' : 'Extract'}
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(doc.document_id) }}
+                            title="Delete document"
+                            className="opacity-0 group-hover:opacity-100 shrink-0 mt-0.5 text-text-mute hover:text-red transition-opacity duration-150"
+                          >
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                            </svg>
+                          </button>
+                        </div>
+                      )
+                    })}
+                    {uploading && (
+                      <div className="flex items-center gap-2 px-2 py-2 rounded bg-panel-2">
+                        <span className="text-xs font-mono font-semibold px-1.5 py-0.5 rounded bg-panel-3 text-text-mute shrink-0">…</span>
+                        <span className="text-xs text-text-mute italic">Uploading…</span>
                       </div>
-                    )
-                  })}
-                  {uploading && (
-                    <div className="flex items-center gap-2 px-2 py-2 rounded bg-panel-2">
-                      <span className="text-xs font-mono font-semibold px-1.5 py-0.5 rounded bg-panel-3 text-text-mute shrink-0">…</span>
-                      <span className="text-xs text-text-mute italic">Uploading…</span>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              <div className="px-4 py-3 border-t border-border shrink-0 flex flex-col gap-1">
-                {uploadError && <p className="text-[10px] text-red leading-tight break-words">{uploadError}</p>}
-                <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="text-teal text-xs font-medium hover:text-teal-soft transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed text-left"
-                >
-                  + Upload document
-                </button>
-              </div>
-            </>
-          )}
-        </aside>
-
-        {/* ── Center panel — Document Viewer ── */}
-        <main className="flex-1 overflow-hidden">
-          {selectedDoc && caseId ? (
-            <DocumentViewer doc={selectedDoc} caseId={caseId} onExtract={() => handleExtract(selectedDoc.document_id)} />
-          ) : (
-            <div className="h-full bg-canvas-deep flex items-center justify-center">
-              <div className="flex flex-col items-center gap-3 text-center px-6">
-                <div className="w-14 h-14 bg-panel border border-border rounded-xl flex items-center justify-center shadow-sm">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#878E99" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="9" y1="13" x2="15" y2="13" />
-                    <line x1="9" y1="17" x2="15" y2="17" />
-                  </svg>
-                </div>
-                <h3 className="text-sm font-semibold text-text">Document Viewer</h3>
-                <p className="text-xs text-text-mute max-w-[220px]">Select a document from the left panel to view its contents here.</p>
-              </div>
-            </div>
-          )}
-        </main>
-
-        {/* ── Right panel — Case Assistant ── */}
-        <aside
-          className="bg-panel border-l border-border flex flex-col shrink-0 overflow-hidden transition-all duration-200"
-          style={{ width: rightCollapsed ? 32 : 300 }}
-        >
-          {rightCollapsed ? (
-            <div className="flex flex-col items-center pt-3">
-              <CollapseBtn onClick={() => setRightCollapsed(false)} title="Expand assistant">‹</CollapseBtn>
-            </div>
-          ) : (
-            <>
-              <div className="px-3 py-3 border-b border-border shrink-0 flex items-center justify-between">
-                <CollapseBtn onClick={() => setRightCollapsed(true)} title="Collapse panel">›</CollapseBtn>
-                <span className="text-xs font-semibold text-text-mute uppercase tracking-wide">Case Assistant</span>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-                <div className="bg-teal/10 border border-teal/20 rounded-xl px-3 py-2.5">
-                  <p className="text-xs text-text">
-                    Hi! I'm your Case Assistant for{' '}
-                    <span className="font-mono font-semibold text-teal">{caseId}</span>. Ask me anything about the documents in this case.
-                  </p>
-                </div>
-                <p className="text-xs text-text-mute text-center">No messages yet</p>
-              </div>
-
-              <div className="border-t border-border p-3 shrink-0">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="Ask the assistant…"
-                    className="flex-1 border border-border-strong rounded-md px-3 py-2 text-xs text-text bg-panel placeholder:text-text-mute focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal transition-colors duration-150"
-                  />
-                  <button className="bg-teal text-white text-xs font-medium px-3 py-2 rounded-md hover:bg-teal-soft transition-colors duration-150 shrink-0">
-                    Send
+                <div className="px-4 py-3 border-t border-border shrink-0 flex flex-col gap-1">
+                  {uploadError && <p className="text-[10px] text-red leading-tight break-words">{uploadError}</p>}
+                  <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="text-teal text-xs font-medium hover:text-teal-soft transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed text-left"
+                  >
+                    + Upload document
                   </button>
                 </div>
-              </div>
-            </>
-          )}
-        </aside>
+              </>
+            )}
+          </aside>
 
-      </div>
+          {/* Center panel */}
+          <main className="flex-1 overflow-hidden">
+            {selectedDoc && caseId ? (
+              <DocumentViewer doc={selectedDoc} caseId={caseId} onExtract={() => handleExtract(selectedDoc.document_id)} />
+            ) : (
+              <div className="h-full bg-canvas-deep flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3 text-center px-6">
+                  <div className="w-14 h-14 bg-panel border border-border rounded-xl flex items-center justify-center shadow-sm">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#878E99" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="9" y1="13" x2="15" y2="13" />
+                      <line x1="9" y1="17" x2="15" y2="17" />
+                    </svg>
+                  </div>
+                  <h3 className="text-sm font-semibold text-text">Document Viewer</h3>
+                  <p className="text-xs text-text-mute max-w-[220px]">Select a document from the left panel to view its contents here.</p>
+                </div>
+              </div>
+            )}
+          </main>
+
+          {/* Right panel */}
+          <aside
+            className="bg-panel border-l border-border flex flex-col shrink-0 overflow-hidden transition-all duration-200"
+            style={{ width: rightCollapsed ? 32 : 300 }}
+          >
+            {rightCollapsed ? (
+              <div className="flex flex-col items-center pt-3">
+                <CollapseBtn onClick={() => setRightCollapsed(false)} title="Expand assistant">‹</CollapseBtn>
+              </div>
+            ) : (
+              <>
+                <div className="px-3 py-3 border-b border-border shrink-0 flex items-center justify-between">
+                  <CollapseBtn onClick={() => setRightCollapsed(true)} title="Collapse panel">›</CollapseBtn>
+                  <span className="text-xs font-semibold text-text-mute uppercase tracking-wide">Case Assistant</span>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+                  <div className="bg-teal/10 border border-teal/20 rounded-xl px-3 py-2.5">
+                    <p className="text-xs text-text">
+                      Hi! I'm your Case Assistant for{' '}
+                      <span className="font-mono font-semibold text-teal">{caseId}</span>. Ask me anything about the documents in this case.
+                    </p>
+                  </div>
+                  <p className="text-xs text-text-mute text-center">No messages yet</p>
+                </div>
+                <div className="border-t border-border p-3 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Ask the assistant…"
+                      className="flex-1 border border-border-strong rounded-md px-3 py-2 text-xs text-text bg-panel placeholder:text-text-mute focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal transition-colors duration-150"
+                    />
+                    <button className="bg-teal text-white text-xs font-medium px-3 py-2 rounded-md hover:bg-teal-soft transition-colors duration-150 shrink-0">
+                      Send
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </aside>
+        </div>
+      )}
     </div>
   )
 }
