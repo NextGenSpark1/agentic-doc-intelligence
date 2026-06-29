@@ -67,6 +67,7 @@ export default function CaseWorkspacePage() {
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [activeSubtab, setActiveSubtab] = useState('Workspace')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const [docSearch, setDocSearch] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -166,6 +167,31 @@ export default function CaseWorkspacePage() {
   }
 
   const allFilteredSelected = filteredDocs.length > 0 && filteredDocs.every(d => selectedIds.has(d.document_id))
+  const extractableSelectedCount = docs.filter(d =>
+    selectedIds.has(d.document_id) && (d.extraction_status === 'uploaded' || d.extraction_status === 'failed')
+  ).length
+
+  async function handleBulkExtract() {
+    if (!caseId) return
+    const eligible = docs.filter(d =>
+      selectedIds.has(d.document_id) && (d.extraction_status === 'uploaded' || d.extraction_status === 'failed')
+    )
+    await Promise.allSettled(eligible.map(d => extractDocument(caseId, d.document_id)))
+    const eligibleIds = new Set(eligible.map(d => d.document_id))
+    setDocs(prev => prev.map(d => eligibleIds.has(d.document_id) ? { ...d, extraction_status: 'queued' } : d))
+    setSelectedIds(new Set())
+  }
+
+  async function handleBulkDelete() {
+    if (!caseId) return
+    const ids = Array.from(selectedIds)
+    setConfirmBulkDelete(false)
+    const docsToDelete = docs.filter(d => ids.includes(d.document_id))
+    await Promise.allSettled(docsToDelete.map(d => deleteDocument(caseId, d.document_id)))
+    setDocs(prev => prev.filter(d => !ids.includes(d.document_id)))
+    if (selectedDoc && ids.includes(selectedDoc.document_id)) setSelectedDoc(null)
+    setSelectedIds(new Set())
+  }
 
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 96px)' }}>
@@ -253,6 +279,37 @@ export default function CaseWorkspacePage() {
                     </button>
                     {selectedIds.size > 0 && (
                       <span className="text-[10px] text-text-mute">{selectedIds.size} selected</span>
+                    )}
+                  </div>
+                )}
+
+                {/* Bulk action bar */}
+                {selectedIds.size > 0 && (
+                  <div className="mx-2 mb-1 shrink-0">
+                    {confirmBulkDelete ? (
+                      <div className="px-2 py-2 bg-red-bg border border-red/20 rounded-lg flex flex-col gap-1.5">
+                        <span className="text-[10px] text-red font-medium">Delete {selectedIds.size} document(s)?</span>
+                        <div className="flex gap-3">
+                          <button onClick={handleBulkDelete} className="text-[10px] font-semibold text-red hover:underline">Delete</button>
+                          <button onClick={() => setConfirmBulkDelete(false)} className="text-[10px] text-text-mute hover:underline">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="px-2 py-1.5 bg-teal/10 border border-teal/20 rounded-lg flex items-center gap-2">
+                        {extractableSelectedCount > 0 && (
+                          <>
+                            <button onClick={handleBulkExtract} className="text-[10px] font-semibold text-teal hover:text-teal-soft">
+                              Extract ({extractableSelectedCount})
+                            </button>
+                            <span className="text-[10px] text-text-mute">·</span>
+                          </>
+                        )}
+                        <button onClick={() => setConfirmBulkDelete(true)} className="text-[10px] font-semibold text-red hover:text-red/70">
+                          Delete ({selectedIds.size})
+                        </button>
+                        <div className="flex-1" />
+                        <button onClick={() => setSelectedIds(new Set())} className="text-[10px] text-text-mute hover:text-text">✕</button>
+                      </div>
                     )}
                   </div>
                 )}
