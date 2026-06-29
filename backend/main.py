@@ -73,6 +73,14 @@ class CaseCreate(BaseModel):
     allegation_summary: str = ""
 
 
+class CasePatch(BaseModel):
+    title: str | None = None
+    case_type: str | None = None
+    status: str | None = None
+    lead_investigator: str | None = None
+    allegation_summary: str | None = None
+
+
 class FindingReview(BaseModel):
     status: str  # "confirmed" | "dismissed"
     reviewed_by: str
@@ -125,6 +133,18 @@ async def get_case(case_id: str, user: dict = Depends(get_current_user)):
     if not case:
         raise HTTPException(404, "case not found")
     return case
+
+
+@app.patch("/cases/{case_id}")
+async def update_case(case_id: str, body: CasePatch, user: dict = Depends(get_current_user)):
+    case = await asyncio.to_thread(db.get_case, case_id)
+    if not case:
+        raise HTTPException(404, "case not found")
+    patch = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not patch:
+        raise HTTPException(400, "no fields to update")
+    updated = await asyncio.to_thread(db.update_case, case_id, patch)
+    return updated
 
 
 # ---------------------------- documents ---------------------------
