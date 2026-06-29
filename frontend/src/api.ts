@@ -72,6 +72,10 @@ export async function fetchFileUrl(caseId: string, documentId: string): Promise<
   return response.data.url
 }
 
+export async function extractDocument(caseId: string, documentId: string): Promise<void> {
+  await client.post(`/cases/${caseId}/documents/${documentId}/extract`)
+}
+
 export async function uploadDocument(caseId: string, file: File): Promise<CaseDocument> {
   const formData = new FormData()
   formData.append('file', file)
