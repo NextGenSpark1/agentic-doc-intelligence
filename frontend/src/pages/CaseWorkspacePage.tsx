@@ -6,6 +6,7 @@ import type { Case, Document as CaseDocument } from '../types'
 type PendingUpload = { tempId: string; filename: string; progress: number; error: string | null }
 import DocumentViewer from '../components/DocumentViewer'
 import CaseAssistantPanel from '../components/CaseAssistantPanel'
+import FindingsPanel from '../components/FindingsPanel'
 
 const SUBTABS = ['Workspace', 'Entity Graph', 'Timeline', 'Findings', 'Report', 'Settings']
 
@@ -354,8 +355,13 @@ export default function CaseWorkspacePage() {
         </div>
       </div>
 
+      {/* Findings tab */}
+      {activeSubtab === 'Findings' && (
+        <FindingsPanel caseId={caseId!} docs={docs} />
+      )}
+
       {/* Placeholder tabs */}
-      {!['Workspace', 'Settings'].includes(activeSubtab) && (
+      {!['Workspace', 'Settings', 'Findings'].includes(activeSubtab) && (
         <PlaceholderPanel name={activeSubtab} />
       )}
 
