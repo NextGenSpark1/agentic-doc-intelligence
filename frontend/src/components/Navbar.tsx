@@ -96,7 +96,7 @@ export default function Navbar() {
         >
           {[
             { to: '/cases', label: 'Cases' },
-            { to: '/settings', label: 'Settings' },
+            { to: '/account', label: 'Account' },
           ].map(({ to, label }) => (
             <NavLink
               key={to}

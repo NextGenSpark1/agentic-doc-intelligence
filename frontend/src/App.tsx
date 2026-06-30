@@ -4,7 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
 import CasesPage from './pages/CasesPage'
 import CaseWorkspacePage from './pages/CaseWorkspacePage'
-import SettingsPage from './pages/SettingsPage'
+import AccountPage from './pages/AccountPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 
@@ -47,7 +47,7 @@ export default function App() {
             <Route index element={<Navigate to="/cases" replace />} />
             <Route path="/cases" element={<CasesPage />} />
             <Route path="/cases/:caseId" element={<CaseWorkspacePage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/account" element={<AccountPage />} />
           </Route>
         </Routes>
       </AuthProvider>

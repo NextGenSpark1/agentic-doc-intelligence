@@ -73,6 +73,14 @@ class CaseCreate(BaseModel):
     allegation_summary: str = ""
 
 
+class CasePatch(BaseModel):
+    title: str | None = None
+    case_type: str | None = None
+    status: str | None = None
+    lead_investigator: str | None = None
+    allegation_summary: str | None = None
+
+
 class FindingReview(BaseModel):
     status: str  # "confirmed" | "dismissed"
     reviewed_by: str
@@ -127,9 +135,21 @@ async def get_case(case_id: str, user: dict = Depends(get_current_user)):
     return case
 
 
+@app.patch("/cases/{case_id}")
+async def update_case(case_id: str, body: CasePatch, user: dict = Depends(get_current_user)):
+    case = await asyncio.to_thread(db.get_case, case_id)
+    if not case:
+        raise HTTPException(404, "case not found")
+    patch = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not patch:
+        raise HTTPException(400, "no fields to update")
+    updated = await asyncio.to_thread(db.update_case, case_id, patch)
+    return updated
+
+
 # ---------------------------- documents ---------------------------
-@app.post("/cases/{case_id}/documents", status_code=202)
-async def upload_document(case_id: str, background: BackgroundTasks, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+@app.post("/cases/{case_id}/documents", status_code=201)
+async def upload_document(case_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
@@ -149,15 +169,24 @@ async def upload_document(case_id: str, background: BackgroundTasks, file: Uploa
         "file_hash": file_hash,
         "storage_path": storage_path,
         "document_type": "unclassified",
-        "extraction_status": "queued",
+        "extraction_status": "uploaded",
         "page_count": 0,
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
     }
     created = await asyncio.to_thread(db.insert_document, record)
-
-    # Phase 1 -> kick off Phases 2-3 in the background; respond immediately.
-    background.add_task(pipeline.process_document, document_id)
     return created
+
+
+@app.post("/cases/{case_id}/documents/{document_id}/extract", status_code=202)
+async def trigger_extraction(case_id: str, document_id: str, background: BackgroundTasks, user: dict = Depends(get_current_user)):
+    doc = await asyncio.to_thread(db.get_document, document_id)
+    if not doc or doc.get("case_id") != case_id:
+        raise HTTPException(404, "document not found")
+    if doc.get("extraction_status") not in ("uploaded", "failed"):
+        raise HTTPException(409, "extraction already in progress or completed")
+    await asyncio.to_thread(db.update_document, document_id, {"extraction_status": "queued"})
+    background.add_task(pipeline.process_document, document_id)
+    return {"status": "queued", "document_id": document_id}
 
 
 @app.get("/cases/{case_id}/documents")

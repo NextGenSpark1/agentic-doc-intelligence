@@ -15,6 +15,7 @@ type Tab = 'document' | 'fields' | 'raw' | 'summary'
 interface Props {
   doc: CaseDocument
   caseId: string
+  onExtract: () => void
 }
 
 function formatFieldName(key: string): string {
@@ -29,27 +30,73 @@ function renderFieldValue(val: unknown): string {
   return JSON.stringify(val)
 }
 
-function EmptyState({ status }: { status: string }) {
-  const notDone = status !== 'done'
+function ExtractionEmptyState({ status, onExtract }: { status: string; onExtract: () => void }) {
+  if (status === 'queued' || status === 'processing') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
+        <div className="w-5 h-5 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
+        <p className="text-sm font-medium text-text-mid">Extracting document…</p>
+        <p className="text-xs text-text-mute">This usually takes 20–30 seconds</p>
+      </div>
+    )
+  }
+
+  if (status === 'failed') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
+        <div className="w-9 h-9 bg-red-bg border border-red/20 rounded-lg flex items-center justify-center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B4232A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+        </div>
+        <p className="text-sm font-medium text-text-mid">Extraction failed</p>
+        <p className="text-xs text-text-mute">Something went wrong during document processing.</p>
+        <button
+          onClick={onExtract}
+          className="mt-1 text-xs font-semibold text-white bg-red hover:bg-red/80 px-4 py-2 rounded-lg transition-colors duration-150"
+        >
+          Retry Extraction
+        </button>
+      </div>
+    )
+  }
+
+  if (status === 'done') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-6">
+        <div className="w-2 h-2 rounded-full mb-1 bg-[#878E99]" />
+        <p className="text-sm font-medium text-text-mid">No data available</p>
+        <p className="text-xs text-text-mute">No extraction data found for this document.</p>
+      </div>
+    )
+  }
+
+  // "uploaded" — default
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-6">
-      <div
-        className="w-2 h-2 rounded-full mb-1"
-        style={{ backgroundColor: notDone ? '#C77A12' : '#878E99' }}
-      />
-      <p className="text-sm font-medium text-text-mid">
-        {notDone ? 'Not yet processed' : 'No data available'}
-      </p>
-      <p className="text-xs text-text-mute">
-        {notDone
-          ? `Extraction status: ${status}`
-          : 'No extraction data found for this document.'}
-      </p>
+    <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
+      <div className="w-9 h-9 bg-panel-2 border border-border rounded-lg flex items-center justify-center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#878E99" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="9" y1="13" x2="15" y2="13" />
+          <line x1="9" y1="17" x2="15" y2="17" />
+        </svg>
+      </div>
+      <p className="text-sm font-medium text-text-mid">Not yet extracted</p>
+      <p className="text-xs text-text-mute">Run extraction to view fields, raw text, and summary.</p>
+      <button
+        onClick={onExtract}
+        className="mt-1 text-xs font-semibold text-white bg-teal hover:bg-teal-soft px-4 py-2 rounded-lg transition-colors duration-150"
+      >
+        Extract Document
+      </button>
     </div>
   )
 }
 
-export default function DocumentViewer({ doc, caseId }: Props) {
+export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('document')
 
   // Document tab state
@@ -61,15 +108,15 @@ export default function DocumentViewer({ doc, caseId }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
 
-  // Extraction tab state
-  const [extraction, setExtraction] = useState<Extraction | null | undefined>(undefined) // undefined = loading
+  // Extraction tab state — undefined = loading, null = not available
+  const [extraction, setExtraction] = useState<Extraction | null | undefined>(undefined)
   const [extractionError, setExtractionError] = useState<string | null>(null)
 
-  // Summary tab state
-  const [summary, setSummary] = useState<string | null | undefined>(undefined) // undefined = loading
+  // Summary tab state — undefined = loading, null = not available
+  const [summary, setSummary] = useState<string | null | undefined>(undefined)
   const [summaryError, setSummaryError] = useState<string | null>(null)
 
-  // Reset everything when document changes
+  // Reset file viewer and fetch URL when document changes
   useEffect(() => {
     setActiveTab('document')
     setFileUrl(null)
@@ -77,14 +124,21 @@ export default function DocumentViewer({ doc, caseId }: Props) {
     setUrlError(null)
     setNumPages(null)
     setPageNumber(1)
-    setExtraction(undefined)
-    setExtractionError(null)
-    setSummary(undefined)
-    setSummaryError(null)
 
     fetchFileUrl(caseId, doc.document_id)
       .then((url) => { setFileUrl(url); setUrlLoading(false) })
       .catch((err: Error) => { setUrlError(err.message); setUrlLoading(false) })
+  }, [doc.document_id, caseId])
+
+  // Fetch extraction data when document changes or extraction_status becomes "done"
+  useEffect(() => {
+    const isDone = doc.extraction_status === 'done'
+    setExtraction(isDone ? undefined : null)
+    setExtractionError(null)
+    setSummary(isDone ? undefined : null)
+    setSummaryError(null)
+
+    if (!isDone) return
 
     fetchExtraction(caseId, doc.document_id)
       .then(setExtraction)
@@ -93,7 +147,7 @@ export default function DocumentViewer({ doc, caseId }: Props) {
     fetchSummary(caseId, doc.document_id)
       .then((data) => setSummary(data?.summary ?? null))
       .catch((err: Error) => { setSummaryError(err.message); setSummary(null) })
-  }, [doc.document_id, caseId])
+  }, [doc.document_id, caseId, doc.extraction_status])
 
   // Track container width for Phase 2 overlays
   useEffect(() => {
@@ -199,12 +253,12 @@ export default function DocumentViewer({ doc, caseId }: Props) {
             <p className="text-xs text-red text-center mt-10 px-6">{extractionError}</p>
           )}
           {extraction === null && !extractionError && (
-            <EmptyState status={doc.extraction_status} />
+            <ExtractionEmptyState status={doc.extraction_status} onExtract={onExtract} />
           )}
           {extraction && (
             <>
               {Object.keys(extraction.extracted_json).length === 0 ? (
-                <EmptyState status={doc.extraction_status} />
+                <ExtractionEmptyState status={doc.extraction_status} onExtract={onExtract} />
               ) : (
                 <div className="p-4 flex flex-col gap-0">
                   <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider mb-3">
@@ -238,10 +292,10 @@ export default function DocumentViewer({ doc, caseId }: Props) {
             <p className="text-xs text-red text-center mt-10 px-6">{extractionError}</p>
           )}
           {extraction === null && !extractionError && (
-            <EmptyState status={doc.extraction_status} />
+            <ExtractionEmptyState status={doc.extraction_status} onExtract={onExtract} />
           )}
           {extraction && !extraction.raw_text && (
-            <EmptyState status={doc.extraction_status} />
+            <ExtractionEmptyState status={doc.extraction_status} onExtract={onExtract} />
           )}
           {extraction?.raw_text && (
             <pre className="p-4 text-[11px] font-mono text-text-mid leading-relaxed whitespace-pre-wrap break-words">
@@ -261,7 +315,7 @@ export default function DocumentViewer({ doc, caseId }: Props) {
             <p className="text-xs text-red text-center mt-10 px-6">{summaryError}</p>
           )}
           {summary === null && !summaryError && (
-            <EmptyState status={doc.extraction_status} />
+            <ExtractionEmptyState status={doc.extraction_status} onExtract={onExtract} />
           )}
           {summary && (
             <div className="p-5">

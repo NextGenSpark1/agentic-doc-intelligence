@@ -1,5 +1,7 @@
 import axios from 'axios'
 import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocument, Extraction } from './types'
+
+type CasePatch = Partial<Pick<Case, 'title' | 'case_type' | 'status' | 'lead_investigator' | 'allegation_summary'>>
 import { supabase } from './lib/supabaseClient'
 
 const BASE_URL = 'http://localhost:8000'
@@ -38,6 +40,11 @@ export async function fetchCase(id: string): Promise<Case> {
   return response.data
 }
 
+export async function updateCase(id: string, patch: CasePatch): Promise<Case> {
+  const response = await client.patch<Case>(`/cases/${id}`, patch)
+  return response.data
+}
+
 export async function fetchDocuments(caseId: string): Promise<CaseDocument[]> {
   const response = await client.get(`/cases/${caseId}/documents`)
   return (response.data as { documents: CaseDocument[] }).documents
@@ -72,15 +79,38 @@ export async function fetchFileUrl(caseId: string, documentId: string): Promise<
   return response.data.url
 }
 
+export async function extractDocument(caseId: string, documentId: string): Promise<void> {
+  await client.post(`/cases/${caseId}/documents/${documentId}/extract`)
+}
+
 export async function uploadDocument(caseId: string, file: File): Promise<CaseDocument> {
   const formData = new FormData()
   formData.append('file', file)
-  // Omit Content-Type header so the browser sets multipart boundary automatically.
-  // Auth interceptor on `client` adds the Bearer token.
   const response = await client.post<CaseDocument>(
     `/cases/${caseId}/documents`,
     formData,
     { headers: { 'Content-Type': undefined }, timeout: 60_000 },
+  )
+  return response.data
+}
+
+export async function uploadDocumentWithProgress(
+  caseId: string,
+  file: File,
+  onProgress: (pct: number) => void,
+): Promise<CaseDocument> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const response = await client.post<CaseDocument>(
+    `/cases/${caseId}/documents`,
+    formData,
+    {
+      headers: { 'Content-Type': undefined },
+      timeout: 60_000,
+      onUploadProgress: (e) => {
+        if (e.total) onProgress(Math.round((e.loaded / e.total) * 100))
+      },
+    },
   )
   return response.data
 }
