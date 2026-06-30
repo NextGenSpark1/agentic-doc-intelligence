@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocument, Extraction, ChatResponse, Finding } from './types'
+import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocument, Extraction, ChatResponse, Finding, TimelineEvent } from './types'
 
 type CasePatch = Partial<Pick<Case, 'title' | 'case_type' | 'status' | 'lead_investigator' | 'allegation_summary'>>
 import { supabase } from './lib/supabaseClient'
@@ -92,6 +92,11 @@ export async function uploadDocument(caseId: string, file: File): Promise<CaseDo
     { headers: { 'Content-Type': undefined }, timeout: 60_000 },
   )
   return response.data
+}
+
+export async function fetchTimeline(caseId: string): Promise<TimelineEvent[]> {
+  const response = await client.get<{ events: TimelineEvent[] }>(`/cases/${caseId}/timeline`)
+  return response.data.events
 }
 
 export async function fetchFindings(caseId: string): Promise<Finding[]> {

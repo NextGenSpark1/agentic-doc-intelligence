@@ -65,6 +65,14 @@ export interface Entity {
   confidence_score: number
 }
 
+export interface TimelineEvent {
+  event_id: string
+  case_id: string
+  event_date: string
+  label: string
+  document_id: string | null
+}
+
 export interface ChatRequest {
   message: string
   scope: 'case' | 'document'

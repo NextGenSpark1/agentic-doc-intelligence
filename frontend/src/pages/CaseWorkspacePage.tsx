@@ -7,6 +7,7 @@ type PendingUpload = { tempId: string; filename: string; progress: number; error
 import DocumentViewer from '../components/DocumentViewer'
 import CaseAssistantPanel from '../components/CaseAssistantPanel'
 import FindingsPanel from '../components/FindingsPanel'
+import TimelinePanel from '../components/TimelinePanel'
 
 const SUBTABS = ['Workspace', 'Entity Graph', 'Timeline', 'Findings', 'Report', 'Settings']
 
@@ -360,8 +361,13 @@ export default function CaseWorkspacePage() {
         <FindingsPanel caseId={caseId!} docs={docs} />
       )}
 
+      {/* Timeline tab */}
+      {activeSubtab === 'Timeline' && (
+        <TimelinePanel caseId={caseId!} docs={docs} />
+      )}
+
       {/* Placeholder tabs */}
-      {!['Workspace', 'Settings', 'Findings'].includes(activeSubtab) && (
+      {!['Workspace', 'Settings', 'Findings', 'Timeline'].includes(activeSubtab) && (
         <PlaceholderPanel name={activeSubtab} />
       )}
 
