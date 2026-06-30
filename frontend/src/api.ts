@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocument, Extraction } from './types'
+import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocument, Extraction, ChatResponse } from './types'
 
 type CasePatch = Partial<Pick<Case, 'title' | 'case_type' | 'status' | 'lead_investigator' | 'allegation_summary'>>
 import { supabase } from './lib/supabaseClient'
@@ -91,6 +91,20 @@ export async function uploadDocument(caseId: string, file: File): Promise<CaseDo
     formData,
     { headers: { 'Content-Type': undefined }, timeout: 60_000 },
   )
+  return response.data
+}
+
+export async function sendChatMessage(
+  caseId: string,
+  message: string,
+  history: Array<{ role: string; content: string }>,
+): Promise<ChatResponse> {
+  const response = await client.post<ChatResponse>(`/cases/${caseId}/chat`, {
+    message,
+    scope: 'case',
+    context_id: caseId,
+    history,
+  })
   return response.data
 }
 
