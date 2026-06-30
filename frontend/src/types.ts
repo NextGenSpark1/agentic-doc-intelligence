@@ -65,6 +65,15 @@ export interface Entity {
   confidence_score: number
 }
 
+export interface Relationship {
+  relationship_id: string
+  case_id: string
+  source_name: string
+  target_name: string
+  relationship_type: string
+  evidence: Record<string, unknown>
+}
+
 export interface TimelineEvent {
   event_id: string
   case_id: string
