@@ -5,6 +5,10 @@ import type { Case, Document as CaseDocument } from '../types'
 
 type PendingUpload = { tempId: string; filename: string; progress: number; error: string | null }
 import DocumentViewer from '../components/DocumentViewer'
+import CaseAssistantPanel from '../components/CaseAssistantPanel'
+import FindingsPanel from '../components/FindingsPanel'
+import TimelinePanel from '../components/TimelinePanel'
+import EntityGraphPanel from '../components/EntityGraphPanel'
 
 const SUBTABS = ['Workspace', 'Entity Graph', 'Timeline', 'Findings', 'Report', 'Settings']
 
@@ -353,8 +357,23 @@ export default function CaseWorkspacePage() {
         </div>
       </div>
 
+      {/* Findings tab */}
+      {activeSubtab === 'Findings' && (
+        <FindingsPanel caseId={caseId!} docs={docs} />
+      )}
+
+      {/* Timeline tab */}
+      {activeSubtab === 'Timeline' && (
+        <TimelinePanel caseId={caseId!} docs={docs} />
+      )}
+
+      {/* Entity Graph tab */}
+      {activeSubtab === 'Entity Graph' && (
+        <EntityGraphPanel caseId={caseId!} />
+      )}
+
       {/* Placeholder tabs */}
-      {!['Workspace', 'Settings'].includes(activeSubtab) && (
+      {!['Workspace', 'Settings', 'Findings', 'Timeline', 'Entity Graph'].includes(activeSubtab) && (
         <PlaceholderPanel name={activeSubtab} />
       )}
 
@@ -451,7 +470,7 @@ export default function CaseWorkspacePage() {
                 <div className="flex-1 overflow-y-auto">
                   <div className="flex flex-col gap-0.5 p-2">
                     {docsLoading && <p className="text-xs text-text-mute px-2 py-2">Loading…</p>}
-                    {!docsLoading && filteredDocs.length === 0 && !uploading && (
+                    {!docsLoading && filteredDocs.length === 0 && pendingUploads.length === 0 && (
                       <p className="text-xs text-text-mute px-2 py-2">
                         {docSearch ? 'No matches.' : 'No documents yet.'}
                       </p>
@@ -604,27 +623,7 @@ export default function CaseWorkspacePage() {
                   <CollapseBtn onClick={() => setRightCollapsed(true)} title="Collapse panel">›</CollapseBtn>
                   <span className="text-xs font-semibold text-text-mute uppercase tracking-wide">Case Assistant</span>
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-                  <div className="bg-teal/10 border border-teal/20 rounded-xl px-3 py-2.5">
-                    <p className="text-xs text-text">
-                      Hi! I'm your Case Assistant for{' '}
-                      <span className="font-mono font-semibold text-teal">{caseId}</span>. Ask me anything about the documents in this case.
-                    </p>
-                  </div>
-                  <p className="text-xs text-text-mute text-center">No messages yet</p>
-                </div>
-                <div className="border-t border-border p-3 shrink-0">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder="Ask the assistant…"
-                      className="flex-1 border border-border-strong rounded-md px-3 py-2 text-xs text-text bg-panel placeholder:text-text-mute focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal transition-colors duration-150"
-                    />
-                    <button className="bg-teal text-white text-xs font-medium px-3 py-2 rounded-md hover:bg-teal-soft transition-colors duration-150 shrink-0">
-                      Send
-                    </button>
-                  </div>
-                </div>
+                <CaseAssistantPanel caseId={caseId!} docs={docs} />
               </>
             )}
           </aside>

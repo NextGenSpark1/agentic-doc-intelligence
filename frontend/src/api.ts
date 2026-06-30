@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocument, Extraction } from './types'
+import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocument, Extraction, ChatResponse, Finding, TimelineEvent, Entity, Relationship } from './types'
 
 type CasePatch = Partial<Pick<Case, 'title' | 'case_type' | 'status' | 'lead_investigator' | 'allegation_summary'>>
 import { supabase } from './lib/supabaseClient'
@@ -91,6 +91,53 @@ export async function uploadDocument(caseId: string, file: File): Promise<CaseDo
     formData,
     { headers: { 'Content-Type': undefined }, timeout: 60_000 },
   )
+  return response.data
+}
+
+export async function fetchEntities(
+  caseId: string,
+): Promise<{ entities: Entity[]; relationships: Relationship[] }> {
+  const response = await client.get<{ entities: Entity[]; relationships: Relationship[] }>(
+    `/cases/${caseId}/entities`,
+  )
+  return response.data
+}
+
+export async function fetchTimeline(caseId: string): Promise<TimelineEvent[]> {
+  const response = await client.get<{ events: TimelineEvent[] }>(`/cases/${caseId}/timeline`)
+  return response.data.events
+}
+
+export async function fetchFindings(caseId: string): Promise<Finding[]> {
+  const response = await client.get<{ findings: Finding[] }>(`/cases/${caseId}/findings`)
+  return response.data.findings
+}
+
+export async function reviewFinding(
+  findingId: string,
+  status: 'confirmed' | 'dismissed',
+  reviewedBy: string,
+  dismissalReason?: string,
+): Promise<Finding> {
+  const response = await client.patch<Finding>(`/findings/${findingId}/review`, {
+    status,
+    reviewed_by: reviewedBy,
+    dismissal_reason: dismissalReason ?? null,
+  })
+  return response.data
+}
+
+export async function sendChatMessage(
+  caseId: string,
+  message: string,
+  history: Array<{ role: string; content: string }>,
+): Promise<ChatResponse> {
+  const response = await client.post<ChatResponse>(`/cases/${caseId}/chat`, {
+    message,
+    scope: 'case',
+    context_id: caseId,
+    history,
+  })
   return response.data
 }
 
