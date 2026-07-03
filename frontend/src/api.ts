@@ -113,6 +113,11 @@ export async function fetchTimeline(caseId: string): Promise<TimelineEvent[]> {
   return response.data.events
 }
 
+export async function generateReport(caseId: string): Promise<{ markdown: string; finding_count: number }> {
+  const response = await client.post<{ markdown: string; finding_count: number }>(`/cases/${caseId}/report`)
+  return response.data
+}
+
 export async function fetchFindings(caseId: string): Promise<Finding[]> {
   const response = await client.get<{ findings: Finding[] }>(`/cases/${caseId}/findings`)
   return response.data.findings

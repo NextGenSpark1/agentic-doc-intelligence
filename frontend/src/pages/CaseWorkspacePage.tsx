@@ -10,6 +10,7 @@ import CaseAssistantPanel from '../components/CaseAssistantPanel'
 import FindingsPanel from '../components/FindingsPanel'
 import TimelinePanel from '../components/TimelinePanel'
 import EntityGraphPanel from '../components/EntityGraphPanel'
+import ReportPanel from '../components/ReportPanel'
 
 const SUBTABS = ['Workspace', 'Entity Graph', 'Timeline', 'Findings', 'Report', 'Settings']
 
@@ -542,8 +543,13 @@ export default function CaseWorkspacePage() {
         <EntityGraphPanel caseId={caseId!} />
       )}
 
+      {/* Report tab */}
+      {activeSubtab === 'Report' && (
+        <ReportPanel caseId={caseId!} />
+      )}
+
       {/* Placeholder tabs */}
-      {!['Workspace', 'Settings', 'Findings', 'Timeline', 'Entity Graph'].includes(activeSubtab) && (
+      {!['Workspace', 'Settings', 'Findings', 'Timeline', 'Entity Graph', 'Report'].includes(activeSubtab) && (
         <PlaceholderPanel name={activeSubtab} />
       )}
 

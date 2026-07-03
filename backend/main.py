@@ -321,6 +321,60 @@ async def get_findings(case_id: str, user: dict = Depends(get_current_user)):
     return {"findings": await asyncio.to_thread(db.list_findings, case_id)}
 
 
+@app.post("/cases/{case_id}/report")
+async def generate_report(case_id: str, user: dict = Depends(get_current_user)):
+    """Generate a markdown investigation report from confirmed findings."""
+    case = await asyncio.to_thread(db.get_case, case_id)
+    if not case:
+        raise HTTPException(404, "case not found")
+
+    all_findings = await asyncio.to_thread(db.list_findings, case_id)
+    confirmed = [f for f in all_findings if f.get("human_review_status") == "confirmed"]
+
+    if not confirmed:
+        findings_text = "No confirmed findings available. All findings are pending review."
+    else:
+        findings_text = "\n".join(
+            f"- [{f['severity'].upper()}] {f['statement']} (confidence: {int(f['confidence'] * 100)}%)"
+            for f in confirmed
+        )
+
+    prompt = (
+        f"You are producing a formal investigation report for the following case.\n\n"
+        f"Case: {case['title']}\n"
+        f"Type: {case['case_type']}\n"
+        f"Lead Investigator: {case['lead_investigator']}\n"
+        f"Allegation: {case.get('allegation_summary', 'N/A')}\n\n"
+        f"Confirmed Findings:\n{findings_text}\n\n"
+        "Write a structured investigation report in markdown with sections: "
+        "Executive Summary, Background, Key Findings, Risk Assessment, Recommendations. "
+        "Be factual and professional. Do not speculate beyond the provided findings."
+    )
+
+    try:
+        markdown = llm.complete(
+            tier="reasoning",
+            messages=[
+                {"role": "system", "content": "You are a senior forensic analyst producing an investigation report."},
+                {"role": "user", "content": prompt},
+            ],
+        )
+    except Exception:
+        markdown = f"""# Investigation Report — {case['title']}
+
+## Executive Summary
+This report covers case **{case['case_id']}** ({case['case_type']}).
+
+## Confirmed Findings
+{findings_text}
+
+## Note
+LLM generation failed. This is a fallback template. Configure LLM_API_KEY to enable AI-generated reports.
+"""
+
+    return {"markdown": markdown, "finding_count": len(confirmed)}
+
+
 @app.patch("/findings/{finding_id}/review")
 async def review_finding(finding_id: str, body: FindingReview, user: dict = Depends(get_current_user)):
     """Phase 5 — human-in-the-loop. Investigator confirms or dismisses a finding."""
