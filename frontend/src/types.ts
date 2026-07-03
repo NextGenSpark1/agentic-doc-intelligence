@@ -1,5 +1,12 @@
 // Mirrored from shared/schemas.py
 
+export interface SchemaField {
+  name: string
+  description: string
+  is_array: boolean
+  custom: boolean
+}
+
 export interface Case {
   case_id: string
   title: string
@@ -10,6 +17,7 @@ export interface Case {
   risk_score: number
   created_at: string
   doc_count?: number
+  schema_fields: SchemaField[]
 }
 
 export interface Document {
@@ -107,4 +115,5 @@ export interface CreateCasePayload {
   lead_investigator: string
   case_type: string
   allegation_summary: string
+  schema_fields: SchemaField[]
 }

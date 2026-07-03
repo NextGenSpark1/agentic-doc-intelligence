@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { fetchCase, fetchDocuments, uploadDocumentWithProgress, deleteDocument, extractDocument, updateCase } from '../api'
-import type { Case, Document as CaseDocument } from '../types'
+import type { Case, Document as CaseDocument, SchemaField } from '../types'
+import { PRESET_SCHEMAS, CASE_TYPE_OPTIONS } from '../lib/schemaPresets'
 
 type PendingUpload = { tempId: string; filename: string; progress: number; error: string | null }
 import DocumentViewer from '../components/DocumentViewer'
@@ -47,7 +48,6 @@ function CollapseBtn({ onClick, title, children }: { onClick: () => void; title:
 }
 
 const CASE_STATUSES = ['Intake', 'Active', 'Pending Review', 'Closed', 'Archived']
-const CASE_TYPES = ['procurement_fraud', 'financial_crime', 'corruption', 'general']
 const INPUT_CLS = 'border border-border-strong rounded-lg px-3 py-2 text-sm text-text bg-panel placeholder:text-text-mute focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal transition-colors duration-150 w-full'
 
 function CaseSettingsPanel({ caseData, caseId, onUpdate }: { caseData: Case; caseId: string; onUpdate: (c: Case) => void }) {
@@ -61,6 +61,13 @@ function CaseSettingsPanel({ caseData, caseId, onUpdate }: { caseData: Case; cas
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
 
+  // Schema editor state
+  const [schemaFields, setSchemaFields] = useState<SchemaField[]>(caseData.schema_fields ?? [])
+  const [schemaSaving, setSchemaSaving] = useState(false)
+  const [schemaSaveStatus, setSchemaSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [draft, setDraft] = useState({ name: '', description: '', is_array: false })
+  const [draftError, setDraftError] = useState<string | null>(null)
+
   useEffect(() => {
     setForm({
       title: caseData.title,
@@ -69,6 +76,7 @@ function CaseSettingsPanel({ caseData, caseId, onUpdate }: { caseData: Case; cas
       allegation_summary: caseData.allegation_summary,
       status: caseData.status,
     })
+    setSchemaFields(caseData.schema_fields ?? [])
   }, [caseData.case_id])
 
   async function handleSave() {
@@ -85,6 +93,39 @@ function CaseSettingsPanel({ caseData, caseId, onUpdate }: { caseData: Case; cas
       setSaving(false)
     }
   }
+
+  async function handleSchemaSave() {
+    setSchemaSaving(true)
+    setSchemaSaveStatus('idle')
+    try {
+      const updated = await updateCase(caseId, { schema_fields: schemaFields })
+      onUpdate(updated)
+      setSchemaSaveStatus('success')
+      setTimeout(() => setSchemaSaveStatus('idle'), 3000)
+    } catch {
+      setSchemaSaveStatus('error')
+    } finally {
+      setSchemaSaving(false)
+    }
+  }
+
+  function addField() {
+    const name = draft.name.trim()
+    const description = draft.description.trim()
+    if (!name) { setDraftError('Field name is required.'); return }
+    if (!description) { setDraftError('Description is required.'); return }
+    if (schemaFields.some(f => f.name === name)) { setDraftError('A field with that name already exists.'); return }
+    setSchemaFields(prev => [...prev, { name, description, is_array: draft.is_array, custom: true }])
+    setDraft({ name: '', description: '', is_array: false })
+    setDraftError(null)
+  }
+
+  function removeField(name: string) {
+    setSchemaFields(prev => prev.filter(f => f.name !== name))
+  }
+
+  const presetForType = PRESET_SCHEMAS[form.case_type]?.fields ?? []
+  const hasPresetBase = schemaFields.length > 0 && schemaFields.some(f => !f.custom)
 
   return (
     <div className="flex-1 overflow-y-auto bg-canvas-deep py-8 px-6">
@@ -129,7 +170,7 @@ function CaseSettingsPanel({ caseData, caseId, onUpdate }: { caseData: Case; cas
             <div className="flex flex-col gap-1.5 flex-1">
               <label className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Case Type</label>
               <select className={INPUT_CLS} value={form.case_type} onChange={e => setForm(f => ({ ...f, case_type: e.target.value }))}>
-                {CASE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                {CASE_TYPE_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
               </select>
             </div>
           </div>
@@ -154,6 +195,135 @@ function CaseSettingsPanel({ caseData, caseId, onUpdate }: { caseData: Case; cas
             </button>
             {saveStatus === 'success' && <span className="text-xs text-green">Changes saved</span>}
             {saveStatus === 'error' && <span className="text-xs text-red">Save failed — try again</span>}
+          </div>
+        </div>
+
+        {/* Schema editor */}
+        <div className="bg-panel border border-border rounded-xl p-5 flex flex-col gap-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Extraction Schema</p>
+              <p className="text-xs text-text-mute mt-1">
+                {schemaFields.length === 0
+                  ? `No custom schema — extractions use the ${presetForType.length > 0 ? PRESET_SCHEMAS[form.case_type]?.label ?? 'default' : 'default'} preset.`
+                  : `${schemaFields.filter(f => !f.custom).length} preset + ${schemaFields.filter(f => f.custom).length} custom fields`}
+              </p>
+            </div>
+            {schemaFields.length === 0 && presetForType.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSchemaFields(presetForType)}
+                className="text-xs text-teal hover:underline shrink-0"
+              >
+                Load preset
+              </button>
+            )}
+          </div>
+
+          {/* Current fields */}
+          {schemaFields.length > 0 && (
+            <div className="border border-border rounded-lg overflow-hidden">
+              <div className="divide-y divide-border max-h-56 overflow-y-auto">
+                {schemaFields.map(f => (
+                  <div key={f.name} className="px-3 py-2 flex items-start gap-2">
+                    <span className="text-xs font-mono text-teal mt-0.5 min-w-[120px] shrink-0">{f.name}</span>
+                    <span className="text-xs text-text-mute flex-1">{f.description}</span>
+                    {f.is_array && (
+                      <span className="text-[10px] text-text-mute bg-bg-subtle border border-border rounded px-1 shrink-0">list</span>
+                    )}
+                    {f.custom ? (
+                      <span className="text-[10px] bg-teal/10 text-teal border border-teal/20 rounded px-1 shrink-0">custom</span>
+                    ) : (
+                      <span className="text-[10px] text-text-mute bg-bg-subtle border border-border rounded px-1 shrink-0">preset</span>
+                    )}
+                    {f.custom && (
+                      <button
+                        type="button"
+                        onClick={() => removeField(f.name)}
+                        className="text-text-mute hover:text-red text-sm leading-none shrink-0"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Add custom field */}
+          <div className="border border-border-strong rounded-lg p-3 flex flex-col gap-2">
+            <span className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Add Custom Field</span>
+            {draftError && <p className="text-xs text-red">{draftError}</p>}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={draft.name}
+                onChange={e => setDraft(d => ({ ...d, name: e.target.value.toLowerCase().replace(/\s+/g, '_') }))}
+                placeholder="field_name"
+                className="flex-1 border border-border-strong rounded px-2 py-1.5 text-xs font-mono text-text bg-panel focus:outline-none focus:ring-1 focus:ring-teal/40 placeholder:text-text-mute"
+              />
+              <label className="flex items-center gap-1 text-xs text-text-mid whitespace-nowrap cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={draft.is_array}
+                  onChange={e => setDraft(d => ({ ...d, is_array: e.target.checked }))}
+                  className="accent-teal"
+                />
+                list
+              </label>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={draft.description}
+                onChange={e => setDraft(d => ({ ...d, description: e.target.value }))}
+                placeholder="What should the AI extract for this field?"
+                className="flex-1 border border-border-strong rounded px-2 py-1.5 text-xs text-text bg-panel focus:outline-none focus:ring-1 focus:ring-teal/40 placeholder:text-text-mute"
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addField() } }}
+              />
+              <button
+                type="button"
+                onClick={addField}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-teal rounded hover:bg-teal/90 transition-colors duration-150 shrink-0"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+
+          {/* Reset / clear */}
+          {schemaFields.length > 0 && (
+            <div className="flex items-center gap-3">
+              {hasPresetBase && (
+                <button
+                  type="button"
+                  onClick={() => setSchemaFields(prev => prev.filter(f => !f.custom))}
+                  className="text-xs text-text-mute hover:text-text underline"
+                >
+                  Remove custom fields
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => { setSchemaFields([]); setDraftError(null) }}
+                className="text-xs text-red hover:underline"
+              >
+                Clear all
+              </button>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              onClick={handleSchemaSave}
+              disabled={schemaSaving}
+              className="text-sm font-semibold text-white bg-teal hover:bg-teal-soft px-5 py-2 rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {schemaSaving ? 'Saving…' : 'Save Schema'}
+            </button>
+            {schemaSaveStatus === 'success' && <span className="text-xs text-green">Schema saved</span>}
+            {schemaSaveStatus === 'error' && <span className="text-xs text-red">Save failed — try again</span>}
           </div>
         </div>
       </div>
