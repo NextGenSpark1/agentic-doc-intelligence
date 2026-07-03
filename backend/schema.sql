@@ -1,8 +1,9 @@
 -- Supabase schema for the Investigation Intelligence platform.
 -- Run in the Supabase SQL editor. Enables pgvector for RAG.
 
--- MIGRATION — run once in the Supabase SQL editor if upgrading an existing database:
--- ALTER TABLE extractions ADD COLUMN IF NOT EXISTS summary text;
+-- MIGRATIONS — run once in the Supabase SQL editor if upgrading an existing database:
+ALTER TABLE extractions ADD COLUMN IF NOT EXISTS summary text;
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS schema_fields jsonb DEFAULT '[]'::jsonb;
 
 create extension if not exists vector;
 

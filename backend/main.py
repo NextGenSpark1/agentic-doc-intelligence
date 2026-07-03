@@ -71,6 +71,7 @@ class CaseCreate(BaseModel):
     case_type: str
     lead_investigator: str
     allegation_summary: str = ""
+    schema_fields: list[dict] = []
 
 
 class CasePatch(BaseModel):
@@ -79,6 +80,7 @@ class CasePatch(BaseModel):
     status: str | None = None
     lead_investigator: str | None = None
     allegation_summary: str | None = None
+    schema_fields: list[dict] | None = None
 
 
 class FindingReview(BaseModel):
@@ -104,6 +106,7 @@ async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
         "status": "Intake",
         "lead_investigator": body.lead_investigator,
         "allegation_summary": body.allegation_summary,
+        "schema_fields": body.schema_fields,
         "risk_score": 0.0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }

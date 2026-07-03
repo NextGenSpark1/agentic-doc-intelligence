@@ -53,8 +53,34 @@ class CommunicationIntelligence(BaseModel):
     payment_references: list[str] = Field(default_factory=list, description="Amounts or payment references mentioned")
 
 
+class FinancialCrime(BaseModel):
+    account_numbers: list[str] = Field(default_factory=list, description="Bank or financial account numbers mentioned")
+    counterparties: list[str] = Field(default_factory=list, description="Individuals or entities on the other side of transactions")
+    transaction_amounts: list[str] = Field(default_factory=list, description="All transaction amounts mentioned")
+    flagged_transactions: list[str] = Field(default_factory=list, description="Transactions identified as suspicious or irregular")
+    reporting_entity: Optional[str] = Field(None, description="Entity that filed or submitted the report")
+    investigation_reference: Optional[str] = Field(None, description="Reference number for this investigation or report")
+
+
+class CorruptionRecord(BaseModel):
+    involved_parties: list[str] = Field(default_factory=list, description="Individuals or entities involved in the alleged corruption")
+    benefit_value: Optional[str] = Field(None, description="Value or amount of the benefit received or offered")
+    benefit_type: Optional[str] = Field(None, description="Nature of the benefit (cash, contract, gift, etc.)")
+    relationship_type: Optional[str] = Field(None, description="Relationship between the parties (official, contractor, etc.)")
+    evidence_of_concealment: Optional[str] = Field(None, description="Evidence of attempts to hide or obscure the corruption")
+    jurisdiction: Optional[str] = Field(None, description="Legal jurisdiction applicable to this case")
+
+
+class GeneralDocument(BaseModel):
+    party_names: list[str] = Field(default_factory=list, description="All named parties in the document")
+    key_dates: list[str] = Field(default_factory=list, description="Important dates mentioned")
+    key_amounts: list[str] = Field(default_factory=list, description="Financial amounts or values mentioned")
+    document_type: Optional[str] = Field(None, description="Type of document (contract, invoice, letter, etc.)")
+    signatories: list[str] = Field(default_factory=list, description="Individuals who signed or executed the document")
+    key_clauses: list[str] = Field(default_factory=list, description="Important clauses or terms")
+
+
 # Maps the dashboard's Case Type -> the schema used to extract its documents.
-# (The Settings page states Case Type "is used to select extraction schema".)
 SCHEMA_REGISTRY: dict[str, Type[BaseModel]] = {
     "procurement": ProcurementRecord,
     "procurement_fraud": ProcurementRecord,
@@ -63,10 +89,13 @@ SCHEMA_REGISTRY: dict[str, Type[BaseModel]] = {
     "conflict_of_interest": ConflictOfInterest,
     "communication": CommunicationIntelligence,
     "audit": FinancialTransaction,
+    "financial_crime": FinancialCrime,
+    "corruption": CorruptionRecord,
+    "general": GeneralDocument,
 }
 
 
 def schema_for_case_type(case_type: str) -> Type[BaseModel]:
-    """Pick the extraction schema for a case type, defaulting to FinancialTransaction."""
+    """Pick the extraction schema for a case type, defaulting to GeneralDocument."""
     key = (case_type or "").strip().lower().replace(" ", "_")
-    return SCHEMA_REGISTRY.get(key, FinancialTransaction)
+    return SCHEMA_REGISTRY.get(key, GeneralDocument)
