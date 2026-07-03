@@ -32,6 +32,13 @@ export interface Document {
   uploaded_at: string
 }
 
+export interface DocumentChunk {
+  chunk_id: string
+  text: string
+  page: number | null
+  bbox: [number, number, number, number] | []
+}
+
 export interface Extraction {
   extraction_id: string
   document_id: string

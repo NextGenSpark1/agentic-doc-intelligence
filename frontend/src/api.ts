@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocument, Extraction, ChatResponse, Finding, TimelineEvent, Entity, Relationship } from './types'
+import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocument, Extraction, ChatResponse, Finding, TimelineEvent, Entity, Relationship, DocumentChunk } from './types'
 
 type CasePatch = Partial<Pick<Case, 'title' | 'case_type' | 'status' | 'lead_investigator' | 'allegation_summary' | 'schema_fields'>>
 import { supabase } from './lib/supabaseClient'
@@ -62,6 +62,11 @@ export async function fetchExtraction(caseId: string, documentId: string): Promi
     if (axios.isAxiosError(err) && err.response?.status === 404) return null
     throw err
   }
+}
+
+export async function fetchDocumentChunks(caseId: string, documentId: string): Promise<DocumentChunk[]> {
+  const response = await client.get<{ chunks: DocumentChunk[] }>(`/cases/${caseId}/documents/${documentId}/chunks`)
+  return response.data.chunks
 }
 
 export async function fetchSummary(caseId: string, documentId: string): Promise<{ summary: string } | null> {

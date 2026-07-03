@@ -279,6 +279,15 @@ async def get_document_file_url(case_id: str, document_id: str, user: dict = Dep
     return {"url": url}
 
 
+@app.get("/cases/{case_id}/documents/{document_id}/chunks")
+async def get_document_chunks(case_id: str, document_id: str, user: dict = Depends(get_current_user)):
+    doc = await asyncio.to_thread(db.get_document, document_id)
+    if not doc or doc.get("case_id") != case_id:
+        raise HTTPException(404, "document not found")
+    chunks = await asyncio.to_thread(db.list_chunks, document_id)
+    return {"chunks": [{"chunk_id": c["chunk_id"], "text": c["text"], "page": c["page"], "bbox": c["bbox"] or []} for c in chunks]}
+
+
 # ------------------------- case analysis --------------------------
 @app.post("/cases/{case_id}/analysis", status_code=202)
 async def run_analysis(case_id: str, background: BackgroundTasks, user: dict = Depends(get_current_user)):
