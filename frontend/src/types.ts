@@ -35,6 +35,7 @@ export interface Document {
 export interface DocumentChunk {
   chunk_id: string
   text: string
+  type: string
   page: number | null
   bbox: [number, number, number, number] | []
 }

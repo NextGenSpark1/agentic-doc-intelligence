@@ -85,6 +85,7 @@ def _index_chunks(case_id: str, document_id: str, chunks: list[dict]) -> None:
                 "document_id": document_id,
                 "chunk_id": c.get("chunk_id") or str(uuid.uuid4()),
                 "text": c["text"],
+                "type": c.get("type") or "text",
                 "page": grounding.get("page"),
                 "bbox": grounding.get("bbox") or [],
                 "embedding": vectors[vi],

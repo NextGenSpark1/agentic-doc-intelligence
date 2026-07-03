@@ -285,7 +285,7 @@ async def get_document_chunks(case_id: str, document_id: str, user: dict = Depen
     if not doc or doc.get("case_id") != case_id:
         raise HTTPException(404, "document not found")
     chunks = await asyncio.to_thread(db.list_chunks, document_id)
-    return {"chunks": [{"chunk_id": c["chunk_id"], "text": c["text"], "page": c["page"], "bbox": c["bbox"] or []} for c in chunks]}
+    return {"chunks": [{"chunk_id": c["chunk_id"], "text": c["text"], "type": c.get("type") or "text", "page": c["page"], "bbox": c["bbox"] or []} for c in chunks]}
 
 
 # ------------------------- case analysis --------------------------

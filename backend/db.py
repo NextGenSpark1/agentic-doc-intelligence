@@ -117,7 +117,7 @@ def insert_chunks(rows: list[dict]) -> None:
 def list_chunks(document_id: str) -> list[dict]:
     return (
         get_client().table("chunks")
-        .select("chunk_id,text,page,bbox")
+        .select("chunk_id,text,type,page,bbox")
         .eq("document_id", document_id)
         .execute()
         .data or []

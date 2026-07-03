@@ -30,6 +30,30 @@ function renderFieldValue(val: unknown): string {
   return JSON.stringify(val)
 }
 
+const CHUNK_LEGEND = [
+  { label: 'Text',   color: '#0E7C86' },
+  { label: 'Table',  color: '#F59E0B' },
+  { label: 'Figure', color: '#8B5CF6' },
+  { label: 'Header', color: '#1E3A5F' },
+]
+
+function chunkColors(type: string, hovered: boolean): { bg: string; border: string } {
+  const t = type.toLowerCase()
+  if (t === 'table') {
+    return { bg: `rgba(245,158,11,${hovered ? 0.30 : 0.15})`, border: '#F59E0B' }
+  }
+  if (t.startsWith('fig') || t === 'image') {
+    return { bg: `rgba(139,92,246,${hovered ? 0.30 : 0.15})`, border: '#8B5CF6' }
+  }
+  if (t === 'header' || t === 'title') {
+    return { bg: `rgba(30,58,95,${hovered ? 0.25 : 0.12})`, border: '#1E3A5F' }
+  }
+  if (t === 'text' || t === 'paragraph' || t === '') {
+    return { bg: `rgba(14,124,134,${hovered ? 0.25 : 0.10})`, border: '#0E7C86' }
+  }
+  return { bg: `rgba(156,163,175,${hovered ? 0.25 : 0.10})`, border: '#9CA3AF' }
+}
+
 function ChevronIcon({ open }: { open: boolean }) {
   return (
     <svg
@@ -197,12 +221,13 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
                       renderAnnotationLayer
                       onRenderSuccess={() => setPageRendered(true)}
                     />
-                    {/* Chunk overlays */}
+                    {/* Chunk overlays — color coded by type */}
                     {showOverlay && pageRendered && chunks
                       .filter(c => c.page === pageNumber - 1 && Array.isArray(c.bbox) && c.bbox.length === 4)
                       .map(c => {
                         const [l, t, r, b] = c.bbox as [number, number, number, number]
                         const isHovered = hoveredChunk === c.chunk_id
+                        const { bg, border } = chunkColors(c.type, isHovered)
                         return (
                           <div
                             key={c.chunk_id}
@@ -214,8 +239,8 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
                               top: `${t * 100}%`,
                               width: `${(r - l) * 100}%`,
                               height: `${(b - t) * 100}%`,
-                              backgroundColor: isHovered ? 'rgba(0,190,172,0.25)' : 'rgba(0,190,172,0.10)',
-                              border: '1px solid rgba(0,190,172,0.5)',
+                              backgroundColor: bg,
+                              border: `1px solid ${border}`,
                               borderRadius: 2,
                               cursor: 'default',
                               zIndex: 10,
@@ -241,6 +266,10 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
                                 whiteSpace: 'pre-wrap',
                                 wordBreak: 'break-word',
                               }}>
+                                <span style={{ color: border, fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                  {c.type || 'text'}
+                                </span>
+                                <br />
                                 {c.text.slice(0, 200)}{c.text.length > 200 ? '…' : ''}
                               </div>
                             )}
@@ -277,16 +306,28 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
               )}
               <div className="flex-1" />
               {chunks.length > 0 && (
-                <button
-                  onClick={() => setShowOverlay(v => !v)}
-                  className={`text-xs px-3 py-1 rounded border transition-colors duration-150 ${
-                    showOverlay
-                      ? 'border-teal text-teal bg-teal/10'
-                      : 'border-border text-text-mute hover:border-border-strong hover:text-text'
-                  }`}
-                >
-                  {showOverlay ? 'Hide regions' : 'Show regions'}
-                </button>
+                <>
+                  {showOverlay && (
+                    <div className="flex items-center gap-2">
+                      {CHUNK_LEGEND.map(({ label, color }) => (
+                        <span key={label} className="flex items-center gap-1">
+                          <span style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: color, display: 'inline-block', flexShrink: 0 }} />
+                          <span className="text-[10px] text-text-mute">{label}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setShowOverlay(v => !v)}
+                    className={`text-xs px-3 py-1 rounded border transition-colors duration-150 ${
+                      showOverlay
+                        ? 'border-teal text-teal bg-teal/10'
+                        : 'border-border text-text-mute hover:border-border-strong hover:text-text'
+                    }`}
+                  >
+                    {showOverlay ? 'Hide regions' : 'Show regions'}
+                  </button>
+                </>
               )}
             </div>
           </div>
