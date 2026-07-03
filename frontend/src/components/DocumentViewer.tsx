@@ -10,7 +10,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString()
 
-type Tab = 'document' | 'fields' | 'raw' | 'summary'
+type Tab = 'viewer' | 'raw' | 'summary'
 
 interface Props {
   doc: CaseDocument
@@ -30,76 +30,22 @@ function renderFieldValue(val: unknown): string {
   return JSON.stringify(val)
 }
 
-function ExtractionEmptyState({ status, onExtract }: { status: string; onExtract: () => void }) {
-  if (status === 'queued' || status === 'processing') {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
-        <div className="w-5 h-5 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
-        <p className="text-sm font-medium text-text-mid">Extracting document…</p>
-        <p className="text-xs text-text-mute">This usually takes 20–30 seconds</p>
-      </div>
-    )
-  }
-
-  if (status === 'failed') {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
-        <div className="w-9 h-9 bg-red-bg border border-red/20 rounded-lg flex items-center justify-center">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B4232A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-        </div>
-        <p className="text-sm font-medium text-text-mid">Extraction failed</p>
-        <p className="text-xs text-text-mute">Something went wrong during document processing.</p>
-        <button
-          onClick={onExtract}
-          className="mt-1 text-xs font-semibold text-white bg-red hover:bg-red/80 px-4 py-2 rounded-lg transition-colors duration-150"
-        >
-          Retry Extraction
-        </button>
-      </div>
-    )
-  }
-
-  if (status === 'done') {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-6">
-        <div className="w-2 h-2 rounded-full mb-1 bg-[#878E99]" />
-        <p className="text-sm font-medium text-text-mid">No data available</p>
-        <p className="text-xs text-text-mute">No extraction data found for this document.</p>
-      </div>
-    )
-  }
-
-  // "uploaded" — default
+function ChevronIcon({ open }: { open: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
-      <div className="w-9 h-9 bg-panel-2 border border-border rounded-lg flex items-center justify-center">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#878E99" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="9" y1="13" x2="15" y2="13" />
-          <line x1="9" y1="17" x2="15" y2="17" />
-        </svg>
-      </div>
-      <p className="text-sm font-medium text-text-mid">Not yet extracted</p>
-      <p className="text-xs text-text-mute">Run extraction to view fields, raw text, and summary.</p>
-      <button
-        onClick={onExtract}
-        className="mt-1 text-xs font-semibold text-white bg-teal hover:bg-teal-soft px-4 py-2 rounded-lg transition-colors duration-150"
-      >
-        Extract Document
-      </button>
-    </div>
+    <svg
+      width="12" height="12" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+      style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease' }}
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
   )
 }
 
 export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
-  const [activeTab, setActiveTab] = useState<Tab>('document')
+  const [activeTab, setActiveTab] = useState<Tab>('viewer')
 
-  // Document tab state
+  // PDF state
   const [fileUrl, setFileUrl] = useState<string | null>(null)
   const [urlLoading, setUrlLoading] = useState(true)
   const [urlError, setUrlError] = useState<string | null>(null)
@@ -108,11 +54,11 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
 
-  // Extraction tab state — undefined = loading, null = not available
+  // Extraction state — undefined = loading, null = unavailable
   const [extraction, setExtraction] = useState<Extraction | null | undefined>(undefined)
   const [extractionError, setExtractionError] = useState<string | null>(null)
 
-  // Summary tab state — undefined = loading, null = not available
+  // Summary state — undefined = loading, null = unavailable
   const [summary, setSummary] = useState<string | null | undefined>(undefined)
   const [summaryError, setSummaryError] = useState<string | null>(null)
 
@@ -121,29 +67,37 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
   const [showOverlay, setShowOverlay] = useState(false)
   const [hoveredChunk, setHoveredChunk] = useState<string | null>(null)
   const pageContainerRef = useRef<HTMLDivElement>(null)
-  const [pageSize, setPageSize] = useState<{ w: number; h: number } | null>(null)
+  const [pageRendered, setPageRendered] = useState(false)
 
-  // Reset file viewer and fetch URL when document changes
+  // Right panel collapsible sections
+  const [summaryOpen, setSummaryOpen] = useState(false)
+  const [rawOpen, setRawOpen] = useState(false)
+
+  // Reset when document changes
   useEffect(() => {
-    setActiveTab('document')
+    setActiveTab('viewer')
     setFileUrl(null)
     setUrlLoading(true)
     setUrlError(null)
     setNumPages(null)
     setPageNumber(1)
+    setShowOverlay(false)
+    setHoveredChunk(null)
+    setPageRendered(false)
 
     fetchFileUrl(caseId, doc.document_id)
       .then((url) => { setFileUrl(url); setUrlLoading(false) })
       .catch((err: Error) => { setUrlError(err.message); setUrlLoading(false) })
   }, [doc.document_id, caseId])
 
-  // Fetch extraction data when document changes or extraction_status becomes "done"
+  // Fetch extraction data when status becomes 'done'
   useEffect(() => {
     const isDone = doc.extraction_status === 'done'
     setExtraction(isDone ? undefined : null)
     setExtractionError(null)
     setSummary(isDone ? undefined : null)
     setSummaryError(null)
+    setChunks([])
 
     if (!isDone) return
 
@@ -160,7 +114,7 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
       .catch(() => setChunks([]))
   }, [doc.document_id, caseId, doc.extraction_status])
 
-  // Track container width for Phase 2 overlays
+  // Track outer container width
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -170,25 +124,30 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
     return () => obs.disconnect()
   }, [])
 
-  const pageWidth = containerWidth > 64 ? Math.min(containerWidth - 64, 900) : undefined
+  // PDF renders in the left 60% column; subtract padding for safe render width
+  const pdfPanelWidth = Math.round(containerWidth * 0.6)
+  const pageWidth = pdfPanelWidth > 64 ? Math.min(pdfPanelWidth - 32, 900) : undefined
 
-  // Observe the rendered page element to get actual pixel dimensions for bbox overlays
-  useEffect(() => {
-    const el = pageContainerRef.current
-    if (!el) return
-    const obs = new ResizeObserver(([entry]) => {
-      setPageSize({ w: entry.contentRect.width, h: entry.contentRect.height })
-    })
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [pageNumber, pageWidth])
+  async function loadSummary() {
+    setSummary(undefined)
+    setSummaryError(null)
+    try {
+      const data = await fetchSummary(caseId, doc.document_id)
+      setSummary(data?.summary ?? null)
+    } catch (err: unknown) {
+      setSummaryError(err instanceof Error ? err.message : 'Failed to load summary')
+      setSummary(null)
+    }
+  }
 
   const TABS: { id: Tab; label: string }[] = [
-    { id: 'document', label: 'Document' },
-    { id: 'fields',   label: 'Extracted Fields' },
-    { id: 'raw',      label: 'Raw Text' },
-    { id: 'summary',  label: 'Summary' },
+    { id: 'viewer',  label: 'Viewer' },
+    { id: 'raw',     label: 'Raw Text' },
+    { id: 'summary', label: 'Summary' },
   ]
+
+  const status = doc.extraction_status
+  const fieldEntries = extraction ? Object.entries(extraction.extracted_json) : []
 
   return (
     <div className="flex flex-col h-full" ref={containerRef}>
@@ -198,75 +157,72 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
           <button
             key={id}
             onClick={() => setActiveTab(id)}
-            className={`
-              px-3 py-2.5 text-xs font-medium border-b-2 transition-colors duration-150 -mb-px
-              ${activeTab === id
+            className={`px-3 py-2.5 text-xs font-medium border-b-2 transition-colors duration-150 -mb-px ${
+              activeTab === id
                 ? 'text-navy border-teal'
-                : 'text-text-mute border-transparent hover:text-text hover:border-border-strong'}
-            `}
+                : 'text-text-mute border-transparent hover:text-text hover:border-border-strong'
+            }`}
           >
             {label}
           </button>
         ))}
       </div>
 
-      {/* ── Document tab ── */}
-      {activeTab === 'document' && (
-        <>
-          <div className="flex-1 overflow-y-auto flex flex-col items-center py-6 bg-canvas-deep">
-            {urlLoading && <p className="text-xs text-text-mute mt-10">Loading…</p>}
-            {urlError && (
-              <p className="text-xs text-red mt-10 px-6 text-center">
-                Failed to load document: {urlError}
-              </p>
-            )}
-            {fileUrl && (
-              <Document
-                file={fileUrl}
-                onLoadSuccess={({ numPages: n }) => setNumPages(n)}
-                onLoadError={(err) => { setUrlError(err.message); setUrlLoading(false) }}
-                loading={<p className="text-xs text-text-mute mt-10">Rendering PDF…</p>}
-                error={<p className="text-xs text-red mt-10">Could not render PDF.</p>}
-              >
-                <div className="relative shadow-md" ref={pageContainerRef}>
-                  <Page
-                    pageNumber={pageNumber}
-                    width={pageWidth}
-                    renderTextLayer
-                    renderAnnotationLayer
-                    onRenderSuccess={() => {
-                      if (pageContainerRef.current) {
-                        const el = pageContainerRef.current
-                        setPageSize({ w: el.clientWidth, h: el.clientHeight })
-                      }
-                    }}
-                  />
-                  {/* Chunk overlays */}
-                  {showOverlay && pageSize && chunks
-                    .filter(c => c.page === pageNumber - 1 && Array.isArray(c.bbox) && c.bbox.length === 4)
-                    .map(c => {
-                      const [l, t, r, b] = c.bbox as [number, number, number, number]
-                      return (
-                        <div
-                          key={c.chunk_id}
-                          onMouseEnter={() => setHoveredChunk(c.chunk_id)}
-                          onMouseLeave={() => setHoveredChunk(null)}
-                          style={{
-                            position: 'absolute',
-                            left: `${l * 100}%`,
-                            top: `${t * 100}%`,
-                            width: `${(r - l) * 100}%`,
-                            height: `${(b - t) * 100}%`,
-                            backgroundColor: hoveredChunk === c.chunk_id ? 'rgba(0,190,172,0.25)' : 'rgba(0,190,172,0.10)',
-                            border: '1px solid rgba(0,190,172,0.5)',
-                            borderRadius: 2,
-                            cursor: 'default',
-                            zIndex: 10,
-                          }}
-                        >
-                          {hoveredChunk === c.chunk_id && (
-                            <div
-                              style={{
+      {/* ── Viewer tab: side-by-side PDF + extraction panel ── */}
+      {activeTab === 'viewer' && (
+        <div className="flex flex-1 overflow-hidden">
+
+          {/* Left column — PDF viewer (60%) */}
+          <div className="flex flex-col overflow-hidden" style={{ flex: '0 0 60%' }}>
+            <div className="flex-1 overflow-y-auto flex flex-col items-center py-6 bg-canvas-deep">
+              {urlLoading && <p className="text-xs text-text-mute mt-10">Loading…</p>}
+              {urlError && (
+                <p className="text-xs text-red mt-10 px-6 text-center">
+                  Failed to load document: {urlError}
+                </p>
+              )}
+              {fileUrl && (
+                <Document
+                  file={fileUrl}
+                  onLoadSuccess={({ numPages: n }) => setNumPages(n)}
+                  onLoadError={(err) => { setUrlError(err.message); setUrlLoading(false) }}
+                  loading={<p className="text-xs text-text-mute mt-10">Rendering PDF…</p>}
+                  error={<p className="text-xs text-red mt-10">Could not render PDF.</p>}
+                >
+                  <div className="relative shadow-md" ref={pageContainerRef}>
+                    <Page
+                      pageNumber={pageNumber}
+                      width={pageWidth}
+                      renderTextLayer
+                      renderAnnotationLayer
+                      onRenderSuccess={() => setPageRendered(true)}
+                    />
+                    {/* Chunk overlays */}
+                    {showOverlay && pageRendered && chunks
+                      .filter(c => c.page === pageNumber - 1 && Array.isArray(c.bbox) && c.bbox.length === 4)
+                      .map(c => {
+                        const [l, t, r, b] = c.bbox as [number, number, number, number]
+                        const isHovered = hoveredChunk === c.chunk_id
+                        return (
+                          <div
+                            key={c.chunk_id}
+                            onMouseEnter={() => setHoveredChunk(c.chunk_id)}
+                            onMouseLeave={() => setHoveredChunk(null)}
+                            style={{
+                              position: 'absolute',
+                              left: `${l * 100}%`,
+                              top: `${t * 100}%`,
+                              width: `${(r - l) * 100}%`,
+                              height: `${(b - t) * 100}%`,
+                              backgroundColor: isHovered ? 'rgba(0,190,172,0.25)' : 'rgba(0,190,172,0.10)',
+                              border: '1px solid rgba(0,190,172,0.5)',
+                              borderRadius: 2,
+                              cursor: 'default',
+                              zIndex: 10,
+                            }}
+                          >
+                            {isHovered && (
+                              <div style={{
                                 position: 'absolute',
                                 top: '100%',
                                 left: 0,
@@ -275,7 +231,7 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
                                 border: '1px solid #2E3A4E',
                                 borderRadius: 6,
                                 padding: '6px 8px',
-                                maxWidth: 280,
+                                maxWidth: 260,
                                 fontSize: 11,
                                 color: '#CBD2DE',
                                 lineHeight: 1.5,
@@ -284,111 +240,240 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
                                 boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
                                 whiteSpace: 'pre-wrap',
                                 wordBreak: 'break-word',
-                              }}
-                            >
-                              {c.text.slice(0, 200)}{c.text.length > 200 ? '…' : ''}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                </div>
-              </Document>
-            )}
-          </div>
-
-          <div className="shrink-0 border-t border-border bg-panel flex items-center gap-4 px-4 py-2">
-            {numPages !== null && (
-              <>
-                <button
-                  onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
-                  disabled={pageNumber <= 1}
-                  className="text-xs px-3 py-1.5 rounded border border-border text-text-mid hover:bg-panel-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
-                >
-                  ← Prev
-                </button>
-                <span className="text-xs font-mono text-text-mute tabular-nums select-none">
-                  {pageNumber} / {numPages}
-                </span>
-                <button
-                  onClick={() => setPageNumber((p) => Math.min(numPages!, p + 1))}
-                  disabled={pageNumber >= numPages}
-                  className="text-xs px-3 py-1.5 rounded border border-border text-text-mid hover:bg-panel-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
-                >
-                  Next →
-                </button>
-              </>
-            )}
-            <div className="flex-1" />
-            {chunks.length > 0 && (
-              <button
-                onClick={() => setShowOverlay(v => !v)}
-                className={`text-xs px-3 py-1.5 rounded border transition-colors duration-150 ${
-                  showOverlay
-                    ? 'border-teal text-teal bg-teal/10'
-                    : 'border-border text-text-mute hover:border-border-strong hover:text-text'
-                }`}
-              >
-                {showOverlay ? 'Hide regions' : 'Show regions'}
-              </button>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* ── Extracted Fields tab ── */}
-      {activeTab === 'fields' && (
-        <div className="flex-1 overflow-y-auto bg-panel">
-          {extraction === undefined && (
-            <p className="text-xs text-text-mute text-center mt-10">Loading…</p>
-          )}
-          {extractionError && (
-            <p className="text-xs text-red text-center mt-10 px-6">{extractionError}</p>
-          )}
-          {extraction === null && !extractionError && (
-            <ExtractionEmptyState status={doc.extraction_status} onExtract={onExtract} />
-          )}
-          {extraction && (
-            <>
-              {Object.keys(extraction.extracted_json).length === 0 ? (
-                <ExtractionEmptyState status={doc.extraction_status} onExtract={onExtract} />
-              ) : (
-                <div className="p-4 flex flex-col gap-0">
-                  <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider mb-3">
-                    {extraction.schema_name ?? 'Extracted Fields'}
-                  </p>
-                  {Object.entries(extraction.extracted_json).map(([key, val]) => (
-                    <div
-                      key={key}
-                      className="flex flex-col gap-0.5 py-2.5 border-b border-border last:border-0"
-                    >
-                      <span className="text-[10px] font-semibold text-text-mute uppercase tracking-wide">
-                        {formatFieldName(key)}
-                      </span>
-                      <span className="text-sm text-text">{renderFieldValue(val)}</span>
-                    </div>
-                  ))}
-                </div>
+                              }}>
+                                {c.text.slice(0, 200)}{c.text.length > 200 ? '…' : ''}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                  </div>
+                </Document>
               )}
-            </>
-          )}
+            </div>
+
+            {/* PDF footer: page nav + overlay toggle */}
+            <div className="shrink-0 border-t border-border bg-panel flex items-center gap-3 px-4 py-2">
+              {numPages !== null && (
+                <>
+                  <button
+                    onClick={() => { setPageNumber(p => Math.max(1, p - 1)); setPageRendered(false) }}
+                    disabled={pageNumber <= 1}
+                    className="text-xs px-2.5 py-1 rounded border border-border text-text-mid hover:bg-panel-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
+                  >
+                    ←
+                  </button>
+                  <span className="text-xs font-mono text-text-mute tabular-nums select-none">
+                    {pageNumber} / {numPages}
+                  </span>
+                  <button
+                    onClick={() => { setPageNumber(p => Math.min(numPages!, p + 1)); setPageRendered(false) }}
+                    disabled={pageNumber >= numPages}
+                    className="text-xs px-2.5 py-1 rounded border border-border text-text-mid hover:bg-panel-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
+                  >
+                    →
+                  </button>
+                </>
+              )}
+              <div className="flex-1" />
+              {chunks.length > 0 && (
+                <button
+                  onClick={() => setShowOverlay(v => !v)}
+                  className={`text-xs px-3 py-1 rounded border transition-colors duration-150 ${
+                    showOverlay
+                      ? 'border-teal text-teal bg-teal/10'
+                      : 'border-border text-text-mute hover:border-border-strong hover:text-text'
+                  }`}
+                >
+                  {showOverlay ? 'Hide regions' : 'Show regions'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Right column — extraction panel (40%) */}
+          <div className="flex flex-col border-l border-border overflow-hidden" style={{ flex: '0 0 40%' }}>
+            <div className="flex-1 overflow-y-auto bg-panel">
+
+              {/* ── Section 1: Extracted Fields (always visible) ── */}
+              <div>
+                <div className="px-4 py-3 border-b border-border">
+                  <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">
+                    Extracted Fields
+                  </p>
+                </div>
+
+                {status === 'uploaded' && (
+                  <div className="flex flex-col items-center gap-2 py-8 text-center px-4">
+                    <p className="text-xs text-text-mute">Run extraction to see fields.</p>
+                    <button
+                      onClick={onExtract}
+                      className="text-xs font-semibold text-white bg-teal hover:bg-teal-soft px-3 py-1.5 rounded-lg transition-colors duration-150"
+                    >
+                      Extract Document
+                    </button>
+                  </div>
+                )}
+
+                {(status === 'queued' || status === 'processing') && (
+                  <div className="flex flex-col items-center gap-2 py-8 text-center px-4">
+                    <div className="w-4 h-4 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
+                    <p className="text-xs font-medium text-text-mid">Extracting…</p>
+                    <p className="text-[10px] text-text-mute">Usually 20–30 seconds</p>
+                  </div>
+                )}
+
+                {status === 'failed' && (
+                  <div className="flex flex-col items-center gap-2 py-8 text-center px-4">
+                    <p className="text-xs font-medium text-text-mid">Extraction failed</p>
+                    <button
+                      onClick={onExtract}
+                      className="text-xs text-white bg-red hover:bg-red/80 px-3 py-1.5 rounded transition-colors duration-150"
+                    >
+                      Retry Extraction
+                    </button>
+                  </div>
+                )}
+
+                {status === 'done' && extraction === undefined && !extractionError && (
+                  <p className="text-xs text-text-mute text-center py-8">Loading…</p>
+                )}
+
+                {status === 'done' && extractionError && (
+                  <p className="text-xs text-red text-center py-8 px-4">{extractionError}</p>
+                )}
+
+                {status === 'done' && extraction !== undefined && !extractionError && fieldEntries.length === 0 && (
+                  <p className="text-xs text-text-mute text-center py-8">No fields extracted.</p>
+                )}
+
+                {status === 'done' && extraction && fieldEntries.length > 0 && (
+                  <div className="flex flex-col">
+                    <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider px-4 pt-3 pb-1">
+                      {extraction.schema_name ?? 'Fields'}
+                    </p>
+                    {fieldEntries.map(([key, val]) => (
+                      <div key={key} className="px-4 py-2.5 border-b border-border last:border-0">
+                        <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wide mb-0.5">
+                          {formatFieldName(key)}
+                        </p>
+                        <p className="text-sm text-text">{renderFieldValue(val)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Section 2: Summary (collapsible) ── */}
+              <div className="border-t border-border">
+                <button
+                  onClick={() => setSummaryOpen(v => !v)}
+                  className="w-full px-4 py-3 flex items-center justify-between hover:bg-panel-2 transition-colors duration-150"
+                >
+                  <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Summary</p>
+                  <span className="text-text-mute">
+                    <ChevronIcon open={summaryOpen} />
+                  </span>
+                </button>
+                {summaryOpen && (
+                  <div className="pb-4">
+                    {status !== 'done' && (
+                      <p className="text-xs text-text-mute px-4">Extract the document first.</p>
+                    )}
+                    {status === 'done' && summary === undefined && (
+                      <div className="flex justify-center px-4">
+                        <div className="w-3.5 h-3.5 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
+                      </div>
+                    )}
+                    {status === 'done' && summaryError && (
+                      <div className="px-4 flex flex-col gap-1">
+                        <p className="text-xs text-red">{summaryError}</p>
+                        <button onClick={loadSummary} className="text-xs text-teal hover:underline self-start">
+                          Retry
+                        </button>
+                      </div>
+                    )}
+                    {status === 'done' && summary === null && !summaryError && (
+                      <div className="px-4">
+                        <button
+                          onClick={loadSummary}
+                          className="text-xs font-medium text-white bg-teal hover:bg-teal-soft px-3 py-1.5 rounded-lg transition-colors duration-150"
+                        >
+                          Generate Summary
+                        </button>
+                      </div>
+                    )}
+                    {summary && (
+                      <p className="text-sm text-text leading-relaxed px-4">{summary}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Section 3: Raw Text (collapsible) ── */}
+              <div className="border-t border-border">
+                <button
+                  onClick={() => setRawOpen(v => !v)}
+                  className="w-full px-4 py-3 flex items-center justify-between hover:bg-panel-2 transition-colors duration-150"
+                >
+                  <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Raw Text</p>
+                  <span className="text-text-mute">
+                    <ChevronIcon open={rawOpen} />
+                  </span>
+                </button>
+                {rawOpen && (
+                  <div className="pb-4">
+                    {status !== 'done' && (
+                      <p className="text-xs text-text-mute px-4">Extract the document first.</p>
+                    )}
+                    {status === 'done' && extraction === undefined && !extractionError && (
+                      <div className="flex justify-center px-4">
+                        <div className="w-3.5 h-3.5 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
+                      </div>
+                    )}
+                    {status === 'done' && extractionError && (
+                      <p className="text-xs text-red px-4">{extractionError}</p>
+                    )}
+                    {status === 'done' && extraction && !extraction.raw_text && (
+                      <p className="text-xs text-text-mute px-4">No raw text available.</p>
+                    )}
+                    {extraction?.raw_text && (
+                      <pre className="px-4 text-[11px] font-mono text-text-mid leading-relaxed whitespace-pre-wrap break-words overflow-x-auto max-h-96">
+                        {extraction.raw_text}
+                      </pre>
+                    )}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
         </div>
       )}
 
-      {/* ── Raw Text tab ── */}
+      {/* ── Raw Text tab (full-width, for reading/copying) ── */}
       {activeTab === 'raw' && (
         <div className="flex-1 overflow-y-auto bg-panel">
-          {extraction === undefined && (
+          {status !== 'done' && (
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
+              <p className="text-sm font-medium text-text-mid">Not yet extracted</p>
+              <p className="text-xs text-text-mute">Run extraction to view raw text.</p>
+              <button
+                onClick={onExtract}
+                className="mt-1 text-xs font-semibold text-white bg-teal hover:bg-teal-soft px-4 py-2 rounded-lg transition-colors duration-150"
+              >
+                Extract Document
+              </button>
+            </div>
+          )}
+          {status === 'done' && extraction === undefined && !extractionError && (
             <p className="text-xs text-text-mute text-center mt-10">Loading…</p>
           )}
-          {extractionError && (
+          {status === 'done' && extractionError && (
             <p className="text-xs text-red text-center mt-10 px-6">{extractionError}</p>
           )}
-          {extraction === null && !extractionError && (
-            <ExtractionEmptyState status={doc.extraction_status} onExtract={onExtract} />
-          )}
-          {extraction && !extraction.raw_text && (
-            <ExtractionEmptyState status={doc.extraction_status} onExtract={onExtract} />
+          {status === 'done' && extraction && !extraction.raw_text && !extractionError && (
+            <p className="text-xs text-text-mute text-center mt-10">No raw text available.</p>
           )}
           {extraction?.raw_text && (
             <pre className="p-4 text-[11px] font-mono text-text-mid leading-relaxed whitespace-pre-wrap break-words">
@@ -398,24 +483,31 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
         </div>
       )}
 
-      {/* ── Summary tab ── */}
+      {/* ── Summary tab (full-width) ── */}
       {activeTab === 'summary' && (
         <div className="flex-1 overflow-y-auto bg-panel">
-          {summary === undefined && (
+          {status !== 'done' && (
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
+              <p className="text-sm font-medium text-text-mid">Not yet extracted</p>
+              <p className="text-xs text-text-mute">Run extraction to generate a summary.</p>
+              <button
+                onClick={onExtract}
+                className="mt-1 text-xs font-semibold text-white bg-teal hover:bg-teal-soft px-4 py-2 rounded-lg transition-colors duration-150"
+              >
+                Extract Document
+              </button>
+            </div>
+          )}
+          {status === 'done' && summary === undefined && (
             <p className="text-xs text-text-mute text-center mt-10">Loading…</p>
           )}
-          {summaryError && (
+          {status === 'done' && summaryError && (
             <p className="text-xs text-red text-center mt-10 px-6">{summaryError}</p>
           )}
-          {summary === null && !summaryError && (
-            <ExtractionEmptyState status={doc.extraction_status} onExtract={onExtract} />
-          )}
-          {summary && (
+          {status === 'done' && summary && (
             <div className="p-5">
               <div className="rounded-lg border border-border bg-canvas p-5 flex flex-col gap-3">
-                <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">
-                  AI Summary
-                </p>
+                <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">AI Summary</p>
                 <p className="text-sm leading-relaxed text-text">{summary}</p>
               </div>
             </div>
