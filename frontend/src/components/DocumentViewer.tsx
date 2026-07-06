@@ -372,7 +372,14 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
               )}
 
               {status === 'done' && extraction === undefined && !extractionError && (
-                <p className="text-xs text-text-mute text-center py-8">Loading…</p>
+                <div className="flex flex-col">
+                  {[0, 1, 2, 3, 4].map(i => (
+                    <div key={i} className="px-4 py-2.5 border-b border-border last:border-0 flex flex-col gap-1.5">
+                      <div className="h-2 bg-panel-3 rounded animate-pulse w-20" />
+                      <div className="h-4 bg-panel-3 rounded animate-pulse w-3/4" />
+                    </div>
+                  ))}
+                </div>
               )}
 
               {status === 'done' && extractionError && (

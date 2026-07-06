@@ -690,7 +690,19 @@ export default function CaseWorkspacePage() {
 
                 <div className="flex-1 overflow-y-auto">
                   <div className="flex flex-col gap-0.5 p-2">
-                    {docsLoading && <p className="text-xs text-text-mute px-2 py-2">Loading…</p>}
+                    {docsLoading && (
+                      <>
+                        {[0, 1, 2].map(i => (
+                          <div key={i} className="flex items-start gap-2 px-2 py-2">
+                            <div className="w-8 h-5 bg-panel-3 rounded animate-pulse shrink-0 mt-0.5" />
+                            <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                              <div className="h-3 bg-panel-3 rounded animate-pulse w-3/4" />
+                              <div className="h-2 bg-panel-3 rounded animate-pulse w-1/3" />
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    )}
                     {!docsLoading && filteredDocs.length === 0 && pendingUploads.length === 0 && (
                       <p className="text-xs text-text-mute px-2 py-2">
                         {docSearch ? 'No matches.' : 'No documents yet.'}

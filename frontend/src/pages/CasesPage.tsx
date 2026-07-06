@@ -7,6 +7,44 @@ import FilterPills from '../components/FilterPills'
 import CaseTable from '../components/CaseTable'
 import NewCaseModal from '../components/NewCaseModal'
 
+const CASE_TABLE_COLS = 'grid-cols-[160px_1fr_140px_160px_90px_120px_130px]'
+
+function CasesTableSkeleton() {
+  return (
+    <div className="bg-panel border border-border rounded-xl shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className={`grid ${CASE_TABLE_COLS} gap-x-4 bg-panel-3 border-b-2 border-border px-5 py-3`}>
+        {['Case ID', 'Title', 'Type', 'Status', 'Docs', 'Risk', 'Last Activity'].map((col) => (
+          <span key={col} className="text-[11px] font-semibold text-text-mid uppercase tracking-widest">
+            {col}
+          </span>
+        ))}
+      </div>
+      {/* Skeleton rows */}
+      {[0, 1, 2, 3].map((i) => (
+        <div
+          key={i}
+          className={`grid ${CASE_TABLE_COLS} gap-x-4 items-center px-5 py-3.5 ${i < 3 ? 'border-b border-border' : ''}`}
+        >
+          <div className="h-4 bg-panel-3 rounded animate-pulse w-24" />
+          <div className="flex flex-col gap-1.5 min-w-0">
+            <div className="h-4 bg-panel-3 rounded animate-pulse w-3/4" />
+            <div className="h-3 bg-panel-3 rounded animate-pulse w-1/2" />
+          </div>
+          <div className="h-4 bg-panel-3 rounded animate-pulse w-24" />
+          <div className="h-5 bg-panel-3 rounded animate-pulse w-20" />
+          <div className="h-4 bg-panel-3 rounded animate-pulse w-6" />
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-1.5 bg-panel-3 rounded-full animate-pulse" />
+            <div className="h-3 bg-panel-3 rounded animate-pulse w-6" />
+          </div>
+          <div className="h-3 bg-panel-3 rounded animate-pulse w-20" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function CasesPage() {
   const [data, setData] = useState<CasesListResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -130,9 +168,7 @@ export default function CasesPage() {
 
       {/* Table */}
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-8 h-8 border-3 border-teal/30 border-t-teal rounded-full animate-spin" style={{ borderWidth: '3px' }} />
-        </div>
+        <CasesTableSkeleton />
       ) : (
         <CaseTable cases={filteredCases} />
       )}
