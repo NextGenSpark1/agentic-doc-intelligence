@@ -16,6 +16,8 @@ interface Props {
   doc: CaseDocument
   caseId: string
   onExtract: () => void
+  jumpToPage?: number | null
+  onJumpHandled?: () => void
 }
 
 function formatFieldName(key: string): string {
@@ -55,7 +57,7 @@ function chunkColors(type: string, hovered: boolean): { bg: string; border: stri
 }
 
 
-export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
+export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJumpHandled }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('viewer')
 
   // PDF state
@@ -122,6 +124,17 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
       .then(setChunks)
       .catch(() => setChunks([]))
   }, [doc.document_id, caseId, doc.extraction_status])
+
+  // Jump to a target page (from citation click). Switch to Viewer tab, turn overlays on,
+  // and mark the page dirty so onRenderSuccess flips pageRendered back to true.
+  useEffect(() => {
+    if (jumpToPage === null || jumpToPage === undefined) return
+    setActiveTab('viewer')
+    setPageNumber(jumpToPage)
+    setPageRendered(false)
+    setShowOverlay(true)
+    onJumpHandled?.()
+  }, [jumpToPage, onJumpHandled])
 
   // Track outer container width
   useEffect(() => {

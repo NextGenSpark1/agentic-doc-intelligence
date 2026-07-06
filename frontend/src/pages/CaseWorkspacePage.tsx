@@ -353,6 +353,7 @@ export default function CaseWorkspacePage() {
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([])
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [selectedDoc, setSelectedDoc] = useState<CaseDocument | null>(null)
+  const [jumpToPage, setJumpToPage] = useState<number | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
@@ -486,6 +487,14 @@ export default function CaseWorkspacePage() {
     const eligibleIds = new Set(eligible.map(d => d.document_id))
     setDocs(prev => prev.map(d => eligibleIds.has(d.document_id) ? { ...d, extraction_status: 'queued' } : d))
     setSelectedIds(new Set())
+  }
+
+  function handleCitationClick(documentId: string, page: number) {
+    const target = docs.find(d => d.document_id === documentId)
+    if (!target) return
+    setSelectedDoc(target)
+    // Chunks are stored zero-indexed by ADE; PDF pages are one-indexed. Bump by 1.
+    setJumpToPage(page + 1)
   }
 
   async function handleRunAnalysis() {
@@ -801,7 +810,13 @@ export default function CaseWorkspacePage() {
           {/* Center panel */}
           <main className="flex-1 overflow-hidden">
             {selectedDoc && caseId ? (
-              <DocumentViewer doc={selectedDoc} caseId={caseId} onExtract={() => handleExtract(selectedDoc.document_id)} />
+              <DocumentViewer
+                doc={selectedDoc}
+                caseId={caseId}
+                onExtract={() => handleExtract(selectedDoc.document_id)}
+                jumpToPage={jumpToPage}
+                onJumpHandled={() => setJumpToPage(null)}
+              />
             ) : (
               <div className="h-full bg-canvas-deep flex items-center justify-center">
                 <div className="flex flex-col items-center gap-3 text-center px-6">
@@ -835,7 +850,7 @@ export default function CaseWorkspacePage() {
                   <CollapseBtn onClick={() => setRightCollapsed(true)} title="Collapse panel">›</CollapseBtn>
                   <span className="text-xs font-semibold text-text-mute uppercase tracking-wide">Case Assistant</span>
                 </div>
-                <CaseAssistantPanel caseId={caseId!} docs={docs} />
+                <CaseAssistantPanel caseId={caseId!} docs={docs} onCitationClick={handleCitationClick} />
               </>
             )}
           </aside>
