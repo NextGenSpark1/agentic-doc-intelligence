@@ -8,12 +8,9 @@ services:
     ports: ["8000:8000"]
     env_file: .env
 
-  dashboard:
+  frontend:
     build:
-      context: .
-      dockerfile: dashboard/Dockerfile.dashboard
-    ports: ["8501:8501"]
-    env_file: .env
-    environment:
-      - API_BASE=http://api:8000
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    ports: ["80:80"]
     depends_on: [api]

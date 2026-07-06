@@ -32,11 +32,12 @@ class Settings(BaseSettings):
     mock_ade: bool = False
 
     # --- LLM routing (LiteLLM model strings). Swap freely; agents don't care. ---
-    llm_reasoning_model: str = "gemini/gemini-1.5-pro"       # summaries, anomaly reasoning, chat
-    llm_fast_model: str = "gemini/gemini-1.5-flash"          # classification, cheap calls
-    llm_embedding_model: str = "gemini/text-embedding-004"   # RAG embeddings (768 dims)
+    llm_reasoning_model: str = "groq/llama-3.3-70b-versatile"  # summaries, anomaly reasoning, chat
+    llm_fast_model: str = "groq/llama-3.1-8b-instant"          # classification, cheap calls
+    llm_embedding_model: str = "gemini/gemini-embedding-001" # RAG embeddings (Gemini)
 
     # --- API Keys (LiteLLM reads these from os.environ) ---
+    groq_api_key: str = ""
     gemini_api_key: str = ""
 
     # RAG
@@ -52,6 +53,8 @@ def get_settings() -> Settings:
     if s.landingai_api_key and not os.getenv("VISION_AGENT_API_KEY"):
         os.environ["VISION_AGENT_API_KEY"] = s.landingai_api_key
     # LiteLLM reads provider keys directly from os.environ — bridge from pydantic settings.
+    if s.groq_api_key and not os.getenv("GROQ_API_KEY"):
+        os.environ["GROQ_API_KEY"] = s.groq_api_key
     if s.gemini_api_key and not os.getenv("GEMINI_API_KEY"):
         os.environ["GEMINI_API_KEY"] = s.gemini_api_key
     return s

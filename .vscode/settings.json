@@ -1,3 +1,6 @@
 {
-    "pyrefly.pythonInterpreter": "C:\\Users\\Nawran\\Desktop\\NextGen Spark\\agentic-doc-intelligence\\backend\\venv\\Scripts\\python.exe"
+  "python.defaultInterpreterPath": "c:\\Users\\Nawran\\Desktop\\NextGen Spark\\agentic-doc-intelligence\\backend\\venv\\Scripts\\python.exe",
+  "python.pythonPath": "c:\\Users\\Nawran\\Desktop\\NextGen Spark\\agentic-doc-intelligence\\backend\\venv\\Scripts\\python.exe",
+  "pyrefly.pythonInterpreter": "c:\\Users\\Nawran\\Desktop\\NextGen Spark\\agentic-doc-intelligence\\backend\\venv\\Scripts\\python.exe",
+  "python.terminal.useEnvFile": true
 }
