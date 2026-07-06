@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
@@ -13,8 +13,27 @@ function getInitials(email: string): string {
 export default function Navbar() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  // Seed the input from the current URL so it stays in sync when the user
+  // arrives on /cases via other routes or hits back/forward.
+  const [search, setSearch] = useState(() => {
+    return new URLSearchParams(location.search).get('q') ?? ''
+  })
+  useEffect(() => {
+    if (location.pathname === '/cases') {
+      setSearch(new URLSearchParams(location.search).get('q') ?? '')
+    }
+  }, [location.pathname, location.search])
+
+  function handleSearchChange(v: string) {
+    setSearch(v)
+    const target = v.trim() ? `/cases?q=${encodeURIComponent(v)}` : '/cases'
+    // Replace history so back button doesn't get littered with per-keystroke entries.
+    navigate(target, { replace: true })
+  }
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -47,11 +66,13 @@ export default function Navbar() {
           <span className="text-white font-medium text-sm tracking-wide flex-1">
             Investigation Intelligence
           </span>
-          {/* Search */}
+          {/* Search — wired to /cases?q= filter */}
           <div className="relative">
             <input
               type="text"
-              placeholder="Search..."
+              value={search}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Search cases..."
               className="
                 bg-white/10 border border-white/20 text-white placeholder-white/40
                 text-sm rounded px-3 py-1.5 w-48

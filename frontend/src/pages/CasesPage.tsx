@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { FolderOpen, Activity, Clock, Archive, Plus } from 'lucide-react'
 import type { Case, CasesListResponse } from '../types'
 import { fetchCases } from '../api'
@@ -51,8 +52,15 @@ export default function CasesPage() {
   const [error, setError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState('all')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchParams] = useSearchParams()
+  const urlQuery = searchParams.get('q') ?? ''
+  const [searchQuery, setSearchQuery] = useState(urlQuery)
   const [modalOpen, setModalOpen] = useState(false)
+
+  // Sync searchQuery whenever the URL param changes (navbar drives this).
+  useEffect(() => {
+    setSearchQuery(urlQuery)
+  }, [urlQuery])
 
   async function loadCases() {
     setLoading(true)
