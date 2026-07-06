@@ -13,3 +13,4 @@ supabase
 # --- AI layer ---
 landingai-ade           # LandingAI ADE — replaces deprecated agentic-doc
 litellm                 # provider-agnostic LLM + embeddings router
+google-generativeai     # required by LiteLLM for gemini/ model prefix (Google AI Studio)

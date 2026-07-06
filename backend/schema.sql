@@ -4,6 +4,34 @@
 -- MIGRATIONS — run once in the Supabase SQL editor if upgrading an existing database:
 ALTER TABLE extractions ADD COLUMN IF NOT EXISTS summary text;
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS schema_fields jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE chunks ADD COLUMN IF NOT EXISTS type text DEFAULT 'text';
+
+-- Embedding provider switch: OpenAI text-embedding-3-small (1536 dims) → Gemini text-embedding-004 (768 dims).
+-- WARNING: drops all existing chunk embeddings. Re-extract every document after running.
+ALTER TABLE chunks DROP COLUMN IF EXISTS embedding;
+ALTER TABLE chunks ADD COLUMN embedding vector(768);
+DROP FUNCTION IF EXISTS match_chunks(text, vector, int);
+CREATE OR REPLACE FUNCTION match_chunks(
+    p_case_id text,
+    p_query_embedding vector(768),
+    p_match_count int
+)
+RETURNS TABLE (
+    document_id text,
+    chunk_id text,
+    text text,
+    page int,
+    bbox jsonb,
+    similarity float
+)
+LANGUAGE sql STABLE AS $$
+    SELECT c.document_id, c.chunk_id, c.text, c.page, c.bbox,
+           1 - (c.embedding <=> p_query_embedding) AS similarity
+    FROM chunks c
+    WHERE c.case_id = p_case_id AND c.embedding IS NOT NULL
+    ORDER BY c.embedding <=> p_query_embedding
+    LIMIT p_match_count;
+$$;
 
 create extension if not exists vector;
 
@@ -53,7 +81,7 @@ create table if not exists chunks (
     text        text,
     page        int,
     bbox        jsonb,
-    embedding   vector(1536)            -- text-embedding-3-small dimension
+    embedding   vector(768)             -- embedding dimension varies by provider: Gemini text-embedding-004=768, OpenAI text-embedding-3-small=1536
 );
 create index if not exists chunks_case_idx on chunks(case_id);
 create index if not exists chunks_embedding_idx on chunks
@@ -119,7 +147,7 @@ create table if not exists audit_log (
 -- ------------------- vector search RPC for chat ------------------
 create or replace function match_chunks(
     p_case_id text,
-    p_query_embedding vector(1536),
+    p_query_embedding vector(768),
     p_match_count int
 )
 returns table (
