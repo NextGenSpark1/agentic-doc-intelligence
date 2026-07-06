@@ -118,6 +118,10 @@ export async function generateReport(caseId: string): Promise<{ markdown: string
   return response.data
 }
 
+export async function runCaseAnalysis(caseId: string): Promise<void> {
+  await client.post(`/cases/${caseId}/analysis`)
+}
+
 export async function fetchFindings(caseId: string): Promise<Finding[]> {
   const response = await client.get<{ findings: Finding[] }>(`/cases/${caseId}/findings`)
   return response.data.findings

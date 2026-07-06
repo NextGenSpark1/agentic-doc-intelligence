@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchCase, fetchDocuments, uploadDocumentWithProgress, deleteDocument, extractDocument, updateCase } from '../api'
+import { fetchCase, fetchDocuments, uploadDocumentWithProgress, deleteDocument, extractDocument, updateCase, runCaseAnalysis } from '../api'
 import type { Case, Document as CaseDocument, SchemaField } from '../types'
 import { PRESET_SCHEMAS, CASE_TYPE_OPTIONS } from '../lib/schemaPresets'
 
@@ -361,6 +361,7 @@ export default function CaseWorkspacePage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const [docSearch, setDocSearch] = useState('')
+  const [analysisState, setAnalysisState] = useState<'idle' | 'running' | 'done' | 'failed'>('idle')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -487,6 +488,23 @@ export default function CaseWorkspacePage() {
     setSelectedIds(new Set())
   }
 
+  async function handleRunAnalysis() {
+    if (!caseId || analysisState === 'running') return
+    setAnalysisState('running')
+    try {
+      await runCaseAnalysis(caseId)
+      setAnalysisState('done')
+      try {
+        const updated = await fetchDocuments(caseId)
+        setDocs(updated)
+      } catch { /* non-fatal */ }
+    } catch {
+      setAnalysisState('failed')
+    } finally {
+      setTimeout(() => setAnalysisState('idle'), 2000)
+    }
+  }
+
   async function handleBulkDelete() {
     if (!caseId) return
     const ids = Array.from(selectedIds)
@@ -514,6 +532,24 @@ export default function CaseWorkspacePage() {
           <span className="text-sm font-semibold text-text truncate">{caseData.title}</span>
         )}
         <div className="flex-1" />
+        <button
+          onClick={handleRunAnalysis}
+          disabled={analysisState === 'running'}
+          className={`text-xs font-medium px-3 py-1 rounded-lg border transition-colors duration-150 shrink-0 flex items-center gap-1.5 disabled:cursor-not-allowed
+            ${analysisState === 'failed'
+              ? 'border-red text-red bg-red-bg'
+              : analysisState === 'done'
+                ? 'border-green text-green bg-green-bg'
+                : 'border-teal text-teal hover:bg-teal/10 disabled:opacity-70'}`}
+        >
+          {analysisState === 'running' && (
+            <span className="w-3 h-3 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
+          )}
+          {analysisState === 'running' ? 'Running…'
+            : analysisState === 'done' ? 'Done'
+            : analysisState === 'failed' ? 'Failed'
+            : 'Run Analysis'}
+        </button>
         <div className="flex items-center gap-0.5 shrink-0">
           {SUBTABS.map(tab => (
             <button
