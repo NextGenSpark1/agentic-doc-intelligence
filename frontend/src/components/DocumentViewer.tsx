@@ -84,6 +84,42 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
   const pageContainerRef = useRef<HTMLDivElement>(null)
   const [pageRendered, setPageRendered] = useState(false)
 
+  // Draggable split between PDF (left) and extracted fields (right).
+  // Percentage of horizontal space taken by the PDF column.
+  const [pdfSplit, setPdfSplit] = useState(60)
+  const splitContainerRef = useRef<HTMLDivElement | null>(null)
+  const isDraggingRef = useRef(false)
+
+  function handleDragStart(e: React.MouseEvent) {
+    e.preventDefault()
+    isDraggingRef.current = true
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!isDraggingRef.current || !splitContainerRef.current) return
+      const rect = splitContainerRef.current.getBoundingClientRect()
+      if (rect.width <= 0) return
+      const pct = ((e.clientX - rect.left) / rect.width) * 100
+      setPdfSplit(Math.min(75, Math.max(35, pct)))
+      setPageRendered(false)  // page will re-render at new width; re-arm overlay guard
+    }
+    function onUp() {
+      if (!isDraggingRef.current) return
+      isDraggingRef.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    return () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+  }, [])
+
   // Reset when document changes
   useEffect(() => {
     setActiveTab('viewer')
@@ -146,8 +182,8 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
     return () => obs.disconnect()
   }, [])
 
-  // PDF renders in the left 60% column; subtract padding for safe render width
-  const pdfPanelWidth = Math.round(containerWidth * 0.6)
+  // PDF renders in the left column at the current split percentage; subtract padding for safe render width
+  const pdfPanelWidth = Math.round(containerWidth * (pdfSplit / 100))
   const pageWidth = pdfPanelWidth > 64 ? Math.min(pdfPanelWidth - 32, 900) : undefined
 
   async function loadSummary() {
@@ -192,10 +228,10 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
 
       {/* ── Viewer tab: side-by-side PDF + extraction panel ── */}
       {activeTab === 'viewer' && (
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden" ref={splitContainerRef}>
 
-          {/* Left column — PDF viewer (60%) */}
-          <div className="flex flex-col overflow-hidden" style={{ flex: '0 0 60%' }}>
+          {/* Left column — PDF viewer */}
+          <div className="flex flex-col overflow-hidden" style={{ flex: `0 0 ${pdfSplit}%` }}>
             <div className="flex-1 overflow-y-auto flex flex-col items-center py-6 bg-canvas-deep">
               {urlLoading && <p className="text-xs text-text-mute mt-10">Loading…</p>}
               {urlError && (
@@ -330,8 +366,17 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
             </div>
           </div>
 
-          {/* Right column — extracted fields panel (40%) */}
-          <div className="flex flex-col border-l border-border overflow-hidden" style={{ flex: '0 0 40%' }}>
+          {/* Draggable divider */}
+          <div
+            onMouseDown={handleDragStart}
+            className="w-1 bg-border hover:bg-teal/40 cursor-col-resize shrink-0 transition-colors duration-150"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize PDF panel"
+          />
+
+          {/* Right column — extracted fields panel */}
+          <div className="flex flex-col overflow-hidden" style={{ flex: `1 1 ${100 - pdfSplit}%` }}>
             <div className="flex-1 overflow-y-auto bg-panel">
               <div className="px-4 py-3 border-b border-border">
                 <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">
