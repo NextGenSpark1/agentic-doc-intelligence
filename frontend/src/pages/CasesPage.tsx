@@ -166,9 +166,30 @@ export default function CasesPage() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table / empty state */}
       {loading ? (
         <CasesTableSkeleton />
+      ) : cases.length === 0 ? (
+        <div className="bg-panel border border-border rounded-xl shadow-sm px-6 py-20 flex flex-col items-center text-center">
+          <div className="w-16 h-16 bg-panel-3 rounded-2xl flex items-center justify-center mb-5">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#878E99" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="9" y1="13" x2="15" y2="13" />
+              <line x1="9" y1="17" x2="15" y2="17" />
+            </svg>
+          </div>
+          <p className="text-base font-semibold text-text">No cases yet</p>
+          <p className="text-sm text-text-mute mt-1.5 max-w-sm">
+            Create your first case to start an investigation.
+          </p>
+          <button
+            onClick={() => setModalOpen(true)}
+            className="mt-6 bg-teal hover:bg-teal-soft text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all duration-150 flex items-center gap-2 shadow-sm hover:shadow-md hover:-translate-y-0.5"
+          >
+            <Plus size={15} strokeWidth={2.5} /> New Case
+          </button>
+        </div>
       ) : (
         <CaseTable cases={filteredCases} />
       )}
