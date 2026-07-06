@@ -261,6 +261,39 @@ def extract_fields(source: Source, model: Type[BaseModel]) -> dict:
     return {"fields": fields, "confidence": {}}
 
 
+def parse_and_extract_raw(source: Source, schema_dict: dict) -> dict:
+    """Phase 2 + 3 using a raw JSON Schema dict instead of a Pydantic model.
+
+    Used when the case has custom schema_fields stored in the DB.
+    The schema_dict must be a valid JSON Schema object with a 'properties' key.
+    """
+    if get_settings().mock_ade:
+        mock = _mock_parse_result()
+        # Return a stub string value for every key in the schema
+        fields = {k: f"[mock {k}]" for k in schema_dict.get("properties", {})}
+        return {**mock, "fields": fields, "confidence": {}}
+
+    import json
+    parsed = parse_document(source)
+    schema_str = json.dumps(schema_dict)
+    client = _get_client()
+    result = client.extract(schema=schema_str, markdown=parsed["markdown"])
+    extraction = getattr(result, "extraction", None)
+    if isinstance(extraction, dict):
+        fields = extraction
+    elif hasattr(extraction, "model_dump"):
+        fields = extraction.model_dump()
+    else:
+        fields = {}
+    return {
+        "markdown": parsed["markdown"],
+        "chunks": parsed["chunks"],
+        "page_count": parsed["page_count"],
+        "fields": fields,
+        "confidence": {},
+    }
+
+
 def parse_and_extract(source: Source, model: Type[BaseModel]) -> dict:
     """Phase 2 + 3. Single-source entry point used by the pipeline.
 

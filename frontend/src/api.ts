@@ -1,7 +1,7 @@
 import axios from 'axios'
-import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocument, Extraction, ChatResponse, Finding, TimelineEvent, Entity, Relationship } from './types'
+import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocument, Extraction, ChatResponse, Finding, TimelineEvent, Entity, Relationship, DocumentChunk } from './types'
 
-type CasePatch = Partial<Pick<Case, 'title' | 'case_type' | 'status' | 'lead_investigator' | 'allegation_summary'>>
+type CasePatch = Partial<Pick<Case, 'title' | 'case_type' | 'status' | 'lead_investigator' | 'allegation_summary' | 'schema_fields'>>
 import { supabase } from './lib/supabaseClient'
 
 const BASE_URL = 'http://localhost:8000'
@@ -64,6 +64,11 @@ export async function fetchExtraction(caseId: string, documentId: string): Promi
   }
 }
 
+export async function fetchDocumentChunks(caseId: string, documentId: string): Promise<DocumentChunk[]> {
+  const response = await client.get<{ chunks: DocumentChunk[] }>(`/cases/${caseId}/documents/${documentId}/chunks`)
+  return response.data.chunks
+}
+
 export async function fetchSummary(caseId: string, documentId: string): Promise<{ summary: string } | null> {
   try {
     const response = await client.get<{ summary: string }>(`/cases/${caseId}/documents/${documentId}/summary`)
@@ -106,6 +111,11 @@ export async function fetchEntities(
 export async function fetchTimeline(caseId: string): Promise<TimelineEvent[]> {
   const response = await client.get<{ events: TimelineEvent[] }>(`/cases/${caseId}/timeline`)
   return response.data.events
+}
+
+export async function generateReport(caseId: string): Promise<{ markdown: string; finding_count: number }> {
+  const response = await client.post<{ markdown: string; finding_count: number }>(`/cases/${caseId}/report`)
+  return response.data
 }
 
 export async function fetchFindings(caseId: string): Promise<Finding[]> {

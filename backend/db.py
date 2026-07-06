@@ -114,6 +114,16 @@ def insert_chunks(rows: list[dict]) -> None:
         get_client().table("chunks").insert(rows).execute()
 
 
+def list_chunks(document_id: str) -> list[dict]:
+    return (
+        get_client().table("chunks")
+        .select("chunk_id,text,page,bbox")
+        .eq("document_id", document_id)
+        .execute()
+        .data or []
+    )
+
+
 def match_chunks(case_id: str, query_embedding: list[float], top_k: int) -> list[dict]:
     """Vector similarity search via a Postgres RPC (see schema.sql -> match_chunks)."""
     return get_client().rpc(

@@ -11,21 +11,47 @@ from ..schemas import schema_for_case_type
 def run_extraction(document: dict, case: dict) -> dict:
     """Parse + schema-extract one document. Returns the parsed markdown (for classify).
 
+    If the case has schema_fields stored (custom or preset), builds a raw JSON Schema
+    dict and uses parse_and_extract_raw(). Otherwise falls back to the Pydantic path.
     Persists an `extractions` row and indexes `chunks` (with embeddings) for case chat.
     """
-    schema = schema_for_case_type(case.get("case_type", ""))
-
     # Pull the file from Supabase Storage and hand the bytes to ADE.
     bucket = db.get_client().storage.from_(db.get_settings().storage_bucket)
     content = bucket.download(document["storage_path"])
 
-    parsed = ade_client.parse_and_extract(content, schema)
+    schema_fields: list[dict] = case.get("schema_fields") or []
+
+    if schema_fields:
+        # Build a JSON Schema dict from stored field definitions
+        properties: dict = {}
+        for field in schema_fields:
+            name = field.get("name", "")
+            if not name:
+                continue
+            if field.get("is_array"):
+                properties[name] = {
+                    "description": field.get("description", ""),
+                    "type": "array",
+                    "items": {"type": "string"},
+                }
+            else:
+                properties[name] = {
+                    "description": field.get("description", ""),
+                    "type": "string",
+                }
+        schema_dict = {"type": "object", "properties": properties}
+        parsed = ade_client.parse_and_extract_raw(content, schema_dict)
+        schema_name = "custom"
+    else:
+        schema = schema_for_case_type(case.get("case_type", ""))
+        parsed = ade_client.parse_and_extract(content, schema)
+        schema_name = schema.__name__
 
     db.insert_extraction(
         {
             "extraction_id": str(uuid.uuid4()),
             "document_id": document["document_id"],
-            "schema_name": schema.__name__,
+            "schema_name": schema_name,
             "extracted_json": parsed["fields"],
             "visual_grounding_json": {"confidence": parsed["confidence"]},
             "extracted_at": datetime.now(timezone.utc).isoformat(),

@@ -71,6 +71,7 @@ class CaseCreate(BaseModel):
     case_type: str
     lead_investigator: str
     allegation_summary: str = ""
+    schema_fields: list[dict] = []
 
 
 class CasePatch(BaseModel):
@@ -79,6 +80,7 @@ class CasePatch(BaseModel):
     status: str | None = None
     lead_investigator: str | None = None
     allegation_summary: str | None = None
+    schema_fields: list[dict] | None = None
 
 
 class FindingReview(BaseModel):
@@ -104,6 +106,7 @@ async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
         "status": "Intake",
         "lead_investigator": body.lead_investigator,
         "allegation_summary": body.allegation_summary,
+        "schema_fields": body.schema_fields,
         "risk_score": 0.0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -276,6 +279,15 @@ async def get_document_file_url(case_id: str, document_id: str, user: dict = Dep
     return {"url": url}
 
 
+@app.get("/cases/{case_id}/documents/{document_id}/chunks")
+async def get_document_chunks(case_id: str, document_id: str, user: dict = Depends(get_current_user)):
+    doc = await asyncio.to_thread(db.get_document, document_id)
+    if not doc or doc.get("case_id") != case_id:
+        raise HTTPException(404, "document not found")
+    chunks = await asyncio.to_thread(db.list_chunks, document_id)
+    return {"chunks": [{"chunk_id": c["chunk_id"], "text": c["text"], "page": c["page"], "bbox": c["bbox"] or []} for c in chunks]}
+
+
 # ------------------------- case analysis --------------------------
 @app.post("/cases/{case_id}/analysis", status_code=202)
 async def run_analysis(case_id: str, background: BackgroundTasks, user: dict = Depends(get_current_user)):
@@ -307,6 +319,60 @@ async def get_timeline(case_id: str, user: dict = Depends(get_current_user)):
 @app.get("/cases/{case_id}/findings")
 async def get_findings(case_id: str, user: dict = Depends(get_current_user)):
     return {"findings": await asyncio.to_thread(db.list_findings, case_id)}
+
+
+@app.post("/cases/{case_id}/report")
+async def generate_report(case_id: str, user: dict = Depends(get_current_user)):
+    """Generate a markdown investigation report from confirmed findings."""
+    case = await asyncio.to_thread(db.get_case, case_id)
+    if not case:
+        raise HTTPException(404, "case not found")
+
+    all_findings = await asyncio.to_thread(db.list_findings, case_id)
+    confirmed = [f for f in all_findings if f.get("human_review_status") == "confirmed"]
+
+    if not confirmed:
+        findings_text = "No confirmed findings available. All findings are pending review."
+    else:
+        findings_text = "\n".join(
+            f"- [{f['severity'].upper()}] {f['statement']} (confidence: {int(f['confidence'] * 100)}%)"
+            for f in confirmed
+        )
+
+    prompt = (
+        f"You are producing a formal investigation report for the following case.\n\n"
+        f"Case: {case['title']}\n"
+        f"Type: {case['case_type']}\n"
+        f"Lead Investigator: {case['lead_investigator']}\n"
+        f"Allegation: {case.get('allegation_summary', 'N/A')}\n\n"
+        f"Confirmed Findings:\n{findings_text}\n\n"
+        "Write a structured investigation report in markdown with sections: "
+        "Executive Summary, Background, Key Findings, Risk Assessment, Recommendations. "
+        "Be factual and professional. Do not speculate beyond the provided findings."
+    )
+
+    try:
+        markdown = llm.complete(
+            tier="reasoning",
+            messages=[
+                {"role": "system", "content": "You are a senior forensic analyst producing an investigation report."},
+                {"role": "user", "content": prompt},
+            ],
+        )
+    except Exception:
+        markdown = f"""# Investigation Report — {case['title']}
+
+## Executive Summary
+This report covers case **{case['case_id']}** ({case['case_type']}).
+
+## Confirmed Findings
+{findings_text}
+
+## Note
+LLM generation failed. This is a fallback template. Configure LLM_API_KEY to enable AI-generated reports.
+"""
+
+    return {"markdown": markdown, "finding_count": len(confirmed)}
 
 
 @app.patch("/findings/{finding_id}/review")
