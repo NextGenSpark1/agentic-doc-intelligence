@@ -16,6 +16,8 @@ interface Props {
   doc: CaseDocument
   caseId: string
   onExtract: () => void
+  jumpToPage?: number | null
+  onJumpHandled?: () => void
 }
 
 function formatFieldName(key: string): string {
@@ -55,7 +57,7 @@ function chunkColors(type: string, hovered: boolean): { bg: string; border: stri
 }
 
 
-export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
+export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJumpHandled }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('viewer')
 
   // PDF state
@@ -81,6 +83,42 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
   const [hoveredChunk, setHoveredChunk] = useState<string | null>(null)
   const pageContainerRef = useRef<HTMLDivElement>(null)
   const [pageRendered, setPageRendered] = useState(false)
+
+  // Draggable split between PDF (left) and extracted fields (right).
+  // Percentage of horizontal space taken by the PDF column.
+  const [pdfSplit, setPdfSplit] = useState(60)
+  const splitContainerRef = useRef<HTMLDivElement | null>(null)
+  const isDraggingRef = useRef(false)
+
+  function handleDragStart(e: React.MouseEvent) {
+    e.preventDefault()
+    isDraggingRef.current = true
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!isDraggingRef.current || !splitContainerRef.current) return
+      const rect = splitContainerRef.current.getBoundingClientRect()
+      if (rect.width <= 0) return
+      const pct = ((e.clientX - rect.left) / rect.width) * 100
+      setPdfSplit(Math.min(75, Math.max(35, pct)))
+      setPageRendered(false)  // page will re-render at new width; re-arm overlay guard
+    }
+    function onUp() {
+      if (!isDraggingRef.current) return
+      isDraggingRef.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    return () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+  }, [])
 
   // Reset when document changes
   useEffect(() => {
@@ -123,6 +161,17 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
       .catch(() => setChunks([]))
   }, [doc.document_id, caseId, doc.extraction_status])
 
+  // Jump to a target page (from citation click). Switch to Viewer tab, turn overlays on,
+  // and mark the page dirty so onRenderSuccess flips pageRendered back to true.
+  useEffect(() => {
+    if (jumpToPage === null || jumpToPage === undefined) return
+    setActiveTab('viewer')
+    setPageNumber(jumpToPage)
+    setPageRendered(false)
+    setShowOverlay(true)
+    onJumpHandled?.()
+  }, [jumpToPage, onJumpHandled])
+
   // Track outer container width
   useEffect(() => {
     const el = containerRef.current
@@ -133,8 +182,8 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
     return () => obs.disconnect()
   }, [])
 
-  // PDF renders in the left 60% column; subtract padding for safe render width
-  const pdfPanelWidth = Math.round(containerWidth * 0.6)
+  // PDF renders in the left column at the current split percentage; subtract padding for safe render width
+  const pdfPanelWidth = Math.round(containerWidth * (pdfSplit / 100))
   const pageWidth = pdfPanelWidth > 64 ? Math.min(pdfPanelWidth - 32, 900) : undefined
 
   async function loadSummary() {
@@ -179,10 +228,10 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
 
       {/* ── Viewer tab: side-by-side PDF + extraction panel ── */}
       {activeTab === 'viewer' && (
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden" ref={splitContainerRef}>
 
-          {/* Left column — PDF viewer (60%) */}
-          <div className="flex flex-col overflow-hidden" style={{ flex: '0 0 60%' }}>
+          {/* Left column — PDF viewer */}
+          <div className="flex flex-col overflow-hidden" style={{ flex: `0 0 ${pdfSplit}%` }}>
             <div className="flex-1 overflow-y-auto flex flex-col items-center py-6 bg-canvas-deep">
               {urlLoading && <p className="text-xs text-text-mute mt-10">Loading…</p>}
               {urlError && (
@@ -317,8 +366,17 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
             </div>
           </div>
 
-          {/* Right column — extracted fields panel (40%) */}
-          <div className="flex flex-col border-l border-border overflow-hidden" style={{ flex: '0 0 40%' }}>
+          {/* Draggable divider */}
+          <div
+            onMouseDown={handleDragStart}
+            className="w-1 bg-border hover:bg-teal/40 cursor-col-resize shrink-0 transition-colors duration-150"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize PDF panel"
+          />
+
+          {/* Right column — extracted fields panel */}
+          <div className="flex flex-col overflow-hidden" style={{ flex: `1 1 ${100 - pdfSplit}%` }}>
             <div className="flex-1 overflow-y-auto bg-panel">
               <div className="px-4 py-3 border-b border-border">
                 <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">
@@ -359,7 +417,14 @@ export default function DocumentViewer({ doc, caseId, onExtract }: Props) {
               )}
 
               {status === 'done' && extraction === undefined && !extractionError && (
-                <p className="text-xs text-text-mute text-center py-8">Loading…</p>
+                <div className="flex flex-col">
+                  {[0, 1, 2, 3, 4].map(i => (
+                    <div key={i} className="px-4 py-2.5 border-b border-border last:border-0 flex flex-col gap-1.5">
+                      <div className="h-2 bg-panel-3 rounded animate-pulse w-20" />
+                      <div className="h-4 bg-panel-3 rounded animate-pulse w-3/4" />
+                    </div>
+                  ))}
+                </div>
               )}
 
               {status === 'done' && extractionError && (

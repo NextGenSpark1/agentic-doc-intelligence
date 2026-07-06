@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchCase, fetchDocuments, uploadDocumentWithProgress, deleteDocument, extractDocument, updateCase } from '../api'
+import { fetchCase, fetchDocuments, uploadDocumentWithProgress, deleteDocument, extractDocument, updateCase, runCaseAnalysis } from '../api'
 import type { Case, Document as CaseDocument, SchemaField } from '../types'
 import { PRESET_SCHEMAS, CASE_TYPE_OPTIONS } from '../lib/schemaPresets'
 
@@ -353,6 +353,7 @@ export default function CaseWorkspacePage() {
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([])
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [selectedDoc, setSelectedDoc] = useState<CaseDocument | null>(null)
+  const [jumpToPage, setJumpToPage] = useState<number | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
@@ -361,6 +362,7 @@ export default function CaseWorkspacePage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const [docSearch, setDocSearch] = useState('')
+  const [analysisState, setAnalysisState] = useState<'idle' | 'running' | 'done' | 'failed'>('idle')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -487,6 +489,31 @@ export default function CaseWorkspacePage() {
     setSelectedIds(new Set())
   }
 
+  function handleCitationClick(documentId: string, page: number) {
+    const target = docs.find(d => d.document_id === documentId)
+    if (!target) return
+    setSelectedDoc(target)
+    // Chunks are stored zero-indexed by ADE; PDF pages are one-indexed. Bump by 1.
+    setJumpToPage(page + 1)
+  }
+
+  async function handleRunAnalysis() {
+    if (!caseId || analysisState === 'running') return
+    setAnalysisState('running')
+    try {
+      await runCaseAnalysis(caseId)
+      setAnalysisState('done')
+      try {
+        const updated = await fetchDocuments(caseId)
+        setDocs(updated)
+      } catch { /* non-fatal */ }
+    } catch {
+      setAnalysisState('failed')
+    } finally {
+      setTimeout(() => setAnalysisState('idle'), 2000)
+    }
+  }
+
   async function handleBulkDelete() {
     if (!caseId) return
     const ids = Array.from(selectedIds)
@@ -514,6 +541,24 @@ export default function CaseWorkspacePage() {
           <span className="text-sm font-semibold text-text truncate">{caseData.title}</span>
         )}
         <div className="flex-1" />
+        <button
+          onClick={handleRunAnalysis}
+          disabled={analysisState === 'running'}
+          className={`text-xs font-medium px-3 py-1 rounded-lg border transition-colors duration-150 shrink-0 flex items-center gap-1.5 disabled:cursor-not-allowed
+            ${analysisState === 'failed'
+              ? 'border-red text-red bg-red-bg'
+              : analysisState === 'done'
+                ? 'border-green text-green bg-green-bg'
+                : 'border-teal text-teal hover:bg-teal/10 disabled:opacity-70'}`}
+        >
+          {analysisState === 'running' && (
+            <span className="w-3 h-3 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
+          )}
+          {analysisState === 'running' ? 'Running…'
+            : analysisState === 'done' ? 'Done'
+            : analysisState === 'failed' ? 'Failed'
+            : 'Run Analysis'}
+        </button>
         <div className="flex items-center gap-0.5 shrink-0">
           {SUBTABS.map(tab => (
             <button
@@ -645,7 +690,19 @@ export default function CaseWorkspacePage() {
 
                 <div className="flex-1 overflow-y-auto">
                   <div className="flex flex-col gap-0.5 p-2">
-                    {docsLoading && <p className="text-xs text-text-mute px-2 py-2">Loading…</p>}
+                    {docsLoading && (
+                      <>
+                        {[0, 1, 2].map(i => (
+                          <div key={i} className="flex items-start gap-2 px-2 py-2">
+                            <div className="w-8 h-5 bg-panel-3 rounded animate-pulse shrink-0 mt-0.5" />
+                            <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                              <div className="h-3 bg-panel-3 rounded animate-pulse w-3/4" />
+                              <div className="h-2 bg-panel-3 rounded animate-pulse w-1/3" />
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    )}
                     {!docsLoading && filteredDocs.length === 0 && pendingUploads.length === 0 && (
                       <p className="text-xs text-text-mute px-2 py-2">
                         {docSearch ? 'No matches.' : 'No documents yet.'}
@@ -765,7 +822,13 @@ export default function CaseWorkspacePage() {
           {/* Center panel */}
           <main className="flex-1 overflow-hidden">
             {selectedDoc && caseId ? (
-              <DocumentViewer doc={selectedDoc} caseId={caseId} onExtract={() => handleExtract(selectedDoc.document_id)} />
+              <DocumentViewer
+                doc={selectedDoc}
+                caseId={caseId}
+                onExtract={() => handleExtract(selectedDoc.document_id)}
+                jumpToPage={jumpToPage}
+                onJumpHandled={() => setJumpToPage(null)}
+              />
             ) : (
               <div className="h-full bg-canvas-deep flex items-center justify-center">
                 <div className="flex flex-col items-center gap-3 text-center px-6">
@@ -799,7 +862,7 @@ export default function CaseWorkspacePage() {
                   <CollapseBtn onClick={() => setRightCollapsed(true)} title="Collapse panel">›</CollapseBtn>
                   <span className="text-xs font-semibold text-text-mute uppercase tracking-wide">Case Assistant</span>
                 </div>
-                <CaseAssistantPanel caseId={caseId!} docs={docs} />
+                <CaseAssistantPanel caseId={caseId!} docs={docs} onCitationClick={handleCitationClick} />
               </>
             )}
           </aside>

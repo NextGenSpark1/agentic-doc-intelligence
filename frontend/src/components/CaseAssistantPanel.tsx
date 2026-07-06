@@ -60,9 +60,11 @@ function parseAnswer(text: string): React.ReactNode[] {
 export default function CaseAssistantPanel({
   caseId,
   docs,
+  onCitationClick,
 }: {
   caseId: string
   docs: CaseDocument[]
+  onCitationClick?: (documentId: string, page: number) => void
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
@@ -168,29 +170,34 @@ export default function CaseAssistantPanel({
                     </div>
                     {msg.citations && msg.citations.length > 0 && (
                       <div className="flex flex-col gap-1.5 ml-0.5">
-                        {msg.citations.map((c, i) => (
-                          <div
-                            key={c.chunk_id}
-                            className="bg-panel border border-border rounded-xl px-3 py-2.5 flex flex-col gap-1.5"
-                          >
-                            <div className="flex items-center gap-2">
-                              <sup className="inline-flex items-center justify-center w-[18px] h-[18px] text-[9px] font-bold bg-teal text-white rounded-full shrink-0">
-                                {i + 1}
-                              </sup>
-                              <span className="text-[10px] font-semibold text-text truncate flex-1">
-                                {docMap[c.document_id] ?? c.document_id}
-                              </span>
-                              <span className="text-[10px] text-text-mute shrink-0">
-                                p.&nbsp;{c.page}
-                              </span>
+                        {msg.citations.map((c, i) => {
+                          const clickable = Boolean(onCitationClick)
+                          return (
+                            <div
+                              key={c.chunk_id}
+                              onClick={clickable ? () => onCitationClick?.(c.document_id, c.page) : undefined}
+                              className={`bg-panel border border-border rounded-xl px-3 py-2.5 flex flex-col gap-1.5 transition-colors duration-150
+                                ${clickable ? 'cursor-pointer hover:bg-panel-3 hover:border-border-strong' : ''}`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <sup className="inline-flex items-center justify-center w-[18px] h-[18px] text-[9px] font-bold bg-teal text-white rounded-full shrink-0">
+                                  {i + 1}
+                                </sup>
+                                <span className="text-[10px] font-semibold text-text truncate flex-1">
+                                  {docMap[c.document_id] ?? c.document_id}
+                                </span>
+                                <span className="text-[10px] font-semibold text-teal bg-teal/10 border border-teal/20 px-1.5 py-0.5 rounded-full shrink-0">
+                                  p.&nbsp;{c.page + 1}
+                                </span>
+                              </div>
+                              {c.quoted_text && (
+                                <p className="text-[10px] text-text-mute leading-relaxed line-clamp-3 border-l-2 border-teal/30 pl-2 italic">
+                                  &ldquo;{c.quoted_text}&rdquo;
+                                </p>
+                              )}
                             </div>
-                            {c.quoted_text && (
-                              <p className="text-[10px] text-text-mute leading-relaxed line-clamp-3 border-l-2 border-teal/30 pl-2 italic">
-                                &ldquo;{c.quoted_text}&rdquo;
-                              </p>
-                            )}
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     )}
                   </div>

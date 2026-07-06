@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { FolderOpen, Activity, Clock, Archive, Plus } from 'lucide-react'
 import type { Case, CasesListResponse } from '../types'
 import { fetchCases } from '../api'
@@ -7,14 +8,59 @@ import FilterPills from '../components/FilterPills'
 import CaseTable from '../components/CaseTable'
 import NewCaseModal from '../components/NewCaseModal'
 
+const CASE_TABLE_COLS = 'grid-cols-[160px_1fr_140px_160px_90px_120px_130px]'
+
+function CasesTableSkeleton() {
+  return (
+    <div className="bg-panel border border-border rounded-xl shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className={`grid ${CASE_TABLE_COLS} gap-x-4 bg-panel-3 border-b-2 border-border px-5 py-3`}>
+        {['Case ID', 'Title', 'Type', 'Status', 'Docs', 'Risk', 'Last Activity'].map((col) => (
+          <span key={col} className="text-[11px] font-semibold text-text-mid uppercase tracking-widest">
+            {col}
+          </span>
+        ))}
+      </div>
+      {/* Skeleton rows */}
+      {[0, 1, 2, 3].map((i) => (
+        <div
+          key={i}
+          className={`grid ${CASE_TABLE_COLS} gap-x-4 items-center px-5 py-3.5 ${i < 3 ? 'border-b border-border' : ''}`}
+        >
+          <div className="h-4 bg-panel-3 rounded animate-pulse w-24" />
+          <div className="flex flex-col gap-1.5 min-w-0">
+            <div className="h-4 bg-panel-3 rounded animate-pulse w-3/4" />
+            <div className="h-3 bg-panel-3 rounded animate-pulse w-1/2" />
+          </div>
+          <div className="h-4 bg-panel-3 rounded animate-pulse w-24" />
+          <div className="h-5 bg-panel-3 rounded animate-pulse w-20" />
+          <div className="h-4 bg-panel-3 rounded animate-pulse w-6" />
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-1.5 bg-panel-3 rounded-full animate-pulse" />
+            <div className="h-3 bg-panel-3 rounded animate-pulse w-6" />
+          </div>
+          <div className="h-3 bg-panel-3 rounded animate-pulse w-20" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function CasesPage() {
   const [data, setData] = useState<CasesListResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState('all')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchParams] = useSearchParams()
+  const urlQuery = searchParams.get('q') ?? ''
+  const [searchQuery, setSearchQuery] = useState(urlQuery)
   const [modalOpen, setModalOpen] = useState(false)
+
+  // Sync searchQuery whenever the URL param changes (navbar drives this).
+  useEffect(() => {
+    setSearchQuery(urlQuery)
+  }, [urlQuery])
 
   async function loadCases() {
     setLoading(true)
@@ -128,10 +174,29 @@ export default function CasesPage() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table / empty state */}
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-8 h-8 border-3 border-teal/30 border-t-teal rounded-full animate-spin" style={{ borderWidth: '3px' }} />
+        <CasesTableSkeleton />
+      ) : cases.length === 0 ? (
+        <div className="bg-panel border border-border rounded-xl shadow-sm px-6 py-20 flex flex-col items-center text-center">
+          <div className="w-16 h-16 bg-panel-3 rounded-2xl flex items-center justify-center mb-5">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#878E99" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="9" y1="13" x2="15" y2="13" />
+              <line x1="9" y1="17" x2="15" y2="17" />
+            </svg>
+          </div>
+          <p className="text-base font-semibold text-text">No cases yet</p>
+          <p className="text-sm text-text-mute mt-1.5 max-w-sm">
+            Create your first case to start an investigation.
+          </p>
+          <button
+            onClick={() => setModalOpen(true)}
+            className="mt-6 bg-teal hover:bg-teal-soft text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all duration-150 flex items-center gap-2 shadow-sm hover:shadow-md hover:-translate-y-0.5"
+          >
+            <Plus size={15} strokeWidth={2.5} /> New Case
+          </button>
         </div>
       ) : (
         <CaseTable cases={filteredCases} />
