@@ -250,7 +250,7 @@ export default function AccountPage() {
             show={showCurrentPass}
             onToggle={() => setShowCurrentPass(p => !p)}
             placeholder="Enter current password"
-            autoComplete="current-password"
+            autoComplete="off"
           />
           <PasswordField
             label="New Password"
