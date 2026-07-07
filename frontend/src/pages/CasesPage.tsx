@@ -2,20 +2,21 @@ import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { FolderOpen, Activity, Clock, Archive, Plus } from 'lucide-react'
 import type { Case, CasesListResponse } from '../types'
-import { fetchCases } from '../api'
+import { fetchCases, deleteCase } from '../api'
 import StatCard from '../components/StatCard'
 import FilterPills from '../components/FilterPills'
 import CaseTable from '../components/CaseTable'
 import NewCaseModal from '../components/NewCaseModal'
 
-const CASE_TABLE_COLS = 'grid-cols-[160px_1fr_140px_160px_90px_120px_130px]'
+const CASE_TABLE_COLS = 'grid-cols-[36px_160px_1fr_140px_160px_90px_120px_130px_32px]'
 
 function CasesTableSkeleton() {
   return (
     <div className="bg-panel border border-border rounded-xl shadow-sm overflow-hidden">
       {/* Header */}
-      <div className={`grid ${CASE_TABLE_COLS} gap-x-4 bg-panel-3 border-b-2 border-border px-5 py-3`}>
-        {['Case ID', 'Title', 'Type', 'Status', 'Docs', 'Risk', 'Last Activity'].map((col) => (
+      <div className={`grid ${CASE_TABLE_COLS} gap-x-4 bg-panel-3 border-b-2 border-border px-5 py-3 items-center`}>
+        <div className="w-3.5 h-3.5 bg-panel-2 rounded animate-pulse" />
+        {['Case ID', 'Title', 'Type', 'Status', 'Docs', 'Risk', 'Last Activity', ''].map((col) => (
           <span key={col} className="text-[11px] font-semibold text-text-mid uppercase tracking-widest">
             {col}
           </span>
@@ -27,6 +28,7 @@ function CasesTableSkeleton() {
           key={i}
           className={`grid ${CASE_TABLE_COLS} gap-x-4 items-center px-5 py-3.5 ${i < 3 ? 'border-b border-border' : ''}`}
         >
+          <div className="w-3.5 h-3.5 bg-panel-3 rounded animate-pulse" />
           <div className="h-4 bg-panel-3 rounded animate-pulse w-24" />
           <div className="flex flex-col gap-1.5 min-w-0">
             <div className="h-4 bg-panel-3 rounded animate-pulse w-3/4" />
@@ -40,6 +42,7 @@ function CasesTableSkeleton() {
             <div className="h-3 bg-panel-3 rounded animate-pulse w-6" />
           </div>
           <div className="h-3 bg-panel-3 rounded animate-pulse w-20" />
+          <div />
         </div>
       ))}
     </div>
@@ -87,6 +90,16 @@ export default function CasesPage() {
   }, [successMsg])
 
   const cases: Case[] = data?.cases ?? []
+
+  async function handleDelete(caseId: string) {
+    await deleteCase(caseId)
+    setData(prev => prev ? { ...prev, cases: prev.cases.filter(c => c.case_id !== caseId) } : prev)
+  }
+
+  async function handleBulkDelete(caseIds: string[]) {
+    await Promise.allSettled(caseIds.map(id => deleteCase(id)))
+    setData(prev => prev ? { ...prev, cases: prev.cases.filter(c => !caseIds.includes(c.case_id)) } : prev)
+  }
 
   // Client-side filtering
   const filteredCases = useMemo(() => {
@@ -199,7 +212,7 @@ export default function CasesPage() {
           </button>
         </div>
       ) : (
-        <CaseTable cases={filteredCases} />
+        <CaseTable cases={filteredCases} onDelete={handleDelete} onBulkDelete={handleBulkDelete} />
       )}
 
       {/* New Case Modal */}

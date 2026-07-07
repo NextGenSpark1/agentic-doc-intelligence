@@ -45,6 +45,10 @@ export async function updateCase(id: string, patch: CasePatch): Promise<Case> {
   return response.data
 }
 
+export async function deleteCase(caseId: string): Promise<void> {
+  await client.delete(`/cases/${caseId}`)
+}
+
 export async function fetchDocuments(caseId: string): Promise<CaseDocument[]> {
   const response = await client.get(`/cases/${caseId}/documents`)
   return (response.data as { documents: CaseDocument[] }).documents
