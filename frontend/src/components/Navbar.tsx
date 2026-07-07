@@ -2,13 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-
-function getInitials(email: string): string {
-  const local = email.split('@')[0]
-  const parts = local.split(/[._-]/).filter(Boolean)
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
-  return local.slice(0, 2).toUpperCase()
-}
+import { getInitialsFromUser } from '../pages/AccountPage'
 
 export default function Navbar() {
   const { user, signOut } = useAuth()
@@ -51,7 +45,7 @@ export default function Navbar() {
     navigate('/login', { replace: true })
   }
 
-  const initials = user?.email ? getInitials(user.email) : '??'
+  const initials = user ? getInitialsFromUser(user) : '??'
   const email = user?.email ?? ''
   const isWorkspace = /^\/cases\/.+/.test(location.pathname)
 
