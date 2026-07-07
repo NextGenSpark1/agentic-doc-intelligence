@@ -588,24 +588,6 @@ export default function CaseWorkspacePage() {
           <span className="text-sm font-semibold text-text truncate">{caseData.title}</span>
         )}
         <div className="flex-1" />
-        <button
-          onClick={handleRunAnalysis}
-          disabled={analysisState === 'running'}
-          className={`text-xs font-medium px-3 py-1 rounded-lg border transition-colors duration-150 shrink-0 flex items-center gap-1.5 disabled:cursor-not-allowed
-            ${analysisState === 'failed'
-              ? 'border-red text-red bg-red-bg'
-              : analysisState === 'done'
-                ? 'border-green text-green bg-green-bg'
-                : 'border-teal text-teal hover:bg-teal/10 disabled:opacity-70'}`}
-        >
-          {analysisState === 'running' && (
-            <span className="w-3 h-3 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
-          )}
-          {analysisState === 'running' ? 'Running…'
-            : analysisState === 'done' ? 'Done'
-            : analysisState === 'failed' ? 'Failed'
-            : 'Run Analysis'}
-        </button>
         <div className="flex items-center gap-0.5 shrink-0">
           {SUBTABS.map(tab => (
             <button
@@ -622,17 +604,17 @@ export default function CaseWorkspacePage() {
 
       {/* Findings tab */}
       {activeSubtab === 'Findings' && (
-        <FindingsPanel caseId={caseId!} docs={docs} />
+        <FindingsPanel caseId={caseId!} docs={docs} onRunAnalysis={handleRunAnalysis} analysisState={analysisState} />
       )}
 
       {/* Timeline tab */}
       {activeSubtab === 'Timeline' && (
-        <TimelinePanel caseId={caseId!} docs={docs} />
+        <TimelinePanel caseId={caseId!} docs={docs} onRunAnalysis={handleRunAnalysis} analysisState={analysisState} />
       )}
 
       {/* Entity Graph tab */}
       {activeSubtab === 'Entity Graph' && (
-        <EntityGraphPanel caseId={caseId!} />
+        <EntityGraphPanel caseId={caseId!} onRunAnalysis={handleRunAnalysis} analysisState={analysisState} />
       )}
 
       {/* Report tab */}

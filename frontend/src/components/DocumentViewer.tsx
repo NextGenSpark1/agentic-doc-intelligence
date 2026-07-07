@@ -186,18 +186,6 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
   const pdfPanelWidth = Math.round(containerWidth * (pdfSplit / 100))
   const pageWidth = pdfPanelWidth > 64 ? Math.min(pdfPanelWidth - 32, 900) : undefined
 
-  async function loadSummary() {
-    setSummary(undefined)
-    setSummaryError(null)
-    try {
-      const data = await fetchSummary(caseId, doc.document_id)
-      setSummary(data?.summary ?? null)
-    } catch (err: unknown) {
-      setSummaryError(err instanceof Error ? err.message : 'Failed to load summary')
-      setSummary(null)
-    }
-  }
-
   const TABS: { id: Tab; label: string }[] = [
     { id: 'viewer',  label: 'Viewer' },
     { id: 'raw',     label: 'Raw Text' },

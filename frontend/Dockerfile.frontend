@@ -6,6 +6,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
+# Declare build args so Vite can bake them into the bundle at build time
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+
 # Copy source and build
 COPY . .
 RUN npm run build
@@ -13,6 +19,9 @@ RUN npm run build
 # --- Stage 2: Serve with Nginx ---
 FROM nginx:alpine AS runner
 COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Ensure .mjs files are served as application/javascript (required for dynamic import())
+RUN sed -i 's|application/javascript\s*js;|application/javascript js mjs;|g' /etc/nginx/mime.types
 
 # Nginx config: serve index.html for all routes (SPA fallback)
 RUN printf 'server {\n\

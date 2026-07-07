@@ -240,12 +240,20 @@ function EntityDetail({
 
 // ── Main panel ─────────────────────────────────────────────────────────────
 
-export default function EntityGraphPanel({ caseId }: { caseId: string }) {
+export default function EntityGraphPanel({
+  caseId,
+  onRunAnalysis,
+  analysisState,
+}: {
+  caseId: string
+  onRunAnalysis?: () => void
+  analysisState?: string
+}) {
   const [data, setData] = useState<{ entities: Entity[]; relationships: Relationship[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null)
-  const [nodes, setNodes, onNodesChange] = useNodesState([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
 
   useEffect(() => {
     fetchEntities(caseId)
@@ -306,8 +314,20 @@ export default function EntityGraphPanel({ caseId }: { caseId: string }) {
           </div>
           <p className="text-sm font-semibold text-text">No entities yet</p>
           <p className="text-xs text-text-mute max-w-xs">
-            Entities are extracted automatically when documents are processed through the pipeline.
+            Run analysis to extract people, organizations, and relationships from the documents.
           </p>
+          {onRunAnalysis && (
+            <button
+              onClick={onRunAnalysis}
+              disabled={analysisState === 'running'}
+              className="mt-1 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-teal hover:bg-teal-soft rounded-lg transition-colors duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {analysisState === 'running' && (
+                <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              )}
+              {analysisState === 'running' ? 'Running analysis…' : 'Run Analysis'}
+            </button>
+          )}
         </div>
       </div>
     )
