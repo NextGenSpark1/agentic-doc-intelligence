@@ -20,14 +20,15 @@ RUN npm run build
 FROM nginx:alpine AS runner
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Ensure .mjs files are served as application/javascript (required for dynamic import())
-RUN sed -i 's|application/javascript\s*js;|application/javascript js mjs;|g' /etc/nginx/mime.types
-
-# Nginx config: serve index.html for all routes (SPA fallback)
+# Nginx config: SPA fallback + force .mjs Content-Type for PDF.js worker
 RUN printf 'server {\n\
     listen 80;\n\
     root /usr/share/nginx/html;\n\
     index index.html;\n\
+    location ~* \\.mjs$ {\n\
+        types { }\n\
+        default_type application/javascript;\n\
+    }\n\
     location / {\n\
         try_files $uri $uri/ /index.html;\n\
     }\n\
