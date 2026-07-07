@@ -69,7 +69,7 @@ export default function RegisterPage() {
 
         <div className="relative z-10 flex items-center gap-3">
           <div className="bg-teal text-white font-mono font-semibold text-sm w-9 h-9 flex items-center justify-center rounded-lg shrink-0">
-            II
+            NS
           </div>
           <span className="text-white font-semibold tracking-wide text-sm">NextGen Spark</span>
         </div>
