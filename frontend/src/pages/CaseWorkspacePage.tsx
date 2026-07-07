@@ -363,8 +363,13 @@ export default function CaseWorkspacePage() {
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const [docSearch, setDocSearch] = useState('')
   const [analysisState, setAnalysisState] = useState<'idle' | 'running' | 'done' | 'failed'>('idle')
+  const [leftWidth, setLeftWidth] = useState(240)
+  const [rightWidth, setRightWidth] = useState(300)
+  const [isResizingLeft, setIsResizingLeft] = useState(false)
+  const [isResizingRight, setIsResizingRight] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const panelContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!caseId) return
@@ -514,6 +519,48 @@ export default function CaseWorkspacePage() {
     }
   }
 
+  function handleLeftDragStart(e: React.MouseEvent) {
+    e.preventDefault()
+    setIsResizingLeft(true)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    function onMove(ev: MouseEvent) {
+      if (!panelContainerRef.current) return
+      const rect = panelContainerRef.current.getBoundingClientRect()
+      setLeftWidth(Math.min(400, Math.max(120, ev.clientX - rect.left)))
+    }
+    function onUp() {
+      setIsResizingLeft(false)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  function handleRightDragStart(e: React.MouseEvent) {
+    e.preventDefault()
+    setIsResizingRight(true)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    function onMove(ev: MouseEvent) {
+      if (!panelContainerRef.current) return
+      const rect = panelContainerRef.current.getBoundingClientRect()
+      setRightWidth(Math.min(450, Math.max(180, rect.right - ev.clientX)))
+    }
+    function onUp() {
+      setIsResizingRight(false)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
   async function handleBulkDelete() {
     if (!caseId) return
     const ids = Array.from(selectedIds)
@@ -526,7 +573,7 @@ export default function CaseWorkspacePage() {
   }
 
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 96px)' }}>
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 52px)' }}>
       {/* Single-row header: breadcrumb left, sub-tabs right */}
       <div className="bg-panel border-b border-border px-4 h-12 flex items-center gap-3 shrink-0">
         <button
@@ -609,12 +656,15 @@ export default function CaseWorkspacePage() {
 
       {/* Workspace — three-panel layout */}
       {activeSubtab === 'Workspace' && (
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden" ref={panelContainerRef}>
 
           {/* Left panel */}
           <aside
-            className="bg-panel border-r border-border flex flex-col shrink-0 overflow-hidden transition-all duration-200"
-            style={{ width: leftCollapsed ? 32 : 240 }}
+            className={`bg-panel flex flex-col shrink-0 overflow-hidden ${leftCollapsed ? 'border-r border-border' : ''}`}
+            style={{
+              width: leftCollapsed ? 32 : leftWidth,
+              transition: isResizingLeft ? 'none' : 'width 0.2s ease',
+            }}
           >
             {leftCollapsed ? (
               <div className="flex flex-col items-center pt-3">
@@ -819,6 +869,16 @@ export default function CaseWorkspacePage() {
             )}
           </aside>
 
+          {/* Left drag divider */}
+          {!leftCollapsed && (
+            <div
+              onMouseDown={handleLeftDragStart}
+              className="w-1 bg-border hover:bg-teal/40 cursor-col-resize shrink-0 transition-colors duration-150"
+              role="separator"
+              aria-orientation="vertical"
+            />
+          )}
+
           {/* Center panel */}
           <main className="flex-1 overflow-hidden">
             {selectedDoc && caseId ? (
@@ -847,10 +907,23 @@ export default function CaseWorkspacePage() {
             )}
           </main>
 
+          {/* Right drag divider */}
+          {!rightCollapsed && (
+            <div
+              onMouseDown={handleRightDragStart}
+              className="w-1 bg-border hover:bg-teal/40 cursor-col-resize shrink-0 transition-colors duration-150"
+              role="separator"
+              aria-orientation="vertical"
+            />
+          )}
+
           {/* Right panel */}
           <aside
-            className="bg-panel border-l border-border flex flex-col shrink-0 overflow-hidden transition-all duration-200"
-            style={{ width: rightCollapsed ? 32 : 300 }}
+            className={`bg-panel flex flex-col shrink-0 overflow-hidden ${rightCollapsed ? 'border-l border-border' : ''}`}
+            style={{
+              width: rightCollapsed ? 32 : rightWidth,
+              transition: isResizingRight ? 'none' : 'width 0.2s ease',
+            }}
           >
             {rightCollapsed ? (
               <div className="flex flex-col items-center pt-3">
