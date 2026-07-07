@@ -53,6 +53,7 @@ export default function Navbar() {
 
   const initials = user?.email ? getInitials(user.email) : '??'
   const email = user?.email ?? ''
+  const isWorkspace = /^\/cases\/.+/.test(location.pathname)
 
   return (
     <>
@@ -110,32 +111,34 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* Tab bar */}
-        <div
-          className="bg-navy h-11 flex items-center px-4 gap-1"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.10)' }}
-        >
-          {[
-            { to: '/cases', label: 'Cases' },
-            { to: '/account', label: 'Account' },
-          ].map(({ to, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) =>
-                isActive
-                  ? 'px-3 py-1 rounded bg-white text-navy text-sm font-medium transition-colors duration-150'
-                  : 'px-3 py-1 rounded text-white/60 text-sm font-medium hover:text-white/90 transition-colors duration-150'
-              }
-            >
-              {label}
-            </NavLink>
-          ))}
-        </div>
+        {/* Tab bar — hidden inside case workspace (has its own breadcrumb nav) */}
+        {!isWorkspace && (
+          <div
+            className="bg-navy h-11 flex items-center px-4 gap-1"
+            style={{ borderBottom: '1px solid rgba(255,255,255,0.10)' }}
+          >
+            {[
+              { to: '/cases', label: 'Cases' },
+              { to: '/account', label: 'Account' },
+            ].map(({ to, label }) => (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) =>
+                  isActive
+                    ? 'px-3 py-1 rounded bg-white text-navy text-sm font-medium transition-colors duration-150'
+                    : 'px-3 py-1 rounded text-white/60 text-sm font-medium hover:text-white/90 transition-colors duration-150'
+                }
+              >
+                {label}
+              </NavLink>
+            ))}
+          </div>
+        )}
       </header>
 
-      {/* Spacer */}
-      <div className="h-24" />
+      {/* Spacer — shrinks to just the top bar height when tab bar is hidden */}
+      <div className={isWorkspace ? 'h-13' : 'h-24'} />
     </>
   )
 }

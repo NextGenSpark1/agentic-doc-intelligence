@@ -281,8 +281,8 @@ export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalP
                 <div className="divide-y divide-border max-h-44 overflow-y-auto">
                   {preset.map(f => (
                     <div key={f.name} className="px-3 py-2 flex items-start gap-2">
-                      <span className="text-xs font-mono text-teal mt-0.5 min-w-[110px]">{f.name}</span>
-                      <span className="text-xs text-text-mute flex-1">{f.description}</span>
+                      <span className="text-xs font-mono font-semibold text-text mt-0.5 min-w-[110px]">{f.name}</span>
+                      <span className="text-xs text-text-mid flex-1">{f.description}</span>
                       {f.is_array && (
                         <span className="text-[10px] text-text-mute bg-bg-subtle border border-border rounded px-1 shrink-0">list</span>
                       )}
@@ -303,8 +303,8 @@ export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalP
                 <div className="divide-y divide-border max-h-32 overflow-y-auto">
                   {customFields.map(f => (
                     <div key={f.name} className="px-3 py-2 flex items-start gap-2">
-                      <span className="text-xs font-mono text-teal mt-0.5 min-w-[110px]">{f.name}</span>
-                      <span className="text-xs text-text-mute flex-1">{f.description}</span>
+                      <span className="text-xs font-mono font-semibold text-text mt-0.5 min-w-[110px]">{f.name}</span>
+                      <span className="text-xs text-text-mid flex-1">{f.description}</span>
                       {f.is_array && (
                         <span className="text-[10px] text-text-mute bg-bg-subtle border border-border rounded px-1 shrink-0">list</span>
                       )}
