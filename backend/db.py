@@ -192,6 +192,18 @@ def signed_url(storage_path: str, expires_in: int = 3600) -> str:
     return res.get("signedURL") or res.get("signedUrl", "")
 
 
+def delete_case(case_id: str) -> None:
+    """Delete a case and all its documents (files + rows) from storage and DB."""
+    s = get_settings()
+    client = get_client()
+    docs = client.table("documents").select("document_id, storage_path").eq("case_id", case_id).execute().data or []
+    paths = [d["storage_path"] for d in docs if d.get("storage_path")]
+    if paths:
+        client.storage.from_(s.storage_bucket).remove(paths)
+    client.table("documents").delete().eq("case_id", case_id).execute()
+    client.table("cases").delete().eq("case_id", case_id).execute()
+
+
 def delete_document(document_id: str, storage_path: str) -> None:
     """Delete file from Storage then drop the documents row.
 

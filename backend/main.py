@@ -150,6 +150,14 @@ async def update_case(case_id: str, body: CasePatch, user: dict = Depends(get_cu
     return updated
 
 
+@app.delete("/cases/{case_id}", status_code=204)
+async def delete_case(case_id: str, user: dict = Depends(get_current_user)):
+    case = await asyncio.to_thread(db.get_case, case_id)
+    if not case:
+        raise HTTPException(404, "case not found")
+    await asyncio.to_thread(db.delete_case, case_id)
+
+
 # ---------------------------- documents ---------------------------
 @app.post("/cases/{case_id}/documents", status_code=201)
 async def upload_document(case_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
