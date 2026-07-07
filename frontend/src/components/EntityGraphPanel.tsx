@@ -252,8 +252,8 @@ export default function EntityGraphPanel({
   const [data, setData] = useState<{ entities: Entity[]; relationships: Relationship[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null)
-  const [nodes, setNodes, onNodesChange] = useNodesState([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
 
   useEffect(() => {
     fetchEntities(caseId)
