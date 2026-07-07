@@ -2,13 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-
-function getInitials(email: string): string {
-  const local = email.split('@')[0]
-  const parts = local.split(/[._-]/).filter(Boolean)
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
-  return local.slice(0, 2).toUpperCase()
-}
+import { getInitialsFromUser } from '../pages/AccountPage'
 
 export default function Navbar() {
   const { user, signOut } = useAuth()
@@ -51,7 +45,7 @@ export default function Navbar() {
     navigate('/login', { replace: true })
   }
 
-  const initials = user?.email ? getInitials(user.email) : '??'
+  const initials = user ? getInitialsFromUser(user) : '??'
   const email = user?.email ?? ''
   const isWorkspace = /^\/cases\/.+/.test(location.pathname)
 
@@ -62,10 +56,10 @@ export default function Navbar() {
         <div className="bg-navy-deep h-13 flex items-center px-4 gap-3">
           {/* Brand */}
           <div className="bg-teal text-white font-mono font-semibold text-sm w-8 h-8 flex items-center justify-center rounded shrink-0">
-            II
+            NS
           </div>
           <span className="text-white font-medium text-sm tracking-wide flex-1">
-            Investigation Intelligence
+            NextGen Spark
           </span>
           {/* Search — wired to /cases?q= filter */}
           <div className="relative">
