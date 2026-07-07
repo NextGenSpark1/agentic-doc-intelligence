@@ -23,6 +23,6 @@ def embed(texts: list[str]) -> list[list[float]]:
     from litellm import embedding
 
     s = get_settings()
-    resp = embedding(model=s.llm_embedding_model, input=texts, dimensions=768)
+    resp = embedding(model=s.llm_embedding_model, input=texts, dimensions=1536)
     # LiteLLM normalises to OpenAI shape regardless of provider
     return [d["embedding"] for d in resp["data"]]

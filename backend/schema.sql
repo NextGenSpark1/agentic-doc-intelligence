@@ -6,14 +6,14 @@ ALTER TABLE extractions ADD COLUMN IF NOT EXISTS summary text;
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS schema_fields jsonb DEFAULT '[]'::jsonb;
 ALTER TABLE chunks ADD COLUMN IF NOT EXISTS type text DEFAULT 'text';
 
--- Embedding provider switch: OpenAI text-embedding-3-small (1536 dims) → Gemini text-embedding-004 (768 dims).
+-- Upgrade embedding dimension 768 → 1536 (gemini-embedding-001 at 1536 dims).
 -- WARNING: drops all existing chunk embeddings. Re-extract every document after running.
 ALTER TABLE chunks DROP COLUMN IF EXISTS embedding;
-ALTER TABLE chunks ADD COLUMN embedding vector(768);
+ALTER TABLE chunks ADD COLUMN embedding vector(1536);
 DROP FUNCTION IF EXISTS match_chunks(text, vector, int);
 CREATE OR REPLACE FUNCTION match_chunks(
     p_case_id text,
-    p_query_embedding vector(768),
+    p_query_embedding vector(1536),
     p_match_count int
 )
 RETURNS TABLE (
