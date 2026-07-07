@@ -19,9 +19,13 @@ function formatFull(date: Date): string {
 export default function TimelinePanel({
   caseId,
   docs,
+  onRunAnalysis,
+  analysisState,
 }: {
   caseId: string
   docs: CaseDocument[]
+  onRunAnalysis?: () => void
+  analysisState?: string
 }) {
   const [events, setEvents] = useState<TimelineEvent[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -78,8 +82,20 @@ export default function TimelinePanel({
           </div>
           <p className="text-sm font-semibold text-text">No timeline events</p>
           <p className="text-xs text-text-mute max-w-xs">
-            Timeline events are extracted automatically when documents are processed.
+            Run analysis to extract and sequence events from the documents in this case.
           </p>
+          {onRunAnalysis && (
+            <button
+              onClick={onRunAnalysis}
+              disabled={analysisState === 'running'}
+              className="mt-1 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-teal hover:bg-teal-soft rounded-lg transition-colors duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {analysisState === 'running' && (
+                <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              )}
+              {analysisState === 'running' ? 'Running analysis…' : 'Run Analysis'}
+            </button>
+          )}
         </div>
       </div>
     )
