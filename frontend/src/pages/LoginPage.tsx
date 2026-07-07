@@ -82,8 +82,8 @@ export default function LoginPage() {
         </svg>
       </div>
       <div className="relative z-10 flex items-center gap-3">
-        <div className="bg-teal text-white font-mono font-semibold text-sm w-9 h-9 flex items-center justify-center rounded-lg shrink-0">II</div>
-        <span className="text-white font-semibold tracking-wide text-sm">Investigation Intelligence</span>
+        <div className="bg-teal text-white font-mono font-semibold text-sm w-9 h-9 flex items-center justify-center rounded-lg shrink-0">NS</div>
+        <span className="text-white font-semibold tracking-wide text-sm">NextGen Spark</span>
       </div>
       <div className="relative z-10">
         <div className="w-14 h-1 bg-teal rounded-full mb-8" />
@@ -96,7 +96,7 @@ export default function LoginPage() {
           Ingest, extract, and reason over large document corpora using LLM-driven pipelines built for investigators.
         </p>
       </div>
-      <p className="relative z-10 text-white/25 text-xs">&copy; {new Date().getFullYear()} Investigation Intelligence</p>
+      <p className="relative z-10 text-white/25 text-xs">&copy; {new Date().getFullYear()} NextGen Spark</p>
     </div>
   )
 
@@ -146,8 +146,8 @@ export default function LoginPage() {
         <div className="flex-1 flex items-center justify-center px-6 py-12 bg-canvas">
           <div className="w-full max-w-md">
             <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
-              <div className="bg-teal text-white font-mono font-semibold text-sm w-8 h-8 flex items-center justify-center rounded-lg">II</div>
-              <span className="text-navy font-semibold text-sm tracking-wide">Investigation Intelligence</span>
+              <div className="bg-teal text-white font-mono font-semibold text-sm w-8 h-8 flex items-center justify-center rounded-lg">NS</div>
+              <span className="text-navy font-semibold text-sm tracking-wide">NextGen Spark</span>
             </div>
 
             <div className="mb-8">
@@ -212,8 +212,8 @@ export default function LoginPage() {
         <div className="w-full max-w-md">
 
           <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
-            <div className="bg-teal text-white font-mono font-semibold text-sm w-8 h-8 flex items-center justify-center rounded-lg">II</div>
-            <span className="text-navy font-semibold text-sm tracking-wide">Investigation Intelligence</span>
+            <div className="bg-teal text-white font-mono font-semibold text-sm w-8 h-8 flex items-center justify-center rounded-lg">NS</div>
+            <span className="text-navy font-semibold text-sm tracking-wide">NextGen Spark</span>
           </div>
 
           <div className="mb-8">

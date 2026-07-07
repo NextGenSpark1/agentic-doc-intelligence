@@ -56,10 +56,10 @@ export default function Navbar() {
         <div className="bg-navy-deep h-13 flex items-center px-4 gap-3">
           {/* Brand */}
           <div className="bg-teal text-white font-mono font-semibold text-sm w-8 h-8 flex items-center justify-center rounded shrink-0">
-            II
+            NS
           </div>
           <span className="text-white font-medium text-sm tracking-wide flex-1">
-            Investigation Intelligence
+            NextGen Spark
           </span>
           {/* Search — wired to /cases?q= filter */}
           <div className="relative">

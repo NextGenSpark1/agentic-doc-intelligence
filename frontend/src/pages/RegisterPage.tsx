@@ -71,7 +71,7 @@ export default function RegisterPage() {
           <div className="bg-teal text-white font-mono font-semibold text-sm w-9 h-9 flex items-center justify-center rounded-lg shrink-0">
             II
           </div>
-          <span className="text-white font-semibold tracking-wide text-sm">Investigation Intelligence</span>
+          <span className="text-white font-semibold tracking-wide text-sm">NextGen Spark</span>
         </div>
 
         <div className="relative z-10">
@@ -87,7 +87,7 @@ export default function RegisterPage() {
         </div>
 
         <p className="relative z-10 text-white/25 text-xs">
-          &copy; {new Date().getFullYear()} Investigation Intelligence
+          &copy; {new Date().getFullYear()} NextGen Spark
         </p>
       </div>
 
@@ -97,8 +97,8 @@ export default function RegisterPage() {
 
           {/* Mobile brand */}
           <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
-            <div className="bg-teal text-white font-mono font-semibold text-sm w-8 h-8 flex items-center justify-center rounded-lg">II</div>
-            <span className="text-navy font-semibold text-sm tracking-wide">Investigation Intelligence</span>
+            <div className="bg-teal text-white font-mono font-semibold text-sm w-8 h-8 flex items-center justify-center rounded-lg">NS</div>
+            <span className="text-navy font-semibold text-sm tracking-wide">NextGen Spark</span>
           </div>
 
           {done ? (
@@ -123,7 +123,7 @@ export default function RegisterPage() {
             <>
               <div className="mb-8">
                 <h1 className="text-2xl font-semibold text-text mb-1">Create an account</h1>
-                <p className="text-sm text-text-mute">Get started with Investigation Intelligence</p>
+                <p className="text-sm text-text-mute">Get started with NextGen Spark</p>
               </div>
 
               {error && (
