@@ -23,7 +23,6 @@ _FIELD_TO_TYPE = {
     # procurement_fraud
     "awarded_vendor": "vendor",
     "approving_officer": "person",   # custom field users add to procurement cases
-    "tender_id": "tender",
     # financial_crime
     "reporting_entity": "company",
     "investigation_reference": "reference",
@@ -52,7 +51,12 @@ _LIST_FIELD_TO_TYPE = {
 
 
 def _normalise(name: str) -> str:
-    return re.sub(r"\s+", " ", (name or "").strip().lower())
+    s = (name or "").strip()
+    # Strip role in parentheses: "Dato' Razif (Procurement Director)" → "Dato' Razif"
+    s = re.sub(r"\s*\(.*?\)", "", s)
+    # Strip comma-separated role suffix: "Dato' Razif, Procurement Director" → "Dato' Razif"
+    s = re.sub(r",.*$", "", s)
+    return re.sub(r"\s+", " ", s.lower()).strip()
 
 
 def resolve(case_id: str) -> list[dict]:

@@ -10,11 +10,23 @@ is deliberately NOT delegated to an opaque LLM — only the narrative (in summar
 """
 from __future__ import annotations
 
+import re
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 
 _SPLIT_PAYMENT_WINDOW_DAYS = 3
+_NON_NUMERIC_RE = re.compile(r"[^\d.]")
+
+
+def _to_float(v) -> float:
+    """Parse a numeric value that may carry currency symbols, commas, or spaces."""
+    if v is None:
+        return 0.0
+    if isinstance(v, (int, float)):
+        return float(v)
+    cleaned = _NON_NUMERIC_RE.sub("", str(v).replace(",", ""))
+    return float(cleaned) if cleaned else 0.0
 
 
 def _finding(ftype: str, severity: str, confidence: float, statement: str, doc_ids: list[str]) -> dict:
@@ -69,7 +81,7 @@ def compute_findings(extractions: list[dict]) -> list[dict]:
         if vendor and amount and pdate:
             try:
                 day = datetime.fromisoformat(str(pdate)).date()
-                by_vendor[vendor].append((day, float(amount), ex["document_id"]))
+                by_vendor[vendor].append((day, _to_float(amount), ex["document_id"]))
             except (ValueError, TypeError):
                 continue
     for vendor, payments in by_vendor.items():
@@ -88,8 +100,8 @@ def compute_findings(extractions: list[dict]) -> list[dict]:
     for ex in extractions:
         d = ex.get("extracted_json") or {}
         try:
-            budget = float(d.get("budget_amount") or 0)
-            contract = float(d.get("contract_value") or 0)
+            budget = _to_float(d.get("budget_amount"))
+            contract = _to_float(d.get("contract_value"))
             if budget > 0 and contract > 0 and (contract / budget) >= 0.95:
                 pct = round(contract / budget * 100, 1)
                 vendor = (d.get("awarded_vendor") or "Unknown vendor").strip()

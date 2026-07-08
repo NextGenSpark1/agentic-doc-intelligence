@@ -54,6 +54,27 @@ def extract_dates_from_text(text: str) -> list[str]:
     return found
 
 
+def extract_labeled_dates_from_text(text: str) -> list[tuple[str, str]]:
+    """Return (label, iso_date) pairs by inferring a label from context before each date."""
+    results: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for m in _DATE_TOKEN_RE.finditer(text or ""):
+        iso = parse_date(m.group().strip().rstrip(","))
+        if not iso or iso in seen:
+            continue
+        seen.add(iso)
+        # look back up to 80 chars, stopping at |, ;, newline
+        start = max(0, m.start() - 80)
+        before = text[start:m.start()]
+        segment = re.split(r"[|;,\n]", before)[-1].strip()
+        # remove trailing colon / dash
+        label = re.sub(r"[\s:—\-–]+$", "", segment).strip()
+        if not label or len(label) > 50:
+            label = "Procurement event"
+        results.append((label.title(), iso))
+    return results
+
+
 def compute_events(extractions: list[dict], case_id: str | None = None) -> list[dict]:
     events: list[dict] = []
     for ex in extractions:
@@ -78,12 +99,11 @@ def compute_events(extractions: list[dict], case_id: str | None = None) -> list[
             if ciso:
                 events.append(evt(ciso, "Communication event"))
 
-        # procurement_fraud — extract dates from approval_timeline text
+        # procurement_fraud — extract dates from approval_timeline text with context labels
         timeline_text = d.get("approval_timeline") or ""
         if timeline_text:
-            ref = d.get("awarded_vendor") or d.get("tender_id") or "tender"
-            for tiso in extract_dates_from_text(str(timeline_text)):
-                events.append(evt(tiso, f"Procurement milestone — {ref}"))
+            for label, tiso in extract_labeled_dates_from_text(str(timeline_text)):
+                events.append(evt(tiso, label))
 
         # general — key_dates list
         for kdate in (d.get("key_dates") or []):
