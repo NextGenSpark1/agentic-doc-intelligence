@@ -63,8 +63,9 @@ def compute_findings(extractions: list[dict]) -> list[dict]:
     by_vendor: dict[str, list] = defaultdict(list)
     for ex in extractions:
         d = ex.get("extracted_json") or {}
-        vendor = (d.get("vendor_name") or "").strip()
-        amount, pdate = d.get("amount"), d.get("payment_date")
+        vendor = (d.get("vendor_name") or d.get("awarded_vendor") or "").strip()
+        amount = d.get("amount") or d.get("contract_value")
+        pdate = d.get("payment_date")
         if vendor and amount and pdate:
             try:
                 day = datetime.fromisoformat(str(pdate)).date()
@@ -83,11 +84,31 @@ def compute_findings(extractions: list[dict]) -> list[dict]:
                     f"Two payments to {vendor} within {gap} day(s) totalling {total:.2f} "
                     f"— possible threshold splitting.", docs))
 
+    # Rule 4: contract value near approved budget ceiling (≥ 95%) — procurement fraud
+    for ex in extractions:
+        d = ex.get("extracted_json") or {}
+        try:
+            budget = float(d.get("budget_amount") or 0)
+            contract = float(d.get("contract_value") or 0)
+            if budget > 0 and contract > 0 and (contract / budget) >= 0.95:
+                pct = round(contract / budget * 100, 1)
+                vendor = (d.get("awarded_vendor") or "Unknown vendor").strip()
+                findings.append(_finding(
+                    "budget_ceiling_proximity", "high", 0.85,
+                    f"Contract to {vendor} ({contract:,.2f}) is {pct}% of the approved "
+                    f"budget ({budget:,.2f}) — possible budget manipulation.",
+                    [ex["document_id"]]))
+        except (ValueError, TypeError):
+            continue
+
     return findings
 
 
 def detect(case_id: str) -> list[dict]:
     from .. import db
+
+    # Clear previous pending findings to avoid duplicates on re-run
+    db.get_client().table("findings").delete().eq("case_id", case_id).eq("human_review_status", "pending").execute()
 
     findings = compute_findings(db.list_extractions(case_id))
     persisted = []

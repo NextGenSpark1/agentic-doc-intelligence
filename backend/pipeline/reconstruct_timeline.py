@@ -5,17 +5,36 @@ Feeds the Timeline tab in the workspace.
 """
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 
 from .. import db
 
+_FORMATS = [
+    "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y",
+    "%d %b %Y", "%d %B %Y", "%m/%d/%Y",
+    "%B %d, %Y", "%B %d %Y", "%b %d, %Y", "%b %d %Y",
+]
+
+# Matches ISO dates, numeric dates, and month-name dates in free text
+_DATE_TOKEN_RE = re.compile(
+    r'\b\d{4}-\d{2}-\d{2}\b'
+    r'|\b\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}\b'
+    r'|\b\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?'
+    r'|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4}\b'
+    r'|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?'
+    r'|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)'
+    r'\s+\d{1,2}[,]?\s+\d{4}\b',
+    re.IGNORECASE,
+)
+
 
 def parse_date(value) -> str | None:
     if not value:
         return None
-    text = str(value).strip()
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d %b %Y", "%d %B %Y", "%m/%d/%Y"):
+    text = str(value).strip().rstrip(',')
+    for fmt in _FORMATS:
         try:
             return datetime.strptime(text, fmt).date().isoformat()
         except ValueError:
@@ -23,41 +42,72 @@ def parse_date(value) -> str | None:
     return None
 
 
+def extract_dates_from_text(text: str) -> list[str]:
+    """Extract all parseable ISO dates from a free-text string."""
+    found: list[str] = []
+    seen: set[str] = set()
+    for m in _DATE_TOKEN_RE.finditer(text or ""):
+        iso = parse_date(m.group().strip().rstrip(','))
+        if iso and iso not in seen:
+            seen.add(iso)
+            found.append(iso)
+    return found
+
+
 def compute_events(extractions: list[dict], case_id: str | None = None) -> list[dict]:
     events: list[dict] = []
     for ex in extractions:
         d = ex.get("extracted_json") or {}
-        # payment_date is the main dated event in financial schemas
+        eid = case_id or ex.get("case_id")
+        doc_id = ex.get("document_id")
+
+        def evt(date_iso: str, label: str) -> dict:
+            return {"event_id": str(uuid.uuid4()), "case_id": eid,
+                    "event_date": date_iso, "label": label, "document_id": doc_id}
+
+        # financial / audit / payment_tracing — payment_date
         iso = parse_date(d.get("payment_date"))
         if iso:
             vendor = d.get("vendor_name") or d.get("awarded_vendor") or "unknown vendor"
             amount = d.get("amount")
-            label = f"Payment to {vendor}" + (f" ({amount})" if amount else "")
-            events.append(
-                {
-                    "event_id": str(uuid.uuid4()),
-                    "case_id": case_id or ex.get("case_id"),
-                    "event_date": iso,
-                    "label": label,
-                    "document_id": ex.get("document_id"),
-                }
-            )
-        # communication dates
+            events.append(evt(iso, f"Payment to {vendor}" + (f" ({amount})" if amount else "")))
+
+        # communication — dates list
         for cdate in (d.get("dates") or []):
             ciso = parse_date(cdate)
             if ciso:
-                events.append(
-                    {
-                        "event_id": str(uuid.uuid4()),
-                        "case_id": case_id or ex.get("case_id"),
-                        "event_date": ciso,
-                        "label": "Communication event",
-                        "document_id": ex.get("document_id"),
-                    }
-                )
+                events.append(evt(ciso, "Communication event"))
 
-    events.sort(key=lambda e: e["event_date"])
-    return events
+        # procurement_fraud — extract dates from approval_timeline text
+        timeline_text = d.get("approval_timeline") or ""
+        if timeline_text:
+            ref = d.get("awarded_vendor") or d.get("tender_id") or "tender"
+            for tiso in extract_dates_from_text(str(timeline_text)):
+                events.append(evt(tiso, f"Procurement milestone — {ref}"))
+
+        # general — key_dates list
+        for kdate in (d.get("key_dates") or []):
+            kiso = parse_date(kdate)
+            if kiso:
+                events.append(evt(kiso, "Document date"))
+
+        # any custom date fields users might add (submission_date, award_date, etc.)
+        for field in ("submission_date", "award_date", "report_date", "contract_date"):
+            iso = parse_date(d.get(field))
+            if iso:
+                label = field.replace("_", " ").title()
+                events.append(evt(iso, label))
+
+    # deduplicate by (date, label, doc_id) then sort
+    seen_keys: set[tuple] = set()
+    deduped: list[dict] = []
+    for e in events:
+        key = (e["event_date"], e["label"], e["document_id"])
+        if key not in seen_keys:
+            seen_keys.add(key)
+            deduped.append(e)
+    deduped.sort(key=lambda e: e["event_date"])
+    return deduped
 
 
 def build_timeline(case_id: str) -> list[dict]:

@@ -14,20 +14,40 @@ from .. import db
 
 # Which extracted fields map to which entity type.
 _FIELD_TO_TYPE = {
+    # financial / payment_tracing / audit
     "vendor_name": "vendor",
-    "awarded_vendor": "vendor",
     "approval_officer": "person",
     "bank_account": "bank_account",
     "po_number": "po",
     "invoice_number": "invoice",
+    # procurement_fraud
+    "awarded_vendor": "vendor",
+    "approving_officer": "person",   # custom field users add to procurement cases
+    "tender_id": "tender",
+    # financial_crime
+    "reporting_entity": "company",
+    "investigation_reference": "reference",
+    # corruption
+    "benefit_type": "benefit",
 }
 _LIST_FIELD_TO_TYPE = {
+    # conflict_of_interest
     "competing_vendors": "vendor",
     "person_names": "person",
     "related_companies": "company",
     "shareholders": "person",
     "directors": "person",
     "phone_numbers": "phone",
+    # financial_crime
+    "counterparties": "person",
+    "account_numbers": "bank_account",
+    # corruption
+    "involved_parties": "person",
+    # communication
+    "participants": "person",
+    # general
+    "party_names": "person",
+    "signatories": "person",
 }
 
 

@@ -32,10 +32,10 @@ def compute_relationships(extractions: list[dict], case_id: str | None = None) -
             acct_to_vendors[acct].add(vendor)
     for acct, vendors in acct_to_vendors.items():
         if len(vendors) > 1:
-            vendors = sorted(vendors)
-            for i in range(len(vendors)):
-                for j in range(i + 1, len(vendors)):
-                    edges.append(_edge(actual_case_id, vendors[i], vendors[j],
+            vendors_sorted = sorted(vendors)
+            for i in range(len(vendors_sorted)):
+                for j in range(i + 1, len(vendors_sorted)):
+                    edges.append(_edge(actual_case_id, vendors_sorted[i], vendors_sorted[j],
                                        "shared_bank_account", {"bank_account": acct}))
 
     # 2. Shared director/shareholder across companies (conflict-of-interest docs)
@@ -49,16 +49,58 @@ def compute_relationships(extractions: list[dict], case_id: str | None = None) -
                     person_to_companies[person.strip()].add(company.strip())
     for person, companies in person_to_companies.items():
         if len(companies) > 1:
-            companies = sorted(companies)
-            for i in range(len(companies)):
-                for j in range(i + 1, len(companies)):
-                    edges.append(_edge(actual_case_id, companies[i], companies[j],
+            companies_sorted = sorted(companies)
+            for i in range(len(companies_sorted)):
+                for j in range(i + 1, len(companies_sorted)):
+                    edges.append(_edge(actual_case_id, companies_sorted[i], companies_sorted[j],
                                        "shared_principal", {"person": person}))
+
+    # 3. Approving officer → awarded vendor (procurement fraud / financial)
+    seen_pairs: set[tuple] = set()
+    for ex in extractions:
+        d = ex.get("extracted_json") or {}
+        officer = (d.get("approval_officer") or d.get("approving_officer") or "").strip()
+        vendor = (d.get("vendor_name") or d.get("awarded_vendor") or "").strip()
+        if officer and vendor:
+            pair = (officer, vendor)
+            if pair not in seen_pairs:
+                seen_pairs.add(pair)
+                edges.append(_edge(actual_case_id, officer, vendor, "approved_award", {}))
+
+    # 4. Counterparties linked across documents (financial_crime)
+    counterparty_docs: dict[str, list] = defaultdict(list)
+    for ex in extractions:
+        d = ex.get("extracted_json") or {}
+        for cp in (d.get("counterparties") or []):
+            cp = cp.strip()
+            if cp:
+                counterparty_docs[cp].append(ex["document_id"])
+    for cp, docs in counterparty_docs.items():
+        if len(docs) > 1:
+            edges.append(_edge(actual_case_id, cp, "multiple documents",
+                               "appears_in_multiple_documents",
+                               {"document_count": len(docs)}))
+
+    # 5. Involved parties cross-linked (corruption)
+    party_to_docs: dict[str, list] = defaultdict(list)
+    for ex in extractions:
+        d = ex.get("extracted_json") or {}
+        for party in (d.get("involved_parties") or []):
+            party = party.strip()
+            if party:
+                party_to_docs[party].append(ex["document_id"])
+    parties = sorted(party_to_docs.keys())
+    for i in range(len(parties)):
+        for j in range(i + 1, len(parties)):
+            edges.append(_edge(actual_case_id, parties[i], parties[j],
+                               "co_involved", {}))
 
     return edges
 
 
 def build(case_id: str) -> list[dict]:
+    # Clear existing relationships before rebuild to prevent duplicates on re-run
+    db.get_client().table("relationships").delete().eq("case_id", case_id).execute()
     extractions = db.list_extractions(case_id)
     edges = compute_relationships(extractions, case_id)
     for e in edges:
