@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Case } from '../types'
 import Badge from './Badge'
-import { relativeTime, riskColor, isStale, formatCaseType } from '../utils'
+import { relativeTime, riskColor, formatCaseType } from '../utils'
 
 const COLS = 'grid-cols-[36px_160px_1fr_140px_160px_90px_120px_130px_32px]'
 const HEADER_COLS = ['', 'Case ID', 'Title', 'Type', 'Status', 'Docs', 'Risk', 'Last Activity', '']
@@ -82,6 +82,10 @@ export default function CaseTable({ cases, onDelete, onBulkDelete }: CaseTablePr
     )
   }
 
+  const newestId = cases.length > 0
+    ? cases.reduce((a, b) => new Date(a.created_at) > new Date(b.created_at) ? a : b).case_id
+    : null
+
   return (
     <div className="flex flex-col gap-2">
       {/* Bulk action bar */}
@@ -143,7 +147,6 @@ export default function CaseTable({ cases, onDelete, onBulkDelete }: CaseTablePr
         {/* Rows */}
         {cases.map((c, idx) => {
           const isLast = idx === cases.length - 1
-          const stale = isStale(c.created_at)
           const color = riskColor(c.risk_score)
           const riskPct = Math.round(c.risk_score * 100)
 
@@ -192,7 +195,7 @@ export default function CaseTable({ cases, onDelete, onBulkDelete }: CaseTablePr
                 hover:bg-teal/[0.04] transition-colors duration-150 group
                 ${!isLast ? 'border-b border-border' : ''}
               `}
-              style={stale ? { borderLeft: '3px solid #C77A12' } : { borderLeft: '3px solid transparent' }}
+              style={c.case_id === newestId ? { borderLeft: '3px solid #C77A12' } : { borderLeft: '3px solid transparent' }}
             >
               {/* Checkbox */}
               <input
