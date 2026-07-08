@@ -4,7 +4,7 @@ import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocume
 type CasePatch = Partial<Pick<Case, 'title' | 'case_type' | 'status' | 'lead_investigator' | 'allegation_summary' | 'schema_fields'>>
 import { supabase } from './lib/supabaseClient'
 
-const BASE_URL = 'http://localhost:8000'
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 const client = axios.create({
   baseURL: BASE_URL,
