@@ -7,6 +7,14 @@ import { relativeTime, riskColor, formatCaseType } from '../utils'
 const COLS = 'grid-cols-[36px_160px_1fr_140px_160px_90px_120px_130px_32px]'
 const HEADER_COLS = ['', 'Case ID', 'Title', 'Type', 'Status', 'Docs', 'Risk', 'Last Activity', '']
 
+function statusAccent(status: string): string {
+  const s = status.toLowerCase()
+  if (s === 'active') return '#0E7C86'
+  if (s === 'pending review') return '#C77A12'
+  if (s === 'closed' || s === 'archived') return '#878E99'
+  return '#1E3A5F' // intake / default
+}
+
 interface CaseTableProps {
   cases: Case[]
   onDelete: (caseId: string) => Promise<void>
@@ -81,10 +89,6 @@ export default function CaseTable({ cases, onDelete, onBulkDelete }: CaseTablePr
       </div>
     )
   }
-
-  const newestId = cases.length > 0
-    ? cases.reduce((a, b) => new Date(a.created_at) > new Date(b.created_at) ? a : b).case_id
-    : null
 
   return (
     <div className="flex flex-col gap-2">
@@ -192,10 +196,10 @@ export default function CaseTable({ cases, onDelete, onBulkDelete }: CaseTablePr
               onClick={() => navigate(`/cases/${c.case_id}`)}
               className={`
                 grid ${COLS} gap-x-4 items-center px-5 py-3.5 cursor-pointer
-                hover:bg-teal/[0.04] transition-colors duration-150 group
+                hover:bg-teal/[0.06] transition-colors duration-150 group
                 ${!isLast ? 'border-b border-border' : ''}
               `}
-              style={c.case_id === newestId ? { borderLeft: '3px solid #C77A12' } : { borderLeft: '3px solid transparent' }}
+              style={{ borderLeft: `3px solid ${statusAccent(c.status)}` }}
             >
               {/* Checkbox */}
               <input
