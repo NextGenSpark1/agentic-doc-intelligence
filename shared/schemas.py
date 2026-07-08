@@ -41,7 +41,7 @@ class ExtractionSchema(BaseModel):
 class CitationSchema(BaseModel):
     document_id: str
     page: int
-    bbox: list[int]  # [x1, y1, x2, y2]
+    bbox: list[float]  # [x1, y1, x2, y2] — ADE returns normalised floats 0–1
     quoted_text: str
     chunk_id: str
 
