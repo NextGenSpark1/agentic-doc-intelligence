@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -25,6 +26,15 @@ from .auth import get_current_user
 from .config import get_settings
 
 app = FastAPI(title="Investigation Intelligence API", version="0.1.0")
+
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_WHITESPACE_RE = re.compile(r"\s{2,}")
+
+
+def _strip_html(text: str) -> str:
+    """Remove HTML tags left by ADE and collapse whitespace."""
+    cleaned = _HTML_TAG_RE.sub(" ", text or "")
+    return _WHITESPACE_RE.sub(" ", cleaned).strip()
 
 
 def _fallback_summary(fields: dict, schema_name: str) -> str:
@@ -423,7 +433,7 @@ async def chat(case_id: str, body: ChatRequest, user: dict = Depends(get_current
                             citations=[])
 
     # 2. Build grounded context and answer
-    context = "\n\n".join(f"[{i+1}] {c['text']}" for i, c in enumerate(chunks))
+    context = "\n\n".join(f"[{i+1}] {_strip_html(c['text'])}" for i, c in enumerate(chunks))
     try:
         answer = llm.complete(
             tier="reasoning",
@@ -442,7 +452,7 @@ async def chat(case_id: str, body: ChatRequest, user: dict = Depends(get_current
             document_id=c.get("document_id", ""),
             page=c.get("page") or 0,
             bbox=c.get("bbox") or [0, 0, 0, 0],
-            quoted_text=(c.get("text") or "")[:240],
+            quoted_text=_strip_html(c.get("text") or "")[:240],
             chunk_id=c.get("chunk_id", ""),
         )
         for c in chunks
