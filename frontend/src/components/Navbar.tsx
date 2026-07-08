@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { LogOut } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { LogOut, Settings } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { getInitialsFromUser } from '../pages/AccountPage'
 
@@ -11,8 +11,6 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // Seed the input from the current URL so it stays in sync when the user
-  // arrives on /cases via other routes or hits back/forward.
   const [search, setSearch] = useState(() => {
     return new URLSearchParams(location.search).get('q') ?? ''
   })
@@ -25,7 +23,6 @@ export default function Navbar() {
   function handleSearchChange(v: string) {
     setSearch(v)
     const target = v.trim() ? `/cases?q=${encodeURIComponent(v)}` : '/cases'
-    // Replace history so back button doesn't get littered with per-keystroke entries.
     navigate(target, { replace: true })
   }
 
@@ -47,12 +44,12 @@ export default function Navbar() {
 
   const initials = user ? getInitialsFromUser(user) : '??'
   const email = user?.email ?? ''
-  const isWorkspace = /^\/cases\/.+/.test(location.pathname)
+  const fullName = (user?.user_metadata?.full_name as string | undefined)?.trim() ?? ''
+  const displayName = fullName || email
 
   return (
     <>
       <header className="fixed top-0 left-0 right-0 z-50">
-        {/* Top bar */}
         <div className="bg-navy-deep h-13 flex items-center px-4 gap-3">
           {/* Brand */}
           <div className="bg-teal text-white font-mono font-semibold text-sm w-8 h-8 flex items-center justify-center rounded shrink-0">
@@ -61,6 +58,7 @@ export default function Navbar() {
           <span className="text-white font-medium text-sm tracking-wide flex-1">
             NextGen Spark
           </span>
+
           {/* Search — wired to /cases?q= filter */}
           <div className="relative">
             <input
@@ -76,6 +74,7 @@ export default function Navbar() {
               "
             />
           </div>
+
           {/* Avatar + dropdown */}
           <div className="relative" ref={menuRef}>
             <button
@@ -87,11 +86,22 @@ export default function Navbar() {
             </button>
 
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-2 w-56 bg-panel border border-border rounded-xl shadow-lg overflow-hidden z-50">
-                {/* Email row */}
+              <div className="absolute right-0 top-full mt-2 w-60 bg-panel border border-border rounded-xl shadow-lg overflow-hidden z-50">
+                {/* User info */}
                 <div className="px-4 py-3 border-b border-border">
-                  <p className="text-xs text-text-mute truncate">{email}</p>
+                  <p className="text-sm font-semibold text-text truncate">{displayName}</p>
+                  {fullName && (
+                    <p className="text-xs text-text-mute truncate mt-0.5">{email}</p>
+                  )}
                 </div>
+                {/* Account Settings */}
+                <button
+                  onClick={() => { setMenuOpen(false); navigate('/account') }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-text-mid hover:bg-panel-2 hover:text-text transition-colors"
+                >
+                  <Settings size={14} className="text-text-mute" />
+                  Account Settings
+                </button>
                 {/* Sign out */}
                 <button
                   onClick={handleSignOut}
@@ -104,35 +114,10 @@ export default function Navbar() {
             )}
           </div>
         </div>
-
-        {/* Tab bar — hidden inside case workspace (has its own breadcrumb nav) */}
-        {!isWorkspace && (
-          <div
-            className="bg-navy h-11 flex items-center px-4 gap-1"
-            style={{ borderBottom: '1px solid rgba(255,255,255,0.10)' }}
-          >
-            {[
-              { to: '/cases', label: 'Cases' },
-              { to: '/account', label: 'Account' },
-            ].map(({ to, label }) => (
-              <NavLink
-                key={to}
-                to={to}
-                className={({ isActive }) =>
-                  isActive
-                    ? 'px-3 py-1 rounded bg-white text-navy text-sm font-medium transition-colors duration-150'
-                    : 'px-3 py-1 rounded text-white/60 text-sm font-medium hover:text-white/90 transition-colors duration-150'
-                }
-              >
-                {label}
-              </NavLink>
-            ))}
-          </div>
-        )}
       </header>
 
-      {/* Spacer — shrinks to just the top bar height when tab bar is hidden */}
-      <div className={isWorkspace ? 'h-13' : 'h-24'} />
+      {/* Spacer */}
+      <div className="h-13" />
     </>
   )
 }
