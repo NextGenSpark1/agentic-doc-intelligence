@@ -22,7 +22,9 @@ function AuthLayout() {
   return (
     <>
       <Navbar />
-      <Outlet />
+      <div className="min-h-[calc(100vh-3.25rem)]">
+        <Outlet />
+      </div>
     </>
   )
 }
