@@ -106,11 +106,25 @@ export default function TimelinePanel({
       <div className="max-w-2xl mx-auto px-6 py-6 flex flex-col gap-0">
 
         {/* Header */}
-        <div className="mb-6">
-          <h2 className="text-base font-bold text-text">Timeline</h2>
-          <p className="text-xs text-text-mute mt-0.5">
-            {events.length} event{events.length !== 1 ? 's' : ''} extracted across all documents
-          </p>
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-bold text-text">Timeline</h2>
+            <p className="text-xs text-text-mute mt-0.5">
+              {events.length} event{events.length !== 1 ? 's' : ''} extracted across all documents
+            </p>
+          </div>
+          {onRunAnalysis && (
+            <button
+              onClick={onRunAnalysis}
+              disabled={analysisState === 'running'}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-teal hover:bg-teal-soft rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            >
+              {analysisState === 'running' && (
+                <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              )}
+              {analysisState === 'running' ? 'Running…' : 'Re-run Analysis'}
+            </button>
+          )}
         </div>
 
         {grouped.map(([year, yearEvents], groupIdx) => (

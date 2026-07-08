@@ -372,15 +372,29 @@ export default function EntityGraphPanel({
             </div>
           )}
 
-          {/* Stats */}
-          <div className="absolute top-3 right-3 z-10 bg-white/95 border border-slate-200 rounded-xl px-3 py-2 shadow-sm flex items-center gap-3">
-            <span className="text-[10px] text-slate-500">
-              <span className="font-semibold text-slate-700">{data.entities.length}</span> entities
-            </span>
-            <span className="text-slate-300">·</span>
-            <span className="text-[10px] text-slate-500">
-              <span className="font-semibold text-slate-700">{data.relationships.length}</span> relationships
-            </span>
+          {/* Stats + Re-run */}
+          <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
+            <div className="bg-white/95 border border-slate-200 rounded-xl px-3 py-2 shadow-sm flex items-center gap-3">
+              <span className="text-[10px] text-slate-500">
+                <span className="font-semibold text-slate-700">{data.entities.length}</span> entities
+              </span>
+              <span className="text-slate-300">·</span>
+              <span className="text-[10px] text-slate-500">
+                <span className="font-semibold text-slate-700">{data.relationships.length}</span> relationships
+              </span>
+            </div>
+            {onRunAnalysis && (
+              <button
+                onClick={onRunAnalysis}
+                disabled={analysisState === 'running'}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-teal hover:bg-teal-soft rounded-xl shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {analysisState === 'running' && (
+                  <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                )}
+                {analysisState === 'running' ? 'Running…' : 'Re-run Analysis'}
+              </button>
+            )}
           </div>
         </ReactFlow>
       </div>

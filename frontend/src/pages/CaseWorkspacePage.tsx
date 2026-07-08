@@ -588,16 +588,6 @@ export default function CaseWorkspacePage() {
           <span className="text-sm font-semibold text-text truncate">{caseData.title}</span>
         )}
         <div className="flex-1" />
-        <button
-          onClick={handleRunAnalysis}
-          disabled={analysisState === 'running'}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-teal hover:bg-teal-soft rounded transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 mr-2"
-        >
-          {analysisState === 'running' && (
-            <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          )}
-          {analysisState === 'running' ? 'Running…' : 'Run Analysis'}
-        </button>
         <div className="flex items-center gap-0.5 shrink-0">
           {SUBTABS.map(tab => (
             <button

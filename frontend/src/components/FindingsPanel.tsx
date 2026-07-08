@@ -145,10 +145,24 @@ export default function FindingsPanel({
               AI-generated findings requiring investigator review
             </p>
           </div>
-          <div className="flex items-center gap-3 text-xs text-text-mute">
-            <span><span className="font-semibold text-yellow-600">{counts.pending}</span> pending</span>
-            <span><span className="font-semibold text-green">{counts.confirmed}</span> confirmed</span>
-            <span><span className="font-semibold text-text-mute">{counts.dismissed}</span> dismissed</span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-3 text-xs text-text-mute">
+              <span><span className="font-semibold text-yellow-600">{counts.pending}</span> pending</span>
+              <span><span className="font-semibold text-green">{counts.confirmed}</span> confirmed</span>
+              <span><span className="font-semibold text-text-mute">{counts.dismissed}</span> dismissed</span>
+            </div>
+            {onRunAnalysis && findings.length > 0 && (
+              <button
+                onClick={onRunAnalysis}
+                disabled={analysisState === 'running'}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-teal hover:bg-teal-soft rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {analysisState === 'running' && (
+                  <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                )}
+                {analysisState === 'running' ? 'Running…' : 'Re-run Analysis'}
+              </button>
+            )}
           </div>
         </div>
 
