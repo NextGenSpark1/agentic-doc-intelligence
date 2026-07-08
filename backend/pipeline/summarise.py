@@ -15,7 +15,7 @@ _SEVERITY_WEIGHT = {"high": 30, "medium": 15, "low": 5}
 
 def _risk_score(findings: list[dict]) -> float:
     score = sum(_SEVERITY_WEIGHT.get(f.get("severity", "low"), 5) for f in findings)
-    return float(min(score, 100))
+    return round(min(score, 100) / 100, 4)
 
 
 def summarise(case_id: str) -> dict:

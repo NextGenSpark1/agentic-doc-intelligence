@@ -102,7 +102,7 @@ def compute_findings(extractions: list[dict]) -> list[dict]:
         try:
             budget = _to_float(d.get("budget_amount"))
             contract = _to_float(d.get("contract_value"))
-            if budget > 0 and contract > 0 and (contract / budget) >= 0.95:
+            if budget > 0 and contract > 0 and budget > contract and (contract / budget) >= 0.95:
                 pct = round(contract / budget * 100, 1)
                 vendor = (d.get("awarded_vendor") or "Unknown vendor").strip()
                 findings.append(_finding(
