@@ -1,11 +1,20 @@
 """Stage 2+3 — run ADE on a document, persist the extraction, and index chunks for RAG."""
 from __future__ import annotations
 
+import time
+import traceback
 import uuid
 from datetime import datetime, timezone
 
 from .. import ade_client, db, llm
 from ..schemas import schema_for_case_type
+
+# Gemini's batch embedding API rejects requests with more than 100 inputs, AND the free tier
+# caps embed requests at 100/minute — so long documents (hundreds of chunks) must be embedded
+# in slices, with a backoff pause if a slice gets rate-limited.
+_EMBED_BATCH_SIZE = 100
+_EMBED_RATE_LIMIT_RETRIES = 3
+_EMBED_RATE_LIMIT_BACKOFF_SECONDS = 20
 
 
 def run_extraction(document: dict, case: dict) -> dict:
@@ -64,15 +73,49 @@ def run_extraction(document: dict, case: dict) -> dict:
     return {"markdown": parsed["markdown"]}
 
 
+def _embed_batch_with_retry(batch: list[str]) -> list[list[float]]:
+    """Embed one slice, retrying with a fixed backoff on rate-limit errors (the free tier caps
+    embed requests at 100/minute, so consecutive slices routinely get 429'd)."""
+    from litellm import RateLimitError
+
+    for attempt in range(_EMBED_RATE_LIMIT_RETRIES + 1):
+        try:
+            return llm.embed(batch)
+        except RateLimitError:
+            if attempt == _EMBED_RATE_LIMIT_RETRIES:
+                raise
+            time.sleep(_EMBED_RATE_LIMIT_BACKOFF_SECONDS)
+    raise AssertionError("unreachable")  # loop always returns or raises
+
+
+def _embed_in_batches(texts: list[str], case_id: str, document_id: str) -> list[list[float] | None]:
+    """Embed texts in slices of _EMBED_BATCH_SIZE (the provider's per-request cap). A slice
+    that still fails to embed after retries degrades to text-only storage for just that
+    slice — one bad or oversized slice no longer silently kills embeddings for an entire
+    document. Failures are logged (stdout + audit_log) so a broken case is diagnosable
+    instead of invisible."""
+    vectors: list[list[float] | None] = []
+    for i in range(0, len(texts), _EMBED_BATCH_SIZE):
+        batch = texts[i:i + _EMBED_BATCH_SIZE]
+        try:
+            vectors.extend(_embed_batch_with_retry(batch))
+        except Exception as exc:
+            traceback.print_exc()
+            db.write_audit(case_id, "system", "chunk_embedding_failed", {
+                "document_id": document_id, "batch_start": i, "batch_size": len(batch),
+                "error": str(exc),
+            })
+            vectors.extend([None] * len(batch))  # store text only; chat falls back to keyword search
+    return vectors
+
+
 def _index_chunks(case_id: str, document_id: str, chunks: list[dict]) -> None:
-    """Embed chunk text and store for retrieval. Degrades silently if embeddings fail."""
+    """Embed chunk text and store for retrieval. Degrades to text-only storage per-batch if
+    embedding fails (see `_embed_in_batches`)."""
     texts = [c["text"] for c in chunks if c.get("text")]
     if not texts:
         return
-    try:
-        vectors = llm.embed(texts)
-    except Exception:
-        vectors = [None] * len(texts)  # store text only; chat falls back to keyword search
+    vectors = _embed_in_batches(texts, case_id, document_id)
 
     rows, vi = [], 0
     for c in chunks:
