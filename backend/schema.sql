@@ -6,6 +6,17 @@ ALTER TABLE extractions ADD COLUMN IF NOT EXISTS summary text;
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS schema_fields jsonb DEFAULT '[]'::jsonb;
 ALTER TABLE chunks ADD COLUMN IF NOT EXISTS type text DEFAULT 'text';
 
+-- Gemini case-reasoning pass on top of the rule-based stages: every findings/entities/
+-- relationships/timeline_events row is now tagged by how it was produced, and the LLM-sourced
+-- ones carry a short justification.
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS source text DEFAULT 'rule';
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS reasoning text;
+ALTER TABLE entities ADD COLUMN IF NOT EXISTS source text DEFAULT 'rule';
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS source text DEFAULT 'rule';
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS reasoning text;
+ALTER TABLE timeline_events ADD COLUMN IF NOT EXISTS source text DEFAULT 'rule';
+ALTER TABLE timeline_events ADD COLUMN IF NOT EXISTS reasoning text;
+
 -- Upgrade embedding dimension 768 → 1536 (gemini-embedding-001 at 1536 dims).
 -- WARNING: drops all existing chunk embeddings. Re-extract every document after running.
 ALTER TABLE chunks DROP COLUMN IF EXISTS embedding;

@@ -2,6 +2,11 @@
 
 Collect every dated event across the case's extractions and order them chronologically.
 Feeds the Timeline tab in the workspace.
+
+After the deterministic events are built, a Gemini pass looks for sequencing anomalies a
+date-sort can't catch (payment before the approval it claims to satisfy, backdating,
+suspiciously even spacing). Flags may only reference an (event_date, document_id) pair that
+is actually on the timeline we sent — anything else is dropped.
 """
 from __future__ import annotations
 
@@ -10,6 +15,19 @@ import uuid
 from datetime import datetime
 
 from .. import db
+from . import llm_reasoning
+
+_TIMELINE_ANOMALY_PROMPT = (
+    "You are reviewing a chronologically-sorted timeline of events extracted from a forensic "
+    "investigation case's documents. Look for sequencing anomalies a simple date-sort can't "
+    "catch: a payment recorded before the approval or contract that should precede it, a "
+    "document seemingly backdated relative to related events, or suspiciously clustered/evenly "
+    "spaced dates that suggest fabrication. Only flag events already present in the list below — "
+    "do not invent a new date or document_id.\n\n"
+    'Reply with strict JSON: {"flags": [{"event_date": str, "document_id": str, '
+    '"reasoning": str}]}. `event_date` and `document_id` must exactly match one entry from the '
+    "timeline below. Return an empty list if nothing looks anomalous."
+)
 
 _FORMATS = [
     "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y",
@@ -130,9 +148,45 @@ def compute_events(extractions: list[dict], case_id: str | None = None) -> list[
     return deduped
 
 
+def _llm_timeline_flags(events: list[dict], case_id: str) -> list[dict]:
+    if len(events) < 2:
+        return []
+
+    valid = {(e["event_date"], e["document_id"]) for e in events}
+    payload = {"timeline": [
+        {"event_date": e["event_date"], "label": e["label"], "document_id": e["document_id"]}
+        for e in events
+    ]}
+    result = llm_reasoning.ask(_TIMELINE_ANOMALY_PROMPT, payload)
+    flags = result.get("flags") if isinstance(result, dict) else None
+    if not flags or not isinstance(flags, list):
+        return []
+
+    out = []
+    for f in flags:
+        if not isinstance(f, dict):
+            continue
+        date = str(f.get("event_date") or "")
+        doc_id = str(f.get("document_id") or "")
+        reasoning = str(f.get("reasoning") or "").strip()
+        if (date, doc_id) not in valid or not reasoning:
+            continue  # ungrounded — not one of the events we actually sent
+        out.append({
+            "event_id": str(uuid.uuid4()), "case_id": case_id,
+            "event_date": date, "label": f"⚠ {reasoning}", "document_id": doc_id,
+            "source": "llm", "reasoning": reasoning,
+        })
+    return out
+
+
 def build_timeline(case_id: str) -> list[dict]:
     extractions = db.list_extractions(case_id)
     events = compute_events(extractions, case_id)
+    for e in events:
+        e.setdefault("source", "rule")
+        e.setdefault("reasoning", None)
+    events += _llm_timeline_flags(events, case_id)
+
     db.get_client().table("timeline_events").delete().eq("case_id", case_id).execute()
     if events:
         db.get_client().table("timeline_events").insert(events).execute()

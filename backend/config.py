@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     llm_reasoning_model: str = "groq/llama-3.3-70b-versatile"  # summaries, anomaly reasoning, chat
     llm_fast_model: str = "groq/llama-3.1-8b-instant"          # classification, cheap calls
     llm_embedding_model: str = "gemini/gemini-embedding-001" # RAG embeddings (Gemini)
+    # Whole-case cross-document reasoning (entities/relationships/timeline/findings LLM pass).
+    # Gemini's long context window is what makes reasoning over an entire case's extractions
+    # at once viable — the "reasoning" tier above is sized for single-document/short calls.
+    llm_case_reasoning_model: str = "gemini/gemini-2.5-pro"
 
     # --- API Keys (LiteLLM reads these from os.environ) ---
     groq_api_key: str = ""

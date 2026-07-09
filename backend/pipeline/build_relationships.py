@@ -3,6 +3,11 @@
 The headline differentiator from the business case: "same bank account across 4 vendors",
 "same director linked to multiple companies", "same phone reused". We find shared values
 across documents and record them as graph edges in the `relationships` table.
+
+A Gemini pass runs after the rule-based joins and looks for relationships implied by the
+narrative content of the extracted fields rather than exact shared values — e.g. one party
+introducing another, a stated associate tie. Every edge it proposes must cite a document_id
+that actually exists in the case; anything else is dropped before persisting.
 """
 from __future__ import annotations
 
@@ -10,12 +15,63 @@ import uuid
 from collections import defaultdict
 
 from .. import db
+from . import llm_reasoning
 
 # (shared field, the entity it ties together, edge label)
 _SHARED_LINKS = [
     ("bank_account", "vendor_name", "shared_bank_account"),
     ("bank_account", "awarded_vendor", "shared_bank_account"),
 ]
+
+_RELATIONSHIP_PROMPT = (
+    "You are helping map relationships between entities in a forensic investigation case. "
+    "Below is a JSON list of document extractions (document_id + extracted structured fields). "
+    "Beyond simple shared-value joins (same bank account, same officer, same phone), look for "
+    "relationships implied by the narrative content of the fields themselves — e.g. one party "
+    "introducing another, a stated family or associate tie, a prior dealing referenced in "
+    "passing. Cite the exact document_id the relationship comes from and quote the phrase that "
+    "supports it. Do not invent a document_id, entity name, or fact that is not present in the "
+    "input.\n\n"
+    'Reply with strict JSON: {"relationships": [{"source_name": str, "target_name": str, '
+    '"relationship_type": str, "evidence_quote": str, "document_id": str, "confidence": float}]}. '
+    "Return an empty list if you find nothing beyond what simple field matching would already show."
+)
+
+
+def _llm_relationships(extractions: list[dict], case_id: str) -> list[dict]:
+    valid_doc_ids = {ex["document_id"] for ex in extractions}
+    if len(valid_doc_ids) < 2:
+        return []
+
+    payload = {
+        "documents": [
+            {"document_id": ex["document_id"], "fields": ex.get("extracted_json") or {}}
+            for ex in extractions
+        ]
+    }
+    result = llm_reasoning.ask(_RELATIONSHIP_PROMPT, payload)
+    items = result.get("relationships") if isinstance(result, dict) else None
+    if not items or not isinstance(items, list):
+        return []
+
+    edges = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        doc_id = str(item.get("document_id") or "")
+        source = str(item.get("source_name") or "").strip()
+        target = str(item.get("target_name") or "").strip()
+        label = str(item.get("relationship_type") or "").strip()
+        if not (doc_id in valid_doc_ids and source and target and label):
+            continue  # ungrounded — the model cited something we never sent
+        edges.append(_edge(
+            case_id, source, target, label,
+            {"evidence_quote": item.get("evidence_quote"), "document_id": doc_id},
+            source_flag="llm",
+            reasoning=item.get("evidence_quote"),
+            confidence=llm_reasoning.clamp_confidence(item.get("confidence"), default=0.6),
+        ))
+    return edges
 
 
 def compute_relationships(extractions: list[dict], case_id: str | None = None) -> list[dict]:
@@ -103,17 +159,25 @@ def build(case_id: str) -> list[dict]:
     db.get_client().table("relationships").delete().eq("case_id", case_id).execute()
     extractions = db.list_extractions(case_id)
     edges = compute_relationships(extractions, case_id)
+    edges += _llm_relationships(extractions, case_id)
     for e in edges:
         db.insert_relationship(e)
     return edges
 
 
-def _edge(case_id, a, b, label, meta):
-    return {
+def _edge(case_id, a, b, label, meta, source_flag="rule", reasoning=None, confidence=None):
+    evidence = dict(meta)
+    if confidence is not None:
+        evidence["confidence"] = confidence
+    edge = {
         "relationship_id": str(uuid.uuid4()),
         "case_id": case_id,
         "source_name": a,
         "target_name": b,
         "relationship_type": label,
-        "evidence": meta,
+        "evidence": evidence,
+        "source": source_flag,
     }
+    if reasoning is not None:
+        edge["reasoning"] = reasoning
+    return edge

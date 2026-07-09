@@ -14,7 +14,12 @@ def complete(messages: list[dict], tier: str = "reasoning", **kwargs: Any) -> st
     from litellm import completion
 
     s = get_settings()
-    model = s.llm_fast_model if tier == "fast" else s.llm_reasoning_model
+    models = {
+        "fast": s.llm_fast_model,
+        "reasoning": s.llm_reasoning_model,
+        "case_reasoning": s.llm_case_reasoning_model,
+    }
+    model = models.get(tier, s.llm_reasoning_model)
     resp = completion(model=model, messages=messages, **kwargs)
     return resp["choices"][0]["message"]["content"]
 

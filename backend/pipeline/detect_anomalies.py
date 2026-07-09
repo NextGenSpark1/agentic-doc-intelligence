@@ -1,12 +1,18 @@
-"""Stage 4d — anomaly detection (rule-based for the MVP).
+"""Stage 4d — anomaly detection.
 
 `compute_findings(extractions)` is PURE: it takes a list of extraction dicts and returns
 finding dicts. No DB, no IDs, no I/O — so it is trivially unit-testable, which matters
 because these rules must survive legal scrutiny. `detect(case_id)` is the thin wrapper that
 loads, calls the pure function, stamps IDs/status, and persists.
 
-Rules: duplicate invoices, shared bank accounts across vendors, split payments. Detection
-is deliberately NOT delegated to an opaque LLM — only the narrative (in summarise) is.
+Rules: duplicate invoices, shared bank accounts across vendors, split payments, budget-ceiling
+proximity. These stay deterministic and always-on. On top, `detect()` runs a Gemini pass over
+the whole case (every extraction plus the entities/relationships/timeline already computed) to
+surface findings that need actual cross-document reasoning — vendors formed right before a
+contract award, narrative inconsistencies between documents, circular payments — which the
+hard-coded rules can't reach. Every LLM finding is tagged source="llm" (rule findings default
+to source="rule") and must cite at least one supporting document_id we actually sent; anything
+that cites a document we never sent is dropped rather than persisted.
 """
 from __future__ import annotations
 
@@ -15,8 +21,27 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 
+from . import llm_reasoning
+
 _SPLIT_PAYMENT_WINDOW_DAYS = 3
 _NON_NUMERIC_RE = re.compile(r"[^\d.]")
+
+_FINDINGS_PROMPT = (
+    "You are a forensic investigation analyst. Below is the full context for one case: every "
+    "document's extracted structured fields, plus the entities, relationships, and timeline "
+    "already established. Rule-based checks already caught duplicate invoices, shared bank "
+    "accounts, split payments, and budget-ceiling proximity — do NOT repeat those. Look instead "
+    "for things that need real cross-document reasoning: a vendor formed shortly before winning "
+    "a contract, a vendor sharing a director with the approving officer's other awards, "
+    "narrative inconsistencies between two documents describing the same event, circular or "
+    "round-trip payments, timing that doesn't logically add up. Every finding must cite at "
+    "least one supporting document_id that is present in the input below — never invent a "
+    "document, entity, or fact that isn't there.\n\n"
+    'Reply with strict JSON: {"findings": [{"finding_type": str, "severity": '
+    '"high"|"medium"|"low", "confidence": float, "statement": str, '
+    '"supporting_document_ids": [str, ...]}]}. Return an empty list if nothing stands out '
+    "beyond what the rules already found."
+)
 
 
 def _to_float(v) -> float:
@@ -29,13 +54,15 @@ def _to_float(v) -> float:
     return float(cleaned) if cleaned else 0.0
 
 
-def _finding(ftype: str, severity: str, confidence: float, statement: str, doc_ids: list[str]) -> dict:
+def _finding(ftype: str, severity: str, confidence: float, statement: str, doc_ids: list[str],
+             source: str = "rule") -> dict:
     return {
         "finding_type": ftype,
         "severity": severity,
         "confidence": confidence,
         "statement": statement,
         "supporting_document_ids": doc_ids,
+        "source": source,
     }
 
 
@@ -116,13 +143,66 @@ def compute_findings(extractions: list[dict]) -> list[dict]:
     return findings
 
 
+def _llm_findings(case_id: str, extractions: list[dict]) -> list[dict]:
+    from .. import db
+
+    valid_doc_ids = {ex["document_id"] for ex in extractions}
+    if not valid_doc_ids:
+        return []
+
+    payload = {
+        "documents": [
+            {"document_id": ex["document_id"], "fields": ex.get("extracted_json") or {}}
+            for ex in extractions
+        ],
+        "entities": [
+            {"type": e.get("entity_type"), "name": e.get("canonical_name"),
+             "aliases": e.get("aliases"), "document_ids": e.get("source_document_ids")}
+            for e in db.list_entities(case_id)
+        ],
+        "relationships": [
+            {"source": r.get("source_name"), "target": r.get("target_name"),
+             "type": r.get("relationship_type"), "evidence": r.get("evidence")}
+            for r in db.list_relationships(case_id)
+        ],
+        "timeline": [
+            {"date": t.get("event_date"), "label": t.get("label"), "document_id": t.get("document_id")}
+            for t in db.get_client().table("timeline_events").select("*").eq("case_id", case_id).execute().data
+        ],
+    }
+    result = llm_reasoning.ask(_FINDINGS_PROMPT, payload)
+    items = result.get("findings") if isinstance(result, dict) else None
+    if not items or not isinstance(items, list):
+        return []
+
+    out = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        statement = str(item.get("statement") or "").strip()
+        doc_ids = [d for d in (item.get("supporting_document_ids") or []) if d in valid_doc_ids]
+        if not statement or not doc_ids:
+            continue  # ungrounded — drop rather than persist an unsupported claim
+        ftype = str(item.get("finding_type") or "").strip() or "llm_detected"
+        out.append(_finding(
+            ftype,
+            llm_reasoning.clamp_severity(item.get("severity")),
+            llm_reasoning.clamp_confidence(item.get("confidence"), default=0.6),
+            statement, doc_ids, source="llm",
+        ))
+    return out
+
+
 def detect(case_id: str) -> list[dict]:
     from .. import db
 
     # Clear previous pending findings to avoid duplicates on re-run
     db.get_client().table("findings").delete().eq("case_id", case_id).eq("human_review_status", "pending").execute()
 
-    findings = compute_findings(db.list_extractions(case_id))
+    extractions = db.list_extractions(case_id)
+    findings = compute_findings(extractions)
+    findings += _llm_findings(case_id, extractions)
+
     persisted = []
     for f in findings:
         row = {

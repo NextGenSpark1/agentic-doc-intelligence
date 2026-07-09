@@ -13,7 +13,7 @@
 | Database / Storage | Supabase (Postgres + Storage) |
 | Backend API | FastAPI (Python) |
 | Document Extraction | LandingAI ADE (Agentic Document Extraction) |
-| AI / LLM | Anthropic Claude (claude-sonnet-4-6 default) |
+| AI / LLM | LiteLLM router (`backend/llm.py`): Groq llama-3.3-70b for reasoning/summaries, Groq llama-3.1-8b for fast classification, Gemini for embeddings + case-wide reasoning (see below) |
 
 ---
 
@@ -65,6 +65,7 @@ Scaffold, design system, and page shells are in place. No live data yet.
 - `onclick` and JS event handlers in `unsafe_allow_html` are stripped by DOMPurify — cannot use for interactivity. Use real Streamlit widgets (buttons, page_link) instead
 - Page-specific CSS belongs in `dashboard/utils/styles.py` as named functions (e.g. `get_cases_page_css()`), not inline in page files. CSS blocks must be plain strings (no f-string) to avoid `{{`/`}}` escaping; data blocks that need Python vars are separate f-string `st.markdown()` calls
 - Split `st.markdown()` at `</style>` boundary when part of the block needs Python variables: CSS block = plain string, HTML content block = f-string
+- Case-analysis pipeline (`backend/pipeline/`) is hybrid rule+LLM, not rule-only: `resolve_entities`/`build_relationships`/`reconstruct_timeline`/`detect_anomalies` each keep their original deterministic pass (still the pure, unit-tested `compute_*` functions — untouched) and add a second Gemini pass (`tier="case_reasoning"` in `llm.py`, default `gemini/gemini-2.5-pro`) via the shared `backend/pipeline/llm_reasoning.py` helper. Every LLM-sourced row is tagged `source="llm"` vs `source="rule"` (new columns on `findings`/`entities`/`relationships`/`timeline_events` — migration at the top of `schema.sql`, must be run in Supabase SQL editor). Anti-hallucination guardrail: any LLM output citing a `document_id`/entity/event we didn't actually send is dropped before persisting, never trusted at face value — see `tests/test_llm_reasoning_guardrails.py`. LLM pass failures (no `GEMINI_API_KEY`, provider error, bad JSON) are swallowed (`llm_reasoning.ask` returns `None`) and the stage silently falls back to rule-only results.
 
 ---
 
@@ -76,6 +77,7 @@ Scaffold, design system, and page shells are in place. No live data yet.
 | 2026-05-25 | Phase 0 | Navigation fixed (st.page_link invisible overlays), visual design restored, all three pages rendering and navigable |
 | 2026-06-23 | Phase 0→1 | Backend walkthrough (teammate's 29 files). Fixed: .gitignore encoding, docker-compose Dockerfile paths, missing backend/schemas/__init__.py. Connected Cases page to real GET /cases + POST /cases endpoints. Fixed real credentials in .env.example. |
 | 2026-06-23 | Phase 0→1 | UX polish: moved inline CSS to styles.py (get_cases_page_css), styled New Case form widgets to match design system, replaced st.success/warning/error with custom HTML banners, made case rows clickable via st.columns + session_state → st.switch_page to Case Workspace |
+| 2026-07-09 | Phase 1 | Upgraded findings/entity-resolution/relationships/timeline stages from pure rule-based to hybrid rule+Gemini reasoning. Added `case_reasoning` LLM tier (gemini-2.5-pro) and shared `pipeline/llm_reasoning.py` guardrail helper; rule functions (`compute_findings`/`compute_relationships`/`compute_events`) untouched, LLM pass runs on top and is tagged `source="llm"` with document/entity-grounding validation. Added `source`/`reasoning` column migrations to schema.sql (needs running in Supabase) and `tests/test_llm_reasoning_guardrails.py`. |
 
 ---
 
@@ -86,4 +88,6 @@ Scaffold, design system, and page shells are in place. No live data yet.
 - Next phase: create Supabase tables (schema.sql must be run in Supabase SQL editor), then connect Case Workspace to real case data via GET /cases/{case_id}
 - Reusable UI building blocks (document cards, entity badges, risk meters) go in `dashboard/components/` as Python functions, not as separate Streamlit page files
 - `dashboard/app.py` uses `st.switch_page` to redirect to Cases on load — confirmed working
+- Run the new `source`/`reasoning` column migrations at the top of `backend/schema.sql` in the Supabase SQL editor before re-running case analysis, or the Gemini-tagged rows will fail to insert
+- Dashboard doesn't yet distinguish `source="llm"` vs `"rule"` findings/entities/relationships/timeline visually — worth a badge/filter in the workspace UI next
 - Keep updating this file at the end of every session
