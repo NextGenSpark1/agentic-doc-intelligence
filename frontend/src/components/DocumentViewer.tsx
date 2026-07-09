@@ -81,6 +81,7 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
   const [chunks, setChunks] = useState<DocumentChunk[]>([])
   const [showOverlay, setShowOverlay] = useState(false)
   const [hoveredChunk, setHoveredChunk] = useState<string | null>(null)
+  const [locatedChunk, setLocatedChunk] = useState<DocumentChunk | null>(null)
   const pageContainerRef = useRef<HTMLDivElement>(null)
   const [pageRendered, setPageRendered] = useState(false)
 
@@ -95,6 +96,40 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
     isDraggingRef.current = true
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
+  }
+
+  function findChunkForField(value: string): DocumentChunk | null {
+    if (!value || value === '—') return null
+    const needle = value.toLowerCase().trim()
+    const valid = chunks.filter(c => Array.isArray(c.bbox) && c.bbox.length === 4 && typeof c.page === 'number')
+    if (!valid.length) return null
+    const exact = valid.find(c => c.text.toLowerCase().includes(needle))
+    if (exact) return exact
+    // For comma-separated list values try the first item
+    const firstItem = needle.split(',')[0].trim()
+    if (firstItem !== needle && firstItem.length > 2) {
+      const m = valid.find(c => c.text.toLowerCase().includes(firstItem))
+      if (m) return m
+    }
+    // Word-based fuzzy fallback
+    const words = needle.split(/\s+/).filter(w => w.length > 2)
+    if (words.length < 2) return null
+    let best: DocumentChunk | null = null, bestScore = 0
+    for (const c of valid) {
+      const ct = c.text.toLowerCase()
+      const score = words.filter(w => ct.includes(w)).length
+      if (score > bestScore) { bestScore = score; best = c }
+    }
+    return bestScore >= 2 ? best : null
+  }
+
+  function handleFieldLocate(val: unknown) {
+    const str = renderFieldValue(val)
+    const chunk = findChunkForField(str)
+    if (!chunk || typeof chunk.page !== 'number') return
+    setLocatedChunk(chunk)
+    setPageNumber(chunk.page + 1)
+    setPageRendered(false)
   }
 
   useEffect(() => {
@@ -130,6 +165,7 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
     setPageNumber(1)
     setShowOverlay(false)
     setHoveredChunk(null)
+    setLocatedChunk(null)
     setPageRendered(false)
 
     fetchFileUrl(caseId, doc.document_id)
@@ -243,6 +279,25 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
                       renderAnnotationLayer
                       onRenderSuccess={() => setPageRendered(true)}
                     />
+                    {/* Field location highlight — shown when a field row is clicked */}
+                    {pageRendered && locatedChunk && locatedChunk.page === pageNumber - 1 &&
+                      Array.isArray(locatedChunk.bbox) && locatedChunk.bbox.length === 4 && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: `${locatedChunk.bbox[0] * 100}%`,
+                          top: `${locatedChunk.bbox[1] * 100}%`,
+                          width: `${(locatedChunk.bbox[2] - locatedChunk.bbox[0]) * 100}%`,
+                          height: `${(locatedChunk.bbox[3] - locatedChunk.bbox[1]) * 100}%`,
+                          backgroundColor: 'rgba(234,179,8,0.22)',
+                          border: '2px solid #EAB308',
+                          borderRadius: 3,
+                          boxShadow: '0 0 0 3px rgba(234,179,8,0.12)',
+                          zIndex: 20,
+                          pointerEvents: 'none',
+                        }}
+                      />
+                    )}
                     {/* Chunk overlays — color coded by type */}
                     {showOverlay && pageRendered && chunks
                       .filter(c => c.page === pageNumber - 1 && Array.isArray(c.bbox) && c.bbox.length === 4)
@@ -428,14 +483,40 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
                   <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider px-4 pt-3 pb-1">
                     {extraction.schema_name ?? 'Fields'}
                   </p>
-                  {fieldEntries.map(([key, val]) => (
-                    <div key={key} className="px-4 py-2.5 border-b border-border last:border-0">
-                      <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wide mb-0.5">
-                        {formatFieldName(key)}
-                      </p>
-                      <p className="text-sm text-text">{renderFieldValue(val)}</p>
-                    </div>
-                  ))}
+                  {fieldEntries.map(([key, val]) => {
+                    const str = renderFieldValue(val)
+                    const locatable = str !== '—'
+                    const isLocated = locatable && locatedChunk !== null && findChunkForField(str) === locatedChunk
+                    return (
+                      <div
+                        key={key}
+                        onClick={locatable ? () => handleFieldLocate(val) : undefined}
+                        title={locatable ? 'Click to locate in document' : undefined}
+                        className={`px-4 py-2.5 border-b border-border last:border-0 group transition-colors duration-150 ${
+                          locatable ? 'cursor-pointer hover:bg-panel-2' : ''
+                        } ${isLocated ? 'bg-amber-500/10' : ''}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-[10px] font-semibold uppercase tracking-wide mb-0.5 ${isLocated ? 'text-amber-500' : 'text-text-mute'}`}>
+                              {formatFieldName(key)}
+                            </p>
+                            <p className="text-sm text-text">{str}</p>
+                          </div>
+                          {locatable && (
+                            <svg
+                              width="12" height="12" viewBox="0 0 24 24" fill="none"
+                              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                              className={`mt-1 shrink-0 transition-opacity duration-150 ${isLocated ? 'opacity-100 text-amber-500' : 'opacity-0 group-hover:opacity-50 text-text-mute'}`}
+                            >
+                              <circle cx="11" cy="11" r="8" />
+                              <path d="m21 21-4.35-4.35" />
+                            </svg>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
