@@ -11,3 +11,12 @@ body {
   background: #E9EBEE;
   margin: 0;
 }
+
+/* Report body — rendered markdown inside ReportPanel */
+.report-body h1 { font-size: 1.35em; font-weight: 700; color: #0f172a; margin: 0 0 8px; }
+.report-body h2 { font-size: 0.8em; font-weight: 700; color: #1558D4; margin: 1.8em 0 0.6em; padding-bottom: 5px; border-bottom: 1px solid #e2e8f0; text-transform: uppercase; letter-spacing: 0.07em; }
+.report-body h3 { font-size: 0.9em; font-weight: 600; color: #334155; margin: 1.2em 0 0.3em; }
+.report-body p  { font-size: 0.875em; color: #334155; line-height: 1.75; margin-bottom: 0.7em; }
+.report-body ul, .report-body ol { font-size: 0.875em; color: #334155; line-height: 1.7; padding-left: 18px; margin-bottom: 0.7em; }
+.report-body li { margin-bottom: 3px; }
+.report-body strong { font-weight: 700; color: #0f172a; }

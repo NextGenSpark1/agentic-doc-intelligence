@@ -200,8 +200,11 @@ def detect(case_id: str) -> list[dict]:
     db.get_client().table("findings").delete().eq("case_id", case_id).eq("human_review_status", "pending").execute()
 
     extractions = db.list_extractions(case_id)
-    findings = compute_findings(extractions)
-    findings += _llm_findings(case_id, extractions)
+    # AI-first: LLM cross-document reasoning is the primary output
+    findings = _llm_findings(case_id, extractions)
+    # Rules are a fallback only when LLM returns nothing (quota exhausted, key missing, etc.)
+    if not findings:
+        findings = compute_findings(extractions)
 
     persisted = []
     for f in findings:

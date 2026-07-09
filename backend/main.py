@@ -37,12 +37,42 @@ def _strip_html(text: str) -> str:
     return _WHITESPACE_RE.sub(" ", cleaned).strip()
 
 
+def _fmt_field_value(v) -> str:
+    """Flatten a field value to a readable string — lists become comma-separated, truncated."""
+    if isinstance(v, list):
+        items = [str(x).strip() for x in v if x is not None and str(x).strip()]
+        if not items:
+            return "—"
+        joined = ", ".join(items[:5])
+        return joined + (f" (+{len(items) - 5} more)" if len(items) > 5 else "")
+    return str(v).strip()
+
+
+def _fields_for_llm(fields: dict) -> str:
+    """Produce a concise key: value block for the LLM prompt, capping long lists."""
+    lines = []
+    for k, v in fields.items():
+        if v is None or v == "" or v == [] or v == {}:
+            continue
+        if isinstance(v, list):
+            items = [str(x).strip() for x in v if x is not None and str(x).strip()]
+            if not items:
+                continue
+            # Cap at 10 items and truncate individual long strings to avoid blowing the context
+            sample = [s[:120] for s in items[:10]]
+            display = ", ".join(sample) + (f" … ({len(items)} total)" if len(items) > 10 else "")
+        else:
+            display = str(v)[:300]
+        lines.append(f"{k.replace('_', ' ').title()}: {display}")
+    return "\n".join(lines)
+
+
 def _fallback_summary(fields: dict, schema_name: str) -> str:
     """Build a readable sentence from extracted fields when the LLM is unavailable."""
     present = {k: v for k, v in fields.items()
-               if v is not None and v != "" and v != []}
+               if v is not None and v != "" and v != [] and v != {}}
     if not present:
-        return f"Document processed as '{schema_name}'. No field data available for summary."
+        return f"Document processed as '{schema_name}'. No field data extracted."
 
     parts: list[str] = []
     if "vendor_name" in present:
@@ -62,10 +92,20 @@ def _fallback_summary(fields: dict, schema_name: str) -> str:
     if parts:
         return (". ".join(parts[:3])).capitalize() + "."
 
-    # Generic: describe first few non-empty fields
-    sample = list(present.items())[:3]
-    desc = "; ".join(f"{k.replace('_', ' ')}: {v}" for k, v in sample)
-    return f"Extracted {len(present)} field(s) — {desc}."
+    # Generic: pick 3 meaningful scalar/short fields and format them readably
+    label_map = {
+        "reporting_entity": "Entity", "period_covered": "Period",
+        "total_assets": "Total assets", "total_liabilities": "Total liabilities",
+        "net_profit": "Net profit", "revenue": "Revenue",
+    }
+    lines: list[str] = []
+    for k, v in list(present.items()):
+        label = label_map.get(k, k.replace("_", " ").title())
+        lines.append(f"{label}: {_fmt_field_value(v)}")
+        if len(lines) == 3:
+            break
+    doc_type = schema_name.replace("_", " ").title()
+    return f"{doc_type}. " + ". ".join(lines) + "."
 
 
 # Dashboard calls the API server-side, so CORS isn't strictly required, but this keeps
@@ -252,13 +292,14 @@ async def get_document_summary(case_id: str, document_id: str, user: dict = Depe
     if not extraction:
         raise HTTPException(404, "no extraction available for this document")
 
-    # Return cached summary if already generated
-    if extraction.get("summary"):
-        return {"summary": extraction["summary"]}
+    # Return cached summary — but regenerate if it's an old-style fallback dump
+    cached = extraction.get("summary") or ""
+    if cached and not cached.startswith("Extracted "):
+        return {"summary": cached}
 
     fields = extraction.get("extracted_json") or {}
     schema_name = extraction.get("schema_name", "")
-    fields_text = "\n".join(f"{k}: {v}" for k, v in fields.items() if v is not None)
+    fields_text = _fields_for_llm(fields)
 
     try:
         summary = llm.complete(

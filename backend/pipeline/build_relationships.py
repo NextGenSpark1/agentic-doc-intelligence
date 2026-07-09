@@ -158,8 +158,11 @@ def build(case_id: str) -> list[dict]:
     # Clear existing relationships before rebuild to prevent duplicates on re-run
     db.get_client().table("relationships").delete().eq("case_id", case_id).execute()
     extractions = db.list_extractions(case_id)
-    edges = compute_relationships(extractions, case_id)
-    edges += _llm_relationships(extractions, case_id)
+    # AI-first: LLM relationship discovery is the primary output
+    edges = _llm_relationships(extractions, case_id)
+    # Rules are a fallback only when LLM returns nothing
+    if not edges:
+        edges = compute_relationships(extractions, case_id)
     for e in edges:
         db.insert_relationship(e)
     return edges
