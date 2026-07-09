@@ -210,9 +210,8 @@ export default function LoginPage() {
       <div className="flex-1 flex items-center justify-center px-6 py-12 bg-canvas">
         <div className="w-full max-w-md">
 
-          <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
-            <div className="bg-teal text-white font-mono font-semibold text-sm w-8 h-8 flex items-center justify-center rounded-lg">NS</div>
-            <span className="text-navy font-semibold text-sm tracking-wide">NextGen Spark</span>
+          <div className="lg:hidden flex justify-center mb-8">
+            <img src="/NG logo with text.jpeg" alt="NextGen Spark" className="h-10 object-contain" />
           </div>
 
           <div className="mb-8">
