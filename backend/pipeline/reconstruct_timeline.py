@@ -3,7 +3,7 @@
 Collect every dated event across the case's extractions and order them chronologically.
 Feeds the Timeline tab in the workspace.
 
-After the deterministic events are built, a Gemini pass looks for sequencing anomalies a
+After the deterministic events are built, a case-reasoning LLM pass looks for sequencing anomalies a
 date-sort can't catch (payment before the approval it claims to satisfy, backdating,
 suspiciously even spacing). Flags may only reference an (event_date, document_id) pair that
 is actually on the timeline we sent — anything else is dropped.
@@ -157,7 +157,7 @@ def _llm_timeline_flags(events: list[dict], case_id: str) -> list[dict]:
         {"event_date": e["event_date"], "label": e["label"], "document_id": e["document_id"]}
         for e in events
     ]}
-    result = llm_reasoning.ask(_TIMELINE_ANOMALY_PROMPT, payload)
+    result = llm_reasoning.ask(_TIMELINE_ANOMALY_PROMPT, payload, case_id)
     flags = result.get("flags") if isinstance(result, dict) else None
     if not flags or not isinstance(flags, list):
         return []

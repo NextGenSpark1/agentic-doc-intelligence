@@ -5,8 +5,9 @@ deduplicated canonical entity per (type, name). This is the first half of the ag
 layer: turning per-document fields into case-wide entities. ADE does NOT do this — it has
 no concept of the case.
 
-After the deterministic pass, a Gemini reasoning call looks for aliases the regex normaliser
-can't catch (name-order variants, abbreviations, translated titles) and merges them. Every
+After the deterministic pass, an LLM reasoning call (case_reasoning tier) looks for aliases
+the regex normaliser can't catch (name-order variants, abbreviations, translated titles) and
+merges them. Every
 merge is validated against the candidate names we actually sent — the model cannot introduce
 an entity we never extracted — and merged entities are tagged source="llm" so a merge can
 always be told apart from a plain rule-based dedup.
@@ -80,8 +81,8 @@ def _normalise(name: str) -> str:
     return re.sub(r"\s+", " ", s.lower()).strip()
 
 
-def _apply_llm_merge(seen: dict[str, dict]) -> dict[str, dict]:
-    """Ask Gemini to merge aliases the regex normaliser missed. Any merge that references a
+def _apply_llm_merge(seen: dict[str, dict], case_id: str) -> dict[str, dict]:
+    """Ask the case-reasoning LLM to merge aliases the regex normaliser missed. Any merge that references a
     name or type outside what we actually sent is dropped — the model can dedupe, not invent."""
     candidates = [
         {"type": rec["type"], "name": rec["display"], "doc_count": len(rec["docs"])}
@@ -90,7 +91,7 @@ def _apply_llm_merge(seen: dict[str, dict]) -> dict[str, dict]:
     if len(candidates) < 2:
         return seen
 
-    result = llm_reasoning.ask(_ALIAS_MERGE_PROMPT, {"candidates": candidates})
+    result = llm_reasoning.ask(_ALIAS_MERGE_PROMPT, {"candidates": candidates}, case_id)
     clusters = result.get("clusters") if isinstance(result, dict) else None
     if not clusters:
         return seen
@@ -146,7 +147,7 @@ def resolve(case_id: str) -> list[dict]:
             for v in (data.get(field) or []):
                 add(v, etype, doc_id)
 
-    seen = _apply_llm_merge(seen)
+    seen = _apply_llm_merge(seen, case_id)
 
     out = []
     for rec in seen.values():

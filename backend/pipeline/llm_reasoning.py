@@ -1,4 +1,4 @@
-"""Shared Gemini case-reasoning helper for the LLM-augmented stages.
+"""Shared case-reasoning helper for the LLM-augmented stages.
 
 `resolve_entities`, `build_relationships`, `reconstruct_timeline`, and `detect_anomalies`
 each run their deterministic rule pass first, then call `ask()` for a second pass that reasons
@@ -6,6 +6,11 @@ across the whole case. `ask()` never raises — any failure (no key, provider er
 returns None, and the caller just keeps its rule-based results. Callers are responsible for
 validating that anything the model returns is grounded in data actually sent to it; nothing
 here should be trusted at face value in a forensic pipeline.
+
+Every failure is logged to the case's audit_log (action="case_reasoning_failed") — a silent
+"tier=case_reasoning always raises, always falls back" bug (bad model name, exhausted quota,
+missing key) previously looked identical to "nothing anomalous to report" from the UI. Logging
+is what makes that distinguishable without re-deriving it by hand.
 """
 from __future__ import annotations
 
@@ -15,7 +20,7 @@ from typing import Any
 from .. import llm
 
 
-def ask(system_prompt: str, payload: dict) -> Any | None:
+def ask(system_prompt: str, payload: dict, case_id: str) -> Any | None:
     try:
         raw = llm.complete(
             tier="case_reasoning",
@@ -26,7 +31,13 @@ def ask(system_prompt: str, payload: dict) -> Any | None:
             response_format={"type": "json_object"},
         )
         return json.loads(raw)
-    except Exception:
+    except Exception as exc:
+        from .. import db
+
+        try:
+            db.write_audit(case_id, "system", "case_reasoning_failed", {"error": str(exc)[:500]})
+        except Exception:
+            pass  # audit logging must never break the graceful rule-only fallback
         return None
 
 

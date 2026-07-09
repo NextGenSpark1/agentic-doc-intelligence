@@ -5,14 +5,16 @@ finding dicts. No DB, no IDs, no I/O — so it is trivially unit-testable, which
 because these rules must survive legal scrutiny. `detect(case_id)` is the thin wrapper that
 loads, calls the pure function, stamps IDs/status, and persists.
 
-Rules: duplicate invoices, shared bank accounts across vendors, split payments, budget-ceiling
-proximity. These stay deterministic and always-on. On top, `detect()` runs a Gemini pass over
-the whole case (every extraction plus the entities/relationships/timeline already computed) to
-surface findings that need actual cross-document reasoning — vendors formed right before a
-contract award, narrative inconsistencies between documents, circular payments — which the
-hard-coded rules can't reach. Every LLM finding is tagged source="llm" (rule findings default
-to source="rule") and must cite at least one supporting document_id we actually sent; anything
-that cites a document we never sent is dropped rather than persisted.
+AI-first: `detect()` runs a case-reasoning LLM pass over the whole case (every extraction plus
+the entities/relationships/timeline already computed) as the PRIMARY source of findings — it
+surfaces things that need actual cross-document reasoning (a vendor formed right before a
+contract award, narrative inconsistencies between documents, circular payments) which the
+hard-coded rules can't reach. The deterministic rules (`compute_findings`: duplicate invoices,
+shared bank accounts, split payments, budget-ceiling proximity) run only as a fallback when the
+LLM returns nothing (quota exhausted, key missing, provider down) — they stay pure and
+unit-tested, which matters because these must survive legal scrutiny. Every LLM finding is
+tagged source="llm" (rule findings are source="rule") and must cite at least one supporting
+document_id we actually sent; anything that cites a document we never sent is dropped.
 """
 from __future__ import annotations
 
@@ -170,7 +172,7 @@ def _llm_findings(case_id: str, extractions: list[dict]) -> list[dict]:
             for t in db.get_client().table("timeline_events").select("*").eq("case_id", case_id).execute().data
         ],
     }
-    result = llm_reasoning.ask(_FINDINGS_PROMPT, payload)
+    result = llm_reasoning.ask(_FINDINGS_PROMPT, payload, case_id)
     items = result.get("findings") if isinstance(result, dict) else None
     if not items or not isinstance(items, list):
         return []

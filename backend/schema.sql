@@ -6,7 +6,7 @@ ALTER TABLE extractions ADD COLUMN IF NOT EXISTS summary text;
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS schema_fields jsonb DEFAULT '[]'::jsonb;
 ALTER TABLE chunks ADD COLUMN IF NOT EXISTS type text DEFAULT 'text';
 
--- Gemini case-reasoning pass on top of the rule-based stages: every findings/entities/
+-- LLM case-reasoning pass on top of the rule-based stages: every findings/entities/
 -- relationships/timeline_events row is now tagged by how it was produced, and the LLM-sourced
 -- ones carry a short justification.
 ALTER TABLE findings ADD COLUMN IF NOT EXISTS source text DEFAULT 'rule';

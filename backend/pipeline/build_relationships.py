@@ -4,10 +4,12 @@ The headline differentiator from the business case: "same bank account across 4 
 "same director linked to multiple companies", "same phone reused". We find shared values
 across documents and record them as graph edges in the `relationships` table.
 
-A Gemini pass runs after the rule-based joins and looks for relationships implied by the
-narrative content of the extracted fields rather than exact shared values — e.g. one party
-introducing another, a stated associate tie. Every edge it proposes must cite a document_id
-that actually exists in the case; anything else is dropped before persisting.
+AI-first: a case-reasoning LLM pass is the primary source of edges — it looks for relationships
+implied by the narrative content of the extracted fields, not just exact shared values (e.g. one
+party introducing another, a stated associate tie). The deterministic rule-based joins
+(`compute_relationships`) run only as a fallback when the LLM returns nothing (quota exhausted,
+key missing, provider down). Every LLM edge must cite a document_id that actually exists in the
+case; anything else is dropped before persisting.
 """
 from __future__ import annotations
 
@@ -49,7 +51,7 @@ def _llm_relationships(extractions: list[dict], case_id: str) -> list[dict]:
             for ex in extractions
         ]
     }
-    result = llm_reasoning.ask(_RELATIONSHIP_PROMPT, payload)
+    result = llm_reasoning.ask(_RELATIONSHIP_PROMPT, payload, case_id)
     items = result.get("relationships") if isinstance(result, dict) else None
     if not items or not isinstance(items, list):
         return []

@@ -1,4 +1,4 @@
-"""Guardrails on the Gemini case-reasoning passes.
+"""Guardrails on the LLM case-reasoning passes.
 
 Every LLM pass (entity alias-merge, relationships, timeline flags, findings) must ground its
 output in data we actually sent — a document_id, event, or entity name it invents rather than
@@ -71,7 +71,7 @@ def test_entity_merge_with_unknown_member_does_not_merge():
          "members": ["Jane Tan", "Someone We Never Sent"], "confidence": 0.9},
     ]}
     with patch(_ASK, return_value=fake):
-        merged = resolve_entities._apply_llm_merge(seen)
+        merged = resolve_entities._apply_llm_merge(seen, "case-1")
     assert len(merged) == 2  # only one grounded member — not enough to justify a merge
 
 
@@ -85,7 +85,7 @@ def test_entity_merge_with_two_grounded_members_merges():
          "members": ["Jane Tan", "J. Tan"], "confidence": 0.9},
     ]}
     with patch(_ASK, return_value=fake):
-        merged = resolve_entities._apply_llm_merge(seen)
+        merged = resolve_entities._apply_llm_merge(seen, "case-1")
     assert len(merged) == 1
     rec = next(iter(merged.values()))
     assert rec["display"] == "Jane Tan"
