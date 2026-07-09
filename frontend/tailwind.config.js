@@ -10,8 +10,11 @@ export default {
         navy: '#1E3A5F',
         'navy-deep': '#16293F',
         'navy-soft': '#2C4F78',
-        teal: '#0E7C86',
-        'teal-soft': '#13929E',
+        // Named "teal" throughout the codebase but intentionally set to brand blue
+        // to match the NextGen Spark logo (#2563EB). Renaming the token would
+        // require touching hundreds of class names — changing the value here is enough.
+        teal: '#1558D4',
+        'teal-soft': '#2D6FE0',
         red: '#B4232A',
         'red-bg': '#FBEDED',
         amber: '#C77A12',
