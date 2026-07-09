@@ -434,14 +434,22 @@ async def chat(case_id: str, body: ChatRequest, user: dict = Depends(get_current
 
     # 2. Build grounded context and answer
     context = "\n\n".join(f"[{i+1}] {_strip_html(c['text'])}" for i, c in enumerate(chunks))
+    # Keep last 6 history turns (3 exchanges) to stay within token limits
+    recent_history = [
+        {"role": m["role"], "content": str(m.get("content", ""))}
+        for m in (body.history or [])[-6:]
+        if m.get("role") in ("user", "assistant")
+    ]
     try:
         answer = llm.complete(
             tier="reasoning",
             messages=[
                 {"role": "system", "content":
                     "Answer the investigator's question using ONLY the numbered context. "
-                    "Cite sources inline as [n]. If the answer isn't in the context, say so."},
-                {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {body.message}"},
+                    "Cite sources inline as [n]. If the answer isn't in the context, say so.\n\n"
+                    f"Context:\n{context}"},
+                *recent_history,
+                {"role": "user", "content": body.message},
             ],
         )
     except Exception:
