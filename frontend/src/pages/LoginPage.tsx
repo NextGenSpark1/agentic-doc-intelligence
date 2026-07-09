@@ -82,7 +82,7 @@ export default function LoginPage() {
         </svg>
       </div>
       <div className="relative z-10 flex items-center gap-3">
-        <div className="bg-teal text-white font-mono font-semibold text-sm w-9 h-9 flex items-center justify-center rounded-lg shrink-0">NS</div>
+        <img src="/NG logo.jpeg" alt="NextGen Spark" className="w-9 h-9 rounded-lg object-contain bg-white p-0.5 shrink-0" />
         <span className="text-white font-semibold tracking-wide text-sm">NextGen Spark</span>
       </div>
       <div className="relative z-10">
@@ -145,9 +145,8 @@ export default function LoginPage() {
         {leftPanel}
         <div className="flex-1 flex items-center justify-center px-6 py-12 bg-canvas">
           <div className="w-full max-w-md">
-            <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
-              <div className="bg-teal text-white font-mono font-semibold text-sm w-8 h-8 flex items-center justify-center rounded-lg">NS</div>
-              <span className="text-navy font-semibold text-sm tracking-wide">NextGen Spark</span>
+            <div className="lg:hidden flex justify-center mb-8">
+              <img src="/NG logo with text.jpeg" alt="NextGen Spark" className="h-10 object-contain" />
             </div>
 
             <div className="mb-8">

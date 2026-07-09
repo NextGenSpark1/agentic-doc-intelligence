@@ -52,9 +52,7 @@ export default function Navbar() {
       <header className="fixed top-0 left-0 right-0 z-50">
         <div className="bg-navy-deep h-13 flex items-center px-4 gap-3">
           {/* Brand */}
-          <div className="bg-teal text-white font-mono font-semibold text-sm w-8 h-8 flex items-center justify-center rounded shrink-0">
-            NS
-          </div>
+          <img src="/NG logo.jpeg" alt="NextGen Spark" className="w-8 h-8 rounded object-contain bg-white p-0.5 shrink-0" />
           <span className="text-white font-medium text-sm tracking-wide flex-1">
             NextGen Spark
           </span>
