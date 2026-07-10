@@ -32,10 +32,12 @@ const TYPE_CONFIG: Record<string, TypeConfig> = {
   financial_account: { color: '#CA8A04', bg: '#FEFCE8', border: '#FDE047', label: 'Financial' },
   po:                { color: '#64748B', bg: '#F8FAFC', border: '#CBD5E1', label: 'PO' },
   invoice:           { color: '#64748B', bg: '#F8FAFC', border: '#CBD5E1', label: 'Invoice' },
+  tender:            { color: '#7C3AED', bg: '#F5F3FF', border: '#C4B5FD', label: 'Tender' },
   document:          { color: '#64748B', bg: '#F8FAFC', border: '#CBD5E1', label: 'Document' },
   reference:         { color: '#64748B', bg: '#F8FAFC', border: '#CBD5E1', label: 'Reference' },
   phone:             { color: '#EC4899', bg: '#FDF2F8', border: '#F9A8D4', label: 'Phone' },
   benefit:           { color: '#F97316', bg: '#FFF7ED', border: '#FDBA74', label: 'Benefit' },
+  unknown:           { color: '#9CA3AF', bg: '#F9FAFB', border: '#E5E7EB', label: 'Unknown' },
 }
 const FALLBACK_CONFIG: TypeConfig = { color: '#8B5CF6', bg: '#F5F3FF', border: '#C4B5FD', label: 'Other' }
 
@@ -117,41 +119,9 @@ function buildGraph(
   entities: Entity[],
   relationships: Relationship[],
 ): { nodes: Node[]; edges: Edge[] } {
-  if (entities.length === 0) return { nodes: [], edges: [] }
+  const CX = 480, CY = 380
 
-  const groups = new Map<string, Entity[]>()
-  for (const e of entities) {
-    const key = e.entity_type.toLowerCase()
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)!.push(e)
-  }
-
-  const types = Array.from(groups.keys())
-  const CLUSTER_R = Math.max(320, types.length * 160)
-  const CX = 480, CY = 360
-
-  const nodes: Node[] = []
-  types.forEach((type, ti) => {
-    const cluster = groups.get(type)!
-    const clusterAngle = (ti / types.length) * 2 * Math.PI - Math.PI / 2
-    const cx = CX + Math.cos(clusterAngle) * CLUSTER_R
-    const cy = CY + Math.sin(clusterAngle) * CLUSTER_R
-
-    cluster.forEach((entity, ni) => {
-      const NODE_R = cluster.length === 1 ? 0 : Math.max(150, cluster.length * 70)
-      const a = (ni / cluster.length) * 2 * Math.PI
-      nodes.push({
-        id: entity.canonical_name,
-        type: 'entityNode',
-        position: { x: cx + Math.cos(a) * NODE_R, y: cy + Math.sin(a) * NODE_R },
-        data: { entity },
-      })
-    })
-  })
-
-  // Multi-key lookup: exact (lowercased), normalised, and all aliases
-  // This handles the mismatch between entity resolution (which strips role suffixes)
-  // and the relationship LLM (which uses raw document text with roles still attached)
+  // Build multi-key lookup: exact lowercase, normalised, and aliases
   const nameMap = new Map<string, string>()
   entities.forEach(e => {
     nameMap.set(e.canonical_name.toLowerCase().trim(), e.canonical_name)
@@ -162,35 +132,88 @@ function buildGraph(
     })
   })
 
-  function lookupName(raw: string): string | undefined {
-    return nameMap.get(raw.toLowerCase().trim()) ?? nameMap.get(normalizeName(raw))
+  // Always resolves: best match or the raw name itself as a fallback node id
+  function resolveToNodeId(raw: string): string {
+    return nameMap.get(raw.toLowerCase().trim())
+        ?? nameMap.get(normalizeName(raw))
+        ?? raw.trim()
   }
 
-  const edges: Edge[] = relationships
-    .map((r): Edge | null => {
-      const src = lookupName(r.source_name)
-      const tgt = lookupName(r.target_name)
-      if (!src || !tgt) return null
-      return {
-        id: r.relationship_id,
-        source: src,
-        target: tgt,
-        label: r.relationship_type.replace(/_/g, ' '),
-        type: 'smoothstep',
-        style: { stroke: '#94A3B8', strokeWidth: 1.5 },
-        labelStyle: { fontSize: 9, fill: '#475569', fontWeight: 500 },
-        labelBgStyle: { fill: '#F8FAFC', fillOpacity: 0.92 },
-        labelBgPadding: [4, 2] as [number, number],
-        labelBgBorderRadius: 3,
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: '#94A3B8',
-          width: 10,
-          height: 10,
-        },
-      }
+  // Layout entity nodes by type cluster
+  const groups = new Map<string, Entity[]>()
+  for (const e of entities) {
+    const key = e.entity_type.toLowerCase()
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(e)
+  }
+  const types = Array.from(groups.keys())
+  const CLUSTER_R = Math.max(320, types.length * 160)
+
+  const nodes: Node[] = []
+  const placedIds = new Set<string>()
+
+  types.forEach((type, ti) => {
+    const cluster = groups.get(type)!
+    const clusterAngle = (ti / types.length) * 2 * Math.PI - Math.PI / 2
+    const cx = CX + Math.cos(clusterAngle) * CLUSTER_R
+    const cy = CY + Math.sin(clusterAngle) * CLUSTER_R
+    cluster.forEach((entity, ni) => {
+      const NODE_R = cluster.length === 1 ? 0 : Math.max(150, cluster.length * 70)
+      const a = (ni / cluster.length) * 2 * Math.PI
+      nodes.push({
+        id: entity.canonical_name,
+        type: 'entityNode',
+        position: { x: cx + Math.cos(a) * NODE_R, y: cy + Math.sin(a) * NODE_R },
+        data: { entity },
+      })
+      placedIds.add(entity.canonical_name)
     })
-    .filter((e): e is Edge => e !== null)
+  })
+
+  // For any relationship endpoint that didn't resolve to an existing entity,
+  // create a virtual node so the edge always renders
+  const virtualNames = new Set<string>()
+  relationships.forEach(r => {
+    const srcId = resolveToNodeId(r.source_name)
+    const tgtId = resolveToNodeId(r.target_name)
+    if (!placedIds.has(srcId)) virtualNames.add(srcId)
+    if (!placedIds.has(tgtId)) virtualNames.add(tgtId)
+  })
+  let vIdx = 0
+  virtualNames.forEach(name => {
+    nodes.push({
+      id: name,
+      type: 'entityNode',
+      position: { x: CX - 320 + vIdx * 280, y: CY - 520 },
+      data: {
+        entity: {
+          entity_id: `virt-${name}`,
+          case_id: '',
+          canonical_name: name,
+          entity_type: 'unknown',
+          aliases: [],
+          confidence_score: 0.5,
+        } as Entity,
+      },
+    })
+    placedIds.add(name)
+    vIdx++
+  })
+
+  // ALL relationships become edges — nothing is ever dropped
+  const edges: Edge[] = relationships.map((r): Edge => ({
+    id: r.relationship_id,
+    source: resolveToNodeId(r.source_name),
+    target: resolveToNodeId(r.target_name),
+    label: r.relationship_type.replace(/_/g, ' '),
+    type: 'smoothstep',
+    style: { stroke: '#94A3B8', strokeWidth: 1.5 },
+    labelStyle: { fontSize: 9, fill: '#475569', fontWeight: 500 },
+    labelBgStyle: { fill: '#F8FAFC', fillOpacity: 0.92 },
+    labelBgPadding: [4, 2] as [number, number],
+    labelBgBorderRadius: 3,
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#94A3B8', width: 10, height: 10 },
+  }))
 
   return { nodes, edges }
 }
@@ -300,6 +323,7 @@ export default function EntityGraphPanel({
   const [data, setData] = useState<{ entities: Entity[]; relationships: Relationship[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null)
+  const [statsOpen, setStatsOpen] = useState(false)
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const rfRef = useRef<ReactFlowInstance | null>(null)
@@ -429,17 +453,66 @@ export default function EntityGraphPanel({
 
           {/* Stats + Re-run */}
           <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
-            <div className="bg-white/95 border border-slate-200 rounded-xl px-3 py-2 shadow-sm flex items-center gap-3">
-              <span className="text-[10px] text-slate-500">
-                <span className="font-semibold text-slate-700">{data.entities.length}</span> entities
-              </span>
-              <span className="text-slate-300">·</span>
-              <span className="text-[10px] text-slate-500">
-                <span className="font-semibold text-slate-700">{data.relationships.length}</span> relationships
-              </span>
+            {/* Clickable stats badge */}
+            <div className="relative">
+              <button
+                onClick={() => setStatsOpen(s => !s)}
+                className="bg-white/95 border border-slate-200 rounded-xl px-3 py-2 shadow-sm flex items-center gap-3 hover:bg-slate-50 transition-colors"
+                title="Click to see full list"
+              >
+                <span className="text-[10px] text-slate-500">
+                  <span className="font-semibold text-slate-700">{data.entities.length}</span> entities
+                </span>
+                <span className="text-slate-300">·</span>
+                <span className="text-[10px] text-slate-500">
+                  <span className="font-semibold text-slate-700">{data.relationships.length}</span> relationships
+                </span>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                  className={`transition-transform duration-150 ${statsOpen ? 'rotate-180' : ''}`}>
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+
+              {statsOpen && (
+                <div className="absolute top-full mt-1.5 right-0 bg-white border border-slate-200 rounded-xl shadow-xl w-80 max-h-[420px] overflow-y-auto z-30">
+                  {/* Entities section */}
+                  <div className="px-3 py-2 border-b border-slate-100 bg-slate-50 rounded-t-xl">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      Entities ({data.entities.length})
+                    </p>
+                  </div>
+                  {data.entities.map(e => {
+                    const cfg = typeConfig(e.entity_type)
+                    return (
+                      <div key={e.entity_id} className="px-3 py-2 flex items-center gap-2.5 border-b border-slate-50 hover:bg-slate-50">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: cfg.color }} />
+                        <span className="text-xs text-slate-700 flex-1 min-w-0 truncate">{e.canonical_name}</span>
+                        <span className="text-[10px] font-medium shrink-0" style={{ color: cfg.color }}>{cfg.label}</span>
+                        <span className="text-[10px] text-slate-400 shrink-0">{Math.round((e.confidence_score ?? 1) * 100)}%</span>
+                      </div>
+                    )
+                  })}
+                  {/* Relationships section */}
+                  <div className="px-3 py-2 border-b border-slate-100 border-t bg-slate-50">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      Relationships ({data.relationships.length})
+                    </p>
+                  </div>
+                  {data.relationships.map(r => (
+                    <div key={r.relationship_id} className="px-3 py-2.5 border-b border-slate-50 hover:bg-slate-50">
+                      <div className="flex items-start gap-1.5 text-[11px] flex-wrap">
+                        <span className="font-semibold text-slate-700">{r.source_name}</span>
+                        <span className="text-slate-400 italic shrink-0">→ {r.relationship_type.replace(/_/g, ' ')} →</span>
+                        <span className="font-semibold text-slate-700">{r.target_name}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+
             <button
-              onClick={() => rfRef.current?.fitView({ padding: 0.25, duration: 400 })}
+              onClick={() => rfRef.current?.fitView({ padding: 0.3, maxZoom: 0.85, duration: 400 })}
               title="Fit all nodes in view"
               className="flex items-center justify-center w-8 h-8 bg-white/95 border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors"
             >
