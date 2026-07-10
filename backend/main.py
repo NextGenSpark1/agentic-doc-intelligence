@@ -292,9 +292,13 @@ async def get_document_summary(case_id: str, document_id: str, user: dict = Depe
     if not extraction:
         raise HTTPException(404, "no extraction available for this document")
 
-    # Return cached summary — but regenerate if it's an old-style fallback dump
+    # Return cached summary — regenerate if it's stale (old fallback or old preamble format)
     cached = extraction.get("summary") or ""
-    if cached and not cached.startswith("Extracted "):
+    _stale = (
+        cached.startswith("Extracted ")
+        or bool(re.match(r"here(?:'s| is)(?: a)? (?:summary|brief)", cached, re.IGNORECASE))
+    )
+    if cached and not _stale:
         return {"summary": cached}
 
     fields = extraction.get("extracted_json") or {}

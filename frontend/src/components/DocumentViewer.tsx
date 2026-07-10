@@ -583,7 +583,23 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
           {status === 'done' && summary && (
             <div className="p-5">
               <div className="rounded-lg border border-border bg-canvas p-5 flex flex-col gap-3">
-                <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">AI Summary</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">AI Summary</p>
+                  <button
+                    onClick={() => {
+                      setSummary(undefined)
+                      setSummaryError(null)
+                      if (doc) {
+                        fetchSummary(caseId, doc.document_id)
+                          .then(data => setSummary(data?.summary ?? null))
+                          .catch((err: Error) => { setSummaryError(err.message); setSummary(null) })
+                      }
+                    }}
+                    className="text-[10px] font-semibold text-text-mute hover:text-teal transition-colors duration-150"
+                  >
+                    Regenerate
+                  </button>
+                </div>
                 <p className="text-sm leading-relaxed text-text">{summary}</p>
               </div>
             </div>
