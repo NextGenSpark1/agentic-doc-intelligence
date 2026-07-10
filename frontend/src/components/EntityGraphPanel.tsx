@@ -1,4 +1,5 @@
 import '@xyflow/react/dist/style.css'
+import dagre from '@dagrejs/dagre'
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   ReactFlow,
@@ -115,15 +116,18 @@ function normalizeName(name: string): string {
     .toLowerCase()
 }
 
+const NODE_W = 260
+const NODE_H = 100
+
 function buildGraph(
   entities: Entity[],
   relationships: Relationship[],
 ): { nodes: Node[]; edges: Edge[] } {
-  const CX = 480, CY = 380
-
-  // Build multi-key lookup: exact lowercase, normalised, and aliases
+  // Multi-key lookup: exact lowercase, normalised form, and all aliases
   const nameMap = new Map<string, string>()
+  const entityByCanonical = new Map<string, Entity>()
   entities.forEach(e => {
+    entityByCanonical.set(e.canonical_name, e)
     nameMap.set(e.canonical_name.toLowerCase().trim(), e.canonical_name)
     nameMap.set(normalizeName(e.canonical_name), e.canonical_name)
     ;(e.aliases ?? []).forEach((alias: string) => {
@@ -132,72 +136,64 @@ function buildGraph(
     })
   })
 
-  // Always resolves: best match or the raw name itself as a fallback node id
   function resolveToNodeId(raw: string): string {
     return nameMap.get(raw.toLowerCase().trim())
         ?? nameMap.get(normalizeName(raw))
         ?? raw.trim()
   }
 
-  // Layout entity nodes by type cluster
-  const groups = new Map<string, Entity[]>()
-  for (const e of entities) {
-    const key = e.entity_type.toLowerCase()
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)!.push(e)
-  }
-  const types = Array.from(groups.keys())
-  const CLUSTER_R = Math.max(320, types.length * 160)
+  // Set up dagre graph for automatic layout
+  const g = new dagre.graphlib.Graph()
+  g.setDefaultEdgeLabel(() => ({}))
+  g.setGraph({ rankdir: 'LR', nodesep: 70, ranksep: 160, marginx: 60, marginy: 60 })
 
-  const nodes: Node[] = []
-  const placedIds = new Set<string>()
-
-  types.forEach((type, ti) => {
-    const cluster = groups.get(type)!
-    const clusterAngle = (ti / types.length) * 2 * Math.PI - Math.PI / 2
-    const cx = CX + Math.cos(clusterAngle) * CLUSTER_R
-    const cy = CY + Math.sin(clusterAngle) * CLUSTER_R
-    cluster.forEach((entity, ni) => {
-      const NODE_R = cluster.length === 1 ? 0 : Math.max(150, cluster.length * 70)
-      const a = (ni / cluster.length) * 2 * Math.PI
-      nodes.push({
-        id: entity.canonical_name,
-        type: 'entityNode',
-        position: { x: cx + Math.cos(a) * NODE_R, y: cy + Math.sin(a) * NODE_R },
-        data: { entity },
-      })
-      placedIds.add(entity.canonical_name)
-    })
+  // Register all entity nodes
+  const registeredIds = new Set<string>()
+  entities.forEach(e => {
+    g.setNode(e.canonical_name, { width: NODE_W, height: NODE_H })
+    registeredIds.add(e.canonical_name)
   })
 
-  // For any relationship endpoint that didn't resolve to an existing entity,
-  // create a virtual node so the edge always renders
-  const virtualNames = new Set<string>()
+  // Register virtual nodes for any relationship endpoint not in the entity list
+  const virtualEntities = new Map<string, Entity>()
   relationships.forEach(r => {
-    const srcId = resolveToNodeId(r.source_name)
-    const tgtId = resolveToNodeId(r.target_name)
-    if (!placedIds.has(srcId)) virtualNames.add(srcId)
-    if (!placedIds.has(tgtId)) virtualNames.add(tgtId)
-  })
-  let vIdx = 0
-  virtualNames.forEach(name => {
-    nodes.push({
-      id: name,
-      type: 'entityNode',
-      position: { x: CX - 320 + vIdx * 280, y: CY - 520 },
-      data: {
-        entity: {
-          entity_id: `virt-${name}`,
+    ;[resolveToNodeId(r.source_name), resolveToNodeId(r.target_name)].forEach(id => {
+      if (!registeredIds.has(id)) {
+        g.setNode(id, { width: NODE_W, height: NODE_H })
+        registeredIds.add(id)
+        virtualEntities.set(id, {
+          entity_id: `virt-${id}`,
           case_id: '',
-          canonical_name: name,
+          canonical_name: id,
           entity_type: 'unknown',
           aliases: [],
           confidence_score: 0.5,
-        } as Entity,
-      },
+        } as Entity)
+      }
     })
-    placedIds.add(name)
-    vIdx++
+  })
+
+  // Register all edges so dagre can compute a clean layout
+  relationships.forEach(r => {
+    const src = resolveToNodeId(r.source_name)
+    const tgt = resolveToNodeId(r.target_name)
+    if (src !== tgt) g.setEdge(src, tgt)
+  })
+
+  dagre.layout(g)
+
+  // Convert dagre positions to React Flow nodes
+  const nodes: Node[] = g.nodes().map(id => {
+    const pos = g.node(id)
+    const entity = entityByCanonical.get(id)
+      ?? virtualEntities.get(id)
+      ?? { entity_id: `virt-${id}`, case_id: '', canonical_name: id, entity_type: 'unknown', aliases: [], confidence_score: 0.5 } as Entity
+    return {
+      id,
+      type: 'entityNode',
+      position: { x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 },
+      data: { entity },
+    }
   })
 
   // ALL relationships become edges — nothing is ever dropped
@@ -208,11 +204,11 @@ function buildGraph(
     label: r.relationship_type.replace(/_/g, ' '),
     type: 'smoothstep',
     style: { stroke: '#94A3B8', strokeWidth: 1.5 },
-    labelStyle: { fontSize: 9, fill: '#475569', fontWeight: 500 },
-    labelBgStyle: { fill: '#F8FAFC', fillOpacity: 0.92 },
-    labelBgPadding: [4, 2] as [number, number],
-    labelBgBorderRadius: 3,
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#94A3B8', width: 10, height: 10 },
+    labelStyle: { fontSize: 10, fill: '#475569', fontWeight: 600 },
+    labelBgStyle: { fill: '#F8FAFC', fillOpacity: 0.95 },
+    labelBgPadding: [5, 3] as [number, number],
+    labelBgBorderRadius: 4,
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#94A3B8', width: 12, height: 12 },
   }))
 
   return { nodes, edges }
