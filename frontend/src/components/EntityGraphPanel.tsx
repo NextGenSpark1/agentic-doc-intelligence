@@ -63,29 +63,33 @@ function EntityNode({ data, selected }: NodeProps) {
 
       <div style={{
         background: cfg.bg,
-        border: `${selected ? 2 : 1}px solid ${selected ? cfg.color : cfg.border}`,
-        borderRadius: 12,
-        padding: '10px 14px',
-        minWidth: 160,
-        maxWidth: 220,
+        border: `${selected ? 2.5 : 1.5}px solid ${selected ? cfg.color : cfg.border}`,
+        borderRadius: 14,
+        padding: '14px 18px',
+        minWidth: 200,
+        maxWidth: 280,
         boxShadow: selected
-          ? `0 0 0 3px ${cfg.color}33, 0 4px 12px rgba(0,0,0,0.1)`
-          : '0 2px 6px rgba(0,0,0,0.08)',
+          ? `0 0 0 4px ${cfg.color}33, 0 6px 16px rgba(0,0,0,0.12)`
+          : '0 2px 8px rgba(0,0,0,0.10)',
         cursor: 'pointer',
         userSelect: 'none',
       }}>
-        <div style={{ height: 3, background: cfg.color, borderRadius: 2, marginBottom: 8 }} />
+        <div style={{ height: 4, background: cfg.color, borderRadius: 2, marginBottom: 10 }} />
         <p style={{
-          fontSize: 12, fontWeight: 700, color: '#1A2332',
-          lineHeight: 1.4, wordBreak: 'break-word', marginBottom: 6,
+          fontSize: 14, fontWeight: 700, color: '#1A2332',
+          lineHeight: 1.4, wordBreak: 'break-word', marginBottom: 8,
         }}>
           {entity.canonical_name}
         </p>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 10, fontWeight: 600, color: cfg.color, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <span style={{
+            fontSize: 11, fontWeight: 700, color: cfg.color,
+            textTransform: 'uppercase', letterSpacing: '0.07em',
+            background: `${cfg.color}18`, borderRadius: 4, padding: '2px 6px',
+          }}>
             {cfg.label}
           </span>
-          <span style={{ fontSize: 10, color: '#9CA3AF', fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: 11, color: '#9CA3AF', fontVariantNumeric: 'tabular-nums' }}>
             {pct}%
           </span>
         </div>
@@ -97,6 +101,17 @@ function EntityNode({ data, selected }: NodeProps) {
 const NODE_TYPES = { entityNode: EntityNode }
 
 // ── Layout ─────────────────────────────────────────────────────────────────
+
+// Mirrors Python's _normalise in resolve_entities.py:
+// strips role-in-parens, comma-role suffix, collapses whitespace, lowercases
+function normalizeName(name: string): string {
+  return name
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/,.*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
 
 function buildGraph(
   entities: Entity[],
@@ -134,14 +149,27 @@ function buildGraph(
     })
   })
 
-  // Case-insensitive lookup: normalised name → canonical node id
+  // Multi-key lookup: exact (lowercased), normalised, and all aliases
+  // This handles the mismatch between entity resolution (which strips role suffixes)
+  // and the relationship LLM (which uses raw document text with roles still attached)
   const nameMap = new Map<string, string>()
-  entities.forEach(e => nameMap.set(e.canonical_name.toLowerCase().trim(), e.canonical_name))
+  entities.forEach(e => {
+    nameMap.set(e.canonical_name.toLowerCase().trim(), e.canonical_name)
+    nameMap.set(normalizeName(e.canonical_name), e.canonical_name)
+    ;(e.aliases ?? []).forEach((alias: string) => {
+      nameMap.set(alias.toLowerCase().trim(), e.canonical_name)
+      nameMap.set(normalizeName(alias), e.canonical_name)
+    })
+  })
+
+  function lookupName(raw: string): string | undefined {
+    return nameMap.get(raw.toLowerCase().trim()) ?? nameMap.get(normalizeName(raw))
+  }
 
   const edges: Edge[] = relationships
     .map((r): Edge | null => {
-      const src = nameMap.get(r.source_name.toLowerCase().trim())
-      const tgt = nameMap.get(r.target_name.toLowerCase().trim())
+      const src = lookupName(r.source_name)
+      const tgt = lookupName(r.target_name)
       if (!src || !tgt) return null
       return {
         id: r.relationship_id,
@@ -277,7 +305,7 @@ export default function EntityGraphPanel({
   const rfRef = useRef<ReactFlowInstance | null>(null)
 
   function fitAfterLoad() {
-    setTimeout(() => rfRef.current?.fitView({ padding: 0.25, duration: 400 }), 80)
+    setTimeout(() => rfRef.current?.fitView({ padding: 0.3, maxZoom: 0.85, duration: 400 }), 80)
   }
 
   useEffect(() => {
@@ -373,8 +401,8 @@ export default function EntityGraphPanel({
           onPaneClick={onPaneClick}
           onInit={(instance) => { rfRef.current = instance }}
           fitView
-          fitViewOptions={{ padding: 0.25 }}
-          minZoom={0.25}
+          fitViewOptions={{ padding: 0.3, maxZoom: 0.85 }}
+          minZoom={0.2}
           maxZoom={2}
           nodesDraggable
           nodesConnectable={false}
