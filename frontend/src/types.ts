@@ -16,6 +16,7 @@ export interface Case {
   allegation_summary: string
   risk_score: number
   created_at: string
+  last_analysed_at?: string
   doc_count?: number
   schema_fields: SchemaField[]
 }

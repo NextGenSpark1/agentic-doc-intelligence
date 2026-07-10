@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import { fetchCase, fetchDocuments, uploadDocumentWithProgress, deleteDocument, extractDocument, updateCase, runCaseAnalysis } from '../api'
 import type { Case, Document as CaseDocument, SchemaField } from '../types'
 import { PRESET_SCHEMAS, CASE_TYPE_OPTIONS } from '../lib/schemaPresets'
@@ -504,19 +505,38 @@ export default function CaseWorkspacePage() {
 
   async function handleRunAnalysis() {
     if (!caseId || analysisState === 'running') return
+    const beforeTimestamp = caseData?.last_analysed_at ?? null
     setAnalysisState('running')
     try {
-      await runCaseAnalysis(caseId)
-      setAnalysisState('done')
-      try {
-        const updated = await fetchDocuments(caseId)
-        setDocs(updated)
-      } catch { /* non-fatal */ }
+      await runCaseAnalysis(caseId)   // 202 — job kicked off, returns immediately
     } catch {
       setAnalysisState('failed')
-    } finally {
-      setTimeout(() => setAnalysisState('idle'), 2000)
+      toast.error('Failed to start analysis. Please try again.')
+      setTimeout(() => setAnalysisState('idle'), 3000)
+      return
     }
+
+    // Poll until last_analysed_at changes (backend writes it when all 4 stages finish)
+    const pollRef = setInterval(async () => {
+      try {
+        const updated = await fetchCase(caseId)
+        if (updated.last_analysed_at && updated.last_analysed_at !== beforeTimestamp) {
+          clearInterval(pollRef)
+          clearTimeout(safetyRef)
+          setCaseData(updated)
+          setAnalysisState('done')
+          toast.success('Analysis complete — refresh the tab to see updated results.', { duration: 5000 })
+          setTimeout(() => setAnalysisState('idle'), 4000)
+        }
+      } catch { /* keep polling */ }
+    }, 3000)
+
+    // Safety: stop after 3 minutes no matter what
+    const safetyRef = setTimeout(() => {
+      clearInterval(pollRef)
+      setAnalysisState('idle')
+      toast('Analysis is taking longer than expected — check back shortly.', { icon: '⏳', duration: 5000 })
+    }, 180000)
   }
 
   function handleLeftDragStart(e: React.MouseEvent) {
@@ -601,6 +621,14 @@ export default function CaseWorkspacePage() {
           ))}
         </div>
       </div>
+
+      {/* Analysis running banner — visible from any tab */}
+      {analysisState === 'running' && (
+        <div className="shrink-0 bg-[#1558D4]/8 border-b border-[#1558D4]/20 px-5 py-2 flex items-center gap-2.5">
+          <span className="w-3.5 h-3.5 border-2 border-[#1558D4]/30 border-t-[#1558D4] rounded-full animate-spin shrink-0" />
+          <p className="text-xs font-medium text-[#1558D4]">Analysis running — AI is reasoning across all documents. This takes 20–30 seconds…</p>
+        </div>
+      )}
 
       {/* Findings tab */}
       {activeSubtab === 'Findings' && (
