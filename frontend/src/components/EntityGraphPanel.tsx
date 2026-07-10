@@ -64,28 +64,28 @@ function EntityNode({ data, selected }: NodeProps) {
       <div style={{
         background: cfg.bg,
         border: `${selected ? 2 : 1}px solid ${selected ? cfg.color : cfg.border}`,
-        borderRadius: 10,
-        padding: '8px 12px',
-        minWidth: 120,
-        maxWidth: 168,
+        borderRadius: 12,
+        padding: '10px 14px',
+        minWidth: 160,
+        maxWidth: 220,
         boxShadow: selected
           ? `0 0 0 3px ${cfg.color}33, 0 4px 12px rgba(0,0,0,0.1)`
-          : '0 1px 4px rgba(0,0,0,0.08)',
+          : '0 2px 6px rgba(0,0,0,0.08)',
         cursor: 'pointer',
         userSelect: 'none',
       }}>
-        <div style={{ height: 3, background: cfg.color, borderRadius: 2, marginBottom: 7 }} />
+        <div style={{ height: 3, background: cfg.color, borderRadius: 2, marginBottom: 8 }} />
         <p style={{
-          fontSize: 11, fontWeight: 700, color: '#1A2332',
-          lineHeight: 1.35, wordBreak: 'break-word', marginBottom: 5,
+          fontSize: 12, fontWeight: 700, color: '#1A2332',
+          lineHeight: 1.4, wordBreak: 'break-word', marginBottom: 6,
         }}>
           {entity.canonical_name}
         </p>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 9, fontWeight: 600, color: cfg.color, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: cfg.color, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             {cfg.label}
           </span>
-          <span style={{ fontSize: 9, color: '#9CA3AF', fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: 10, color: '#9CA3AF', fontVariantNumeric: 'tabular-nums' }}>
             {pct}%
           </span>
         </div>
@@ -134,27 +134,35 @@ function buildGraph(
     })
   })
 
-  const nameSet = new Set(entities.map(e => e.canonical_name))
+  // Case-insensitive lookup: normalised name → canonical node id
+  const nameMap = new Map<string, string>()
+  entities.forEach(e => nameMap.set(e.canonical_name.toLowerCase().trim(), e.canonical_name))
+
   const edges: Edge[] = relationships
-    .filter(r => nameSet.has(r.source_name) && nameSet.has(r.target_name))
-    .map(r => ({
-      id: r.relationship_id,
-      source: r.source_name,
-      target: r.target_name,
-      label: r.relationship_type.replace(/_/g, ' '),
-      type: 'smoothstep',
-      style: { stroke: '#94A3B8', strokeWidth: 1.5 },
-      labelStyle: { fontSize: 9, fill: '#475569', fontWeight: 500 },
-      labelBgStyle: { fill: '#F8FAFC', fillOpacity: 0.92 },
-      labelBgPadding: [4, 2] as [number, number],
-      labelBgBorderRadius: 3,
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: '#94A3B8',
-        width: 10,
-        height: 10,
-      },
-    }))
+    .map(r => {
+      const src = nameMap.get(r.source_name.toLowerCase().trim())
+      const tgt = nameMap.get(r.target_name.toLowerCase().trim())
+      if (!src || !tgt) return null
+      return {
+        id: r.relationship_id,
+        source: src,
+        target: tgt,
+        label: r.relationship_type.replace(/_/g, ' '),
+        type: 'smoothstep',
+        style: { stroke: '#94A3B8', strokeWidth: 1.5 },
+        labelStyle: { fontSize: 9, fill: '#475569', fontWeight: 500 },
+        labelBgStyle: { fill: '#F8FAFC', fillOpacity: 0.92 },
+        labelBgPadding: [4, 2] as [number, number],
+        labelBgBorderRadius: 3,
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: '#94A3B8',
+          width: 10,
+          height: 10,
+        },
+      }
+    })
+    .filter((e): e is Edge => e !== null)
 
   return { nodes, edges }
 }
