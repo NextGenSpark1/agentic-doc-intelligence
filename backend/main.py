@@ -306,12 +306,19 @@ async def get_document_summary(case_id: str, document_id: str, user: dict = Depe
             tier="fast",
             messages=[
                 {"role": "system", "content": (
-                    "Summarize this document in 2-3 plain sentences for an investigator "
-                    "reviewing case evidence. Be factual, don't speculate beyond what's given."
+                    "You are assisting a forensic investigator. Write a concise 2-3 sentence "
+                    "factual summary of the document using only the extracted fields provided. "
+                    "Start directly with the facts — no preamble, no 'Here is a summary', "
+                    "no meta-commentary. Include key names, amounts, dates, and identifiers."
                 )},
                 {"role": "user", "content": f"Document type: {schema_name}\n\nExtracted fields:\n{fields_text}"},
             ],
         )
+        # Strip any LLM preamble the model still produces despite instructions
+        summary = re.sub(
+            r"^(?:here(?:'s| is)(?: a)? (?:summary|brief summary)[^:]*:\s*|summary:\s*)",
+            "", summary, flags=re.IGNORECASE,
+        ).strip()
     except Exception:
         summary = _fallback_summary(fields, schema_name)
 
@@ -399,15 +406,17 @@ async def generate_report(case_id: str, user: dict = Depends(get_current_user)):
         )
 
     prompt = (
-        f"You are producing a formal investigation report for the following case.\n\n"
-        f"Case: {case['title']}\n"
-        f"Type: {case['case_type']}\n"
+        f"You are producing a formal forensic investigation report.\n\n"
+        f"Case Title: {case['title']}\n"
+        f"Case Type: {case['case_type']}\n"
         f"Lead Investigator: {case['lead_investigator']}\n"
         f"Allegation: {case.get('allegation_summary', 'N/A')}\n\n"
-        f"Confirmed Findings:\n{findings_text}\n\n"
-        "Write a structured investigation report in markdown with sections: "
-        "Executive Summary, Background, Key Findings, Risk Assessment, Recommendations. "
-        "Be factual and professional. Do not speculate beyond the provided findings."
+        f"Confirmed Findings (human-reviewed and approved):\n{findings_text}\n\n"
+        "Write a professional investigation report in markdown. "
+        "Include these sections: Executive Summary, Background, Key Findings, Risk Assessment, Recommendations. "
+        "Ground every statement in the confirmed findings above — do not speculate, do not add facts not present. "
+        "Use professional forensic language. Be specific: include amounts, dates, entity names where available. "
+        "Keep the Executive Summary to 3-4 sentences. Recommendations should be actionable."
     )
 
     try:
@@ -486,9 +495,12 @@ async def chat(case_id: str, body: ChatRequest, user: dict = Depends(get_current
             tier="reasoning",
             messages=[
                 {"role": "system", "content":
-                    "Answer the investigator's question using ONLY the numbered context. "
-                    "Cite sources inline as [n]. If the answer isn't in the context, say so.\n\n"
-                    f"Context:\n{context}"},
+                    "You are an AI assistant for forensic investigators. "
+                    "Answer the question using ONLY the numbered document excerpts below. "
+                    "Cite each fact with its source number inline, e.g. [1] or [2]. "
+                    "Be precise and factual — if the answer is not in the context, say so explicitly. "
+                    "Never speculate or infer beyond what the documents state.\n\n"
+                    f"Case document excerpts:\n{context}"},
                 *recent_history,
                 {"role": "user", "content": body.message},
             ],

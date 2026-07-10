@@ -154,10 +154,16 @@ function buildGraph(
     registeredIds.add(e.canonical_name)
   })
 
-  // Register virtual nodes for any relationship endpoint not in the entity list
+  // Register virtual nodes for any relationship endpoint not in the entity list.
+  // Use source_type / target_type from the relationship evidence so the AI's
+  // own type label is shown instead of "unknown".
   const virtualEntities = new Map<string, Entity>()
   relationships.forEach(r => {
-    ;[resolveToNodeId(r.source_name), resolveToNodeId(r.target_name)].forEach(id => {
+    const pairs: [string, string][] = [
+      [resolveToNodeId(r.source_name), String(r.evidence?.source_type ?? '').toLowerCase().trim()],
+      [resolveToNodeId(r.target_name), String(r.evidence?.target_type ?? '').toLowerCase().trim()],
+    ]
+    pairs.forEach(([id, aiType]) => {
       if (!registeredIds.has(id)) {
         g.setNode(id, { width: NODE_W, height: NODE_H })
         registeredIds.add(id)
@@ -165,7 +171,7 @@ function buildGraph(
           entity_id: `virt-${id}`,
           case_id: '',
           canonical_name: id,
-          entity_type: 'unknown',
+          entity_type: aiType || 'unknown',
           aliases: [],
           confidence_score: 0.5,
         } as Entity)
@@ -347,7 +353,8 @@ export default function EntityGraphPanel({
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      setSelectedEntity(entityMap[node.id] ?? null)
+      // Use entity from node data directly so virtual nodes are also clickable
+      setSelectedEntity((node.data.entity as Entity) ?? entityMap[node.id] ?? null)
     },
     [entityMap],
   )

@@ -29,20 +29,28 @@ _SPLIT_PAYMENT_WINDOW_DAYS = 3
 _NON_NUMERIC_RE = re.compile(r"[^\d.]")
 
 _FINDINGS_PROMPT = (
-    "You are a forensic investigation analyst. Below is the full context for one case: every "
-    "document's extracted structured fields, plus the entities, relationships, and timeline "
-    "already established. Rule-based checks already caught duplicate invoices, shared bank "
-    "accounts, split payments, and budget-ceiling proximity — do NOT repeat those. Look instead "
-    "for things that need real cross-document reasoning: a vendor formed shortly before winning "
-    "a contract, a vendor sharing a director with the approving officer's other awards, "
-    "narrative inconsistencies between two documents describing the same event, circular or "
-    "round-trip payments, timing that doesn't logically add up. Every finding must cite at "
-    "least one supporting document_id that is present in the input below — never invent a "
-    "document, entity, or fact that isn't there.\n\n"
-    'Reply with strict JSON: {"findings": [{"finding_type": str, "severity": '
-    '"high"|"medium"|"low", "confidence": float, "statement": str, '
-    '"supporting_document_ids": [str, ...]}]}. Return an empty list if nothing stands out '
-    "beyond what the rules already found."
+    "You are a senior forensic analyst examining a fraud or corruption investigation case. "
+    "Below is the full case context: every document's extracted structured fields, plus "
+    "entities, relationships, and timeline already established. "
+    "Rule-based checks have already flagged duplicate invoices, shared bank accounts, "
+    "split payments, and budget-ceiling proximity — do NOT repeat those.\n\n"
+    "Focus on findings that require genuine cross-document reasoning:\n"
+    "- A vendor incorporated or registered shortly before winning a contract\n"
+    "- A vendor or its directors sharing ties with the approving officer\n"
+    "- Narrative contradictions between documents describing the same event\n"
+    "- Circular, round-trip, or layered payment patterns\n"
+    "- Procurement steps occurring out of logical sequence\n"
+    "- Unusually high single-vendor contract concentration\n"
+    "- Any pattern suggesting collusion, bid-rigging, or document fabrication\n\n"
+    "Every finding must cite at least one document_id present in the input — never invent "
+    "a document, entity, or fact.\n\n"
+    'Reply with strict JSON: {"findings": [{"finding_type": str, '
+    '"severity": "high"|"medium"|"low", "confidence": float (0.0-1.0), '
+    '"statement": str, "supporting_document_ids": [str]}]}. '
+    "Severity: high = strong evidence of fraud/violation; "
+    "medium = suspicious pattern requiring investigation; "
+    "low = minor irregularity worth noting. "
+    "Return an empty list if nothing warrants flagging beyond the rule-based findings."
 )
 
 

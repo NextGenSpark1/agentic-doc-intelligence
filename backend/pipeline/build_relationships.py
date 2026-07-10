@@ -26,17 +26,19 @@ _SHARED_LINKS = [
 ]
 
 _RELATIONSHIP_PROMPT = (
-    "You are helping map relationships between entities in a forensic investigation case. "
-    "Below is a JSON list of document extractions (document_id + extracted structured fields). "
-    "Beyond simple shared-value joins (same bank account, same officer, same phone), look for "
-    "relationships implied by the narrative content of the fields themselves — e.g. one party "
-    "introducing another, a stated family or associate tie, a prior dealing referenced in "
-    "passing. Cite the exact document_id the relationship comes from and quote the phrase that "
-    "supports it. Do not invent a document_id, entity name, or fact that is not present in the "
-    "input.\n\n"
-    'Reply with strict JSON: {"relationships": [{"source_name": str, "target_name": str, '
-    '"relationship_type": str, "evidence_quote": str, "document_id": str, "confidence": float}]}. '
-    "Return an empty list if you find nothing beyond what simple field matching would already show."
+    "You are a forensic analyst mapping entity relationships in an investigation case. "
+    "Below is a JSON list of document extractions. Identify ALL meaningful relationships: "
+    "vendor-officer approval ties, shared principals or directors, competitor relationships, "
+    "supervisor-subordinate chains, associations implied by narrative content "
+    "(e.g. one party introducing another, a stated family or business tie, prior dealings). "
+    "For each relationship, identify the entity type of both source and target using one of: "
+    "person, vendor, company, organization, bank_account, tender, invoice, po, reference, document. "
+    "Cite the exact document_id the relationship comes from and quote the supporting phrase. "
+    "Do not invent a document_id, entity name, or fact not present in the input.\n\n"
+    'Reply with strict JSON: {"relationships": [{"source_name": str, "source_type": str, '
+    '"target_name": str, "target_type": str, "relationship_type": str, '
+    '"evidence_quote": str, "document_id": str, "confidence": float}]}. '
+    "Return an empty list only if no meaningful relationships exist."
 )
 
 
@@ -68,7 +70,12 @@ def _llm_relationships(extractions: list[dict], case_id: str) -> list[dict]:
             continue  # ungrounded — the model cited something we never sent
         edges.append(_edge(
             case_id, source, target, label,
-            {"evidence_quote": item.get("evidence_quote"), "document_id": doc_id},
+            {
+                "evidence_quote": item.get("evidence_quote"),
+                "document_id": doc_id,
+                "source_type": str(item.get("source_type") or "").strip().lower(),
+                "target_type": str(item.get("target_type") or "").strip().lower(),
+            },
             source_flag="llm",
             reasoning=item.get("evidence_quote"),
             confidence=llm_reasoning.clamp_confidence(item.get("confidence"), default=0.6),
