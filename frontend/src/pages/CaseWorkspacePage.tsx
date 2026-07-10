@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { fetchCase, fetchDocuments, uploadDocumentWithProgress, deleteDocument, extractDocument, updateCase, runCaseAnalysis } from '../api'
 import type { Case, Document as CaseDocument, SchemaField } from '../types'
@@ -14,6 +14,11 @@ import EntityGraphPanel from '../components/EntityGraphPanel'
 import ReportPanel from '../components/ReportPanel'
 
 const SUBTABS = ['Workspace', 'Entity Graph', 'Timeline', 'Findings', 'Report', 'Settings']
+const TAB_SLUG: Record<string, string> = {
+  'Workspace': 'workspace', 'Entity Graph': 'entity-graph', 'Timeline': 'timeline',
+  'Findings': 'findings', 'Report': 'report', 'Settings': 'settings',
+}
+const SLUG_TAB: Record<string, string> = Object.fromEntries(Object.entries(TAB_SLUG).map(([k, v]) => [v, k]))
 
 const STATUS_MAP: Record<string, { color: string; label: string }> = {
   uploaded:   { color: '#9CA3AF', label: 'Uploaded' },
@@ -347,6 +352,7 @@ function PlaceholderPanel({ name }: { name: string }) {
 export default function CaseWorkspacePage() {
   const { caseId } = useParams<{ caseId: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [caseData, setCaseData] = useState<Case | null>(null)
   const [docs, setDocs] = useState<CaseDocument[]>([])
@@ -359,7 +365,8 @@ export default function CaseWorkspacePage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
-  const [activeSubtab, setActiveSubtab] = useState('Workspace')
+  const activeSubtab = SLUG_TAB[searchParams.get('tab') ?? ''] ?? 'Workspace'
+  const setActiveSubtab = (tab: string) => setSearchParams(p => { p.set('tab', TAB_SLUG[tab]); return p }, { replace: true })
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const [docSearch, setDocSearch] = useState('')

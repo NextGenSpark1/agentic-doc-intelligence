@@ -26,19 +26,81 @@ _SHARED_LINKS = [
 ]
 
 _RELATIONSHIP_PROMPT = (
-    "You are a forensic analyst mapping entity relationships in an investigation case. "
-    "Below is a JSON list of document extractions. Identify ALL meaningful relationships: "
-    "vendor-officer approval ties, shared principals or directors, competitor relationships, "
-    "supervisor-subordinate chains, associations implied by narrative content "
-    "(e.g. one party introducing another, a stated family or business tie, prior dealings). "
-    "For each relationship, identify the entity type of both source and target using one of: "
-    "person, vendor, company, organization, bank_account, tender, invoice, po, reference, document. "
-    "Cite the exact document_id the relationship comes from and quote the supporting phrase. "
-    "Do not invent a document_id, entity name, or fact not present in the input.\n\n"
+    "You are a senior forensic analyst building an entity relationship graph for an investigation case. "
+    "Below is a JSON list of document extractions. Each document has a document_id and extracted fields. "
+    "Your task is to identify EVERY meaningful relationship between named entities across all documents. "
+    "Be exhaustive — a missed relationship is more dangerous than a false positive.\n\n"
+
+    "RELATIONSHIP CATEGORIES TO EXTRACT\n\n"
+
+    "OWNERSHIP AND CONTROL\n"
+    "- director_of: person is a named director of a company\n"
+    "- shareholder_of: person holds shares in a company\n"
+    "- beneficial_owner_of: person is the ultimate beneficial owner\n"
+    "- controls: entity controls or manages another entity\n"
+    "- subsidiary_of / parent_of: corporate ownership hierarchy\n\n"
+
+    "APPROVAL AND AUTHORITY\n"
+    "- approved_award: officer approved a contract or tender for a vendor\n"
+    "- authorised_payment: officer authorised a payment to a vendor or account\n"
+    "- signed_contract: person signed a contract on behalf of an entity\n"
+    "- reviewed_by / checked_by / prepared_by: document workflow roles\n"
+    "- supervisor_of / subordinate_of: internal reporting hierarchy\n\n"
+
+    "FINANCIAL LINKS\n"
+    "- bank_account_holder: entity holds or operates a bank account\n"
+    "- paid_by / paid_to: payment flow between entities\n"
+    "- invoiced: vendor issued invoice to client entity\n"
+    "- guarantor_of: entity provides a guarantee for another\n\n"
+
+    "IDENTITY AND NAME-BASED LINKS (CRITICAL — do not skip)\n"
+    "- name_similarity: approving officer's surname or given name appears in the vendor or company name "
+    "(e.g. 'Zulkarnain bin Rashid' approves 'Rashid & Farid Construction') — always flag this\n"
+    "- possible_relative: two individuals share a surname and appear on opposite sides of a transaction\n"
+    "- same_person_alias: two names that appear to refer to the same individual across documents\n\n"
+
+    "ADDRESS AND CONTACT OVERLAP (CRITICAL — do not skip)\n"
+    "- shared_address: two parties (e.g. vendor director and approving officer) share the same "
+    "registered, residential, or emergency-contact address found anywhere in the documents\n"
+    "- shared_phone: same phone number or contact appears for two different named parties\n"
+    "- shared_email: same email appears for two different named parties\n"
+    "- shared_bank_account: same account number linked to more than one vendor or individual\n\n"
+
+    "PROCUREMENT AND CONTRACT LINKS\n"
+    "- awarded_contract: vendor was awarded a specific contract or tender\n"
+    "- competing_vendor: vendor submitted a competing bid\n"
+    "- subcontractor_of: one vendor subcontracts to another\n"
+    "- referenced_in: entity or document references another document or entity\n\n"
+
+    "ORGANISATIONAL AND INSTITUTIONAL LINKS\n"
+    "- employed_by / works_for: person is employed by an organisation\n"
+    "- represents: person acts as representative or agent for an entity\n"
+    "- regulates / audits: one body has oversight over another\n"
+    "- filed_report_on: entity submitted a report about another entity\n\n"
+
+    "ASSOCIATION AND NARRATIVE LINKS\n"
+    "- introduced_by: one party introduced or recommended another\n"
+    "- prior_dealings: parties had a documented prior business relationship\n"
+    "- co_signatory: two people signed the same document in different roles\n"
+    "- witness_for: person witnessed a transaction or document execution\n"
+    "- mentioned_together: two parties consistently co-mentioned in suspicious contexts\n\n"
+
+    "INSTRUCTIONS\n"
+    "For EVERY relationship:\n"
+    "1. Use the exact names as they appear in the documents — do not paraphrase or merge\n"
+    "2. Identify the entity type of both source and target from: "
+    "person, vendor, company, organization, government_body, bank_account, tender, invoice, po, address, phone, reference, document\n"
+    "3. Choose the most specific relationship_type label from the categories above\n"
+    "4. Quote the exact phrase from the document that supports the relationship (evidence_quote)\n"
+    "5. Cite the document_id the relationship comes from\n"
+    "6. Assign confidence 0.0–1.0: 0.9+ = explicitly stated; 0.7–0.89 = strongly implied; "
+    "0.5–0.69 = circumstantial but notable; below 0.5 = omit\n\n"
+    "Never invent a document_id, name, address, or fact not present in the input data. "
+    "If the same relationship appears in multiple documents, emit one entry per document.\n\n"
     'Reply with strict JSON: {"relationships": [{"source_name": str, "source_type": str, '
     '"target_name": str, "target_type": str, "relationship_type": str, '
     '"evidence_quote": str, "document_id": str, "confidence": float}]}. '
-    "Return an empty list only if no meaningful relationships exist."
+    "Return an empty list only if there are genuinely no meaningful relationships."
 )
 
 
