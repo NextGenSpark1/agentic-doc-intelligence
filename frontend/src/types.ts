@@ -70,6 +70,7 @@ export interface Finding {
   reviewed_by?: string
   reviewed_at?: string
   dismissal_reason?: string
+  source?: string
 }
 
 export interface Entity {

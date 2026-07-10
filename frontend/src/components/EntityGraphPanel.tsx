@@ -1,5 +1,5 @@
 import '@xyflow/react/dist/style.css'
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   ReactFlow,
   Background,
@@ -10,6 +10,7 @@ import {
   Handle,
   Position,
   type NodeProps,
+  type ReactFlowInstance,
   type Node,
   type Edge,
 } from '@xyflow/react'
@@ -265,6 +266,11 @@ export default function EntityGraphPanel({
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null)
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
+  const rfRef = useRef<ReactFlowInstance | null>(null)
+
+  function fitAfterLoad() {
+    setTimeout(() => rfRef.current?.fitView({ padding: 0.25, duration: 400 }), 80)
+  }
 
   useEffect(() => {
     fetchEntities(caseId)
@@ -273,6 +279,7 @@ export default function EntityGraphPanel({
         const { nodes: n, edges: e } = buildGraph(d.entities, d.relationships)
         setNodes(n)
         setEdges(e)
+        fitAfterLoad()
       })
       .catch(() => setError('Failed to load entity graph.'))
   }, [caseId, setNodes, setEdges])
@@ -356,6 +363,7 @@ export default function EntityGraphPanel({
           onEdgesChange={onEdgesChange}
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
+          onInit={(instance) => { rfRef.current = instance }}
           fitView
           fitViewOptions={{ padding: 0.25 }}
           minZoom={0.25}
@@ -394,6 +402,15 @@ export default function EntityGraphPanel({
                 <span className="font-semibold text-slate-700">{data.relationships.length}</span> relationships
               </span>
             </div>
+            <button
+              onClick={() => rfRef.current?.fitView({ padding: 0.25, duration: 400 })}
+              title="Fit all nodes in view"
+              className="flex items-center justify-center w-8 h-8 bg-white/95 border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+              </svg>
+            </button>
             {onRunAnalysis && (
               <button
                 onClick={onRunAnalysis}

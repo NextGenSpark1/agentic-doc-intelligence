@@ -241,6 +241,10 @@ export default function FindingsPanel({
                   <span className="text-[10px] font-medium text-text-mid bg-panel-2 border border-border px-2 py-0.5 rounded-full">
                     {formatType(finding.finding_type)}
                   </span>
+                  {finding.source === 'llm'
+                    ? <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#1558D4] border border-[#93C5FD]">AI</span>
+                    : <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-panel-2 text-text-mute border border-border">Rule</span>
+                  }
                   <div className="flex-1" />
                   <ConfidenceBar value={finding.confidence} />
                 </div>
