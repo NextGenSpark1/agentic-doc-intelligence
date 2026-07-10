@@ -39,7 +39,11 @@ const TYPE_CONFIG: Record<string, TypeConfig> = {
 const FALLBACK_CONFIG: TypeConfig = { color: '#8B5CF6', bg: '#F5F3FF', border: '#C4B5FD', label: 'Other' }
 
 function typeConfig(t: string): TypeConfig {
-  return TYPE_CONFIG[t.toLowerCase()] ?? FALLBACK_CONFIG
+  const known = TYPE_CONFIG[t.toLowerCase()]
+  if (known) return known
+  // Dynamic label for any AI-returned type not in the preset list
+  const label = t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  return { ...FALLBACK_CONFIG, label }
 }
 
 // ── Custom node ────────────────────────────────────────────────────────────
@@ -107,9 +111,8 @@ function buildGraph(
   }
 
   const types = Array.from(groups.keys())
-  const CLUSTER_R = Math.max(220, types.length * 90)
-  const NODE_R     = Math.max(60,  Math.min(100, 300 / Math.max(entities.length, 1)))
-  const CX = 480, CY = 320
+  const CLUSTER_R = Math.max(320, types.length * 160)
+  const CX = 480, CY = 360
 
   const nodes: Node[] = []
   types.forEach((type, ti) => {
@@ -119,7 +122,7 @@ function buildGraph(
     const cy = CY + Math.sin(clusterAngle) * CLUSTER_R
 
     cluster.forEach((entity, ni) => {
-      const r = cluster.length === 1 ? 0 : NODE_R
+      const NODE_R = cluster.length === 1 ? 0 : Math.max(150, cluster.length * 70)
       const a = (ni / cluster.length) * 2 * Math.PI
       nodes.push({
         id: entity.canonical_name,
