@@ -128,7 +128,7 @@ function buildGraph(
       nodes.push({
         id: entity.canonical_name,
         type: 'entityNode',
-        position: { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r },
+        position: { x: cx + Math.cos(a) * NODE_R, y: cy + Math.sin(a) * NODE_R },
         data: { entity },
       })
     })
