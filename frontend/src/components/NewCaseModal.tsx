@@ -86,10 +86,6 @@ export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalP
     return PRESET_SCHEMAS[form.case_type]?.fields ?? []
   }
 
-  function maxCustomFields(): number {
-    return fromScratch ? Infinity : 5
-  }
-
   function computedSchemaFields(): SchemaField[] {
     if (fromScratch) return customFields
     return [...presetFields(), ...customFields]
@@ -102,10 +98,6 @@ export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalP
     if (!description) { setDraftError('Description is required.'); return }
     const allNames = [...presetFields().map(f => f.name), ...customFields.map(f => f.name)]
     if (allNames.includes(name)) { setDraftError('A field with that name already exists.'); return }
-    if (customFields.length >= maxCustomFields()) {
-      setDraftError(`Maximum ${maxCustomFields()} custom fields when using a preset.`)
-      return
-    }
     setCustomFields(prev => [...prev, { name, description, is_array: draft.is_array, custom: true }])
     setDraft({ name: '', description: '', is_array: false })
     setDraftError(null)
@@ -297,7 +289,7 @@ export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalP
               <div className="border border-border rounded-lg overflow-hidden">
                 <div className="px-3 py-2 bg-bg-subtle border-b border-border">
                   <span className="text-xs font-medium text-text-mute uppercase tracking-wide">
-                    Custom Fields ({customFields.length}{!fromScratch ? '/5' : ''})
+                    Custom Fields ({customFields.length})
                   </span>
                 </div>
                 <div className="divide-y divide-border max-h-32 overflow-y-auto">
@@ -322,8 +314,7 @@ export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalP
             )}
 
             {/* Add custom field form */}
-            {(fromScratch || customFields.length < 5) && (
-              <div className="border border-border-strong rounded-lg p-3 flex flex-col gap-2">
+            <div className="border border-border-strong rounded-lg p-3 flex flex-col gap-2">
                 <span className="text-xs font-medium text-text-mute uppercase tracking-wide">Add Field</span>
                 {draftError && <p className="text-xs text-red">{draftError}</p>}
                 <div className="flex gap-2">
@@ -361,8 +352,7 @@ export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalP
                     Add
                   </button>
                 </div>
-              </div>
-            )}
+            </div>
 
             {/* Footer */}
             <div className="flex items-center justify-end gap-3 pt-1">
