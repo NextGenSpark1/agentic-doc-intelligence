@@ -139,7 +139,7 @@ function buildGraph(
   entities.forEach(e => nameMap.set(e.canonical_name.toLowerCase().trim(), e.canonical_name))
 
   const edges: Edge[] = relationships
-    .map(r => {
+    .map((r): Edge | null => {
       const src = nameMap.get(r.source_name.toLowerCase().trim())
       const tgt = nameMap.get(r.target_name.toLowerCase().trim())
       if (!src || !tgt) return null
