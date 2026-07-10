@@ -671,9 +671,9 @@ export default function CaseWorkspacePage() {
             </div>
       )}
 
-      {/* Workspace — three-panel layout */}
-      {activeSubtab === 'Workspace' && (
-        <div className="flex flex-1 overflow-hidden" ref={panelContainerRef}>
+      {/* Workspace — always mounted so chat history survives tab switches */}
+      <div className="flex flex-1 overflow-hidden" ref={panelContainerRef}
+        style={{ display: activeSubtab === 'Workspace' ? 'flex' : 'none' }}>
 
           {/* Left panel */}
           <aside
@@ -957,7 +957,6 @@ export default function CaseWorkspacePage() {
             )}
           </aside>
         </div>
-      )}
     </div>
   )
 }

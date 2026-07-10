@@ -234,9 +234,17 @@ def build(case_id: str) -> list[dict]:
     # Rules are a fallback only when LLM returns nothing
     if not edges:
         edges = compute_relationships(extractions, case_id)
+    # Deduplicate: keep first occurrence of each (source, target, type) triple
+    seen: set[tuple] = set()
+    deduped = []
     for e in edges:
+        key = (e["source_name"].lower().strip(), e["target_name"].lower().strip(), e["relationship_type"])
+        if key not in seen:
+            seen.add(key)
+            deduped.append(e)
+    for e in deduped:
         db.insert_relationship(e)
-    return edges
+    return deduped
 
 
 def _edge(case_id, a, b, label, meta, source_flag="rule", reasoning=None, confidence=None):
