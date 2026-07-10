@@ -67,6 +67,7 @@ export default function CaseAssistantPanel({
   onCitationClick?: (documentId: string, page: number) => void
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [openCitations, setOpenCitations] = useState<Set<string>>(new Set())
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -169,35 +170,54 @@ export default function CaseAssistantPanel({
                       {parseAnswer(msg.content)}
                     </div>
                     {msg.citations && msg.citations.length > 0 && (
-                      <div className="flex flex-col gap-1.5 ml-0.5">
-                        {msg.citations.map((c, i) => {
-                          const clickable = Boolean(onCitationClick)
-                          return (
-                            <div
-                              key={c.chunk_id}
-                              onClick={clickable ? () => onCitationClick?.(c.document_id, c.page) : undefined}
-                              className={`bg-panel border border-border rounded-xl px-3 py-2.5 flex flex-col gap-1.5 transition-colors duration-150
-                                ${clickable ? 'cursor-pointer hover:bg-panel-3 hover:border-border-strong' : ''}`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <sup className="inline-flex items-center justify-center w-[18px] h-[18px] text-[9px] font-bold bg-teal text-white rounded-full shrink-0">
-                                  {i + 1}
-                                </sup>
-                                <span className="text-[10px] font-semibold text-text truncate flex-1">
-                                  {docMap[c.document_id] ?? c.document_id}
-                                </span>
-                                <span className="text-[10px] font-semibold text-teal bg-teal/10 border border-teal/20 px-1.5 py-0.5 rounded-full shrink-0">
-                                  p.&nbsp;{c.page + 1}
-                                </span>
-                              </div>
-                              {c.quoted_text && (
-                                <p className="text-[10px] text-text-mute leading-relaxed line-clamp-3 border-l-2 border-teal/30 pl-2 italic">
-                                  &ldquo;{c.quoted_text}&rdquo;
-                                </p>
-                              )}
-                            </div>
-                          )
-                        })}
+                      <div className="flex flex-col gap-1 ml-0.5">
+                        {/* Collapsible sources toggle */}
+                        <button
+                          onClick={() => setOpenCitations(prev => {
+                            const next = new Set(prev)
+                            next.has(msg.id) ? next.delete(msg.id) : next.add(msg.id)
+                            return next
+                          })}
+                          className="flex items-center gap-1.5 text-[10px] font-semibold text-text-mute hover:text-text transition-colors duration-150 w-fit"
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                            className={`transition-transform duration-150 ${openCitations.has(msg.id) ? 'rotate-90' : ''}`}>
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
+                          Sources ({msg.citations.length})
+                        </button>
+                        {openCitations.has(msg.id) && (
+                          <div className="flex flex-col gap-1.5">
+                            {msg.citations.map((c, i) => {
+                              const clickable = Boolean(onCitationClick)
+                              return (
+                                <div
+                                  key={c.chunk_id}
+                                  onClick={clickable ? () => onCitationClick?.(c.document_id, c.page) : undefined}
+                                  className={`bg-panel border border-border rounded-xl px-3 py-2.5 flex flex-col gap-1.5 transition-colors duration-150
+                                    ${clickable ? 'cursor-pointer hover:bg-panel-3 hover:border-border-strong' : ''}`}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <sup className="inline-flex items-center justify-center w-[18px] h-[18px] text-[9px] font-bold bg-teal text-white rounded-full shrink-0">
+                                      {i + 1}
+                                    </sup>
+                                    <span className="text-[10px] font-semibold text-text truncate flex-1">
+                                      {docMap[c.document_id] ?? c.document_id}
+                                    </span>
+                                    <span className="text-[10px] font-semibold text-teal bg-teal/10 border border-teal/20 px-1.5 py-0.5 rounded-full shrink-0">
+                                      p.&nbsp;{c.page + 1}
+                                    </span>
+                                  </div>
+                                  {c.quoted_text && (
+                                    <p className="text-[10px] text-text-mute leading-relaxed line-clamp-3 border-l-2 border-teal/30 pl-2 italic">
+                                      &ldquo;{c.quoted_text}&rdquo;
+                                    </p>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
