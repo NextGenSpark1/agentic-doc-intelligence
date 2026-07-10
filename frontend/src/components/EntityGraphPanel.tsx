@@ -22,11 +22,19 @@ interface TypeConfig { color: string; bg: string; border: string; label: string 
 
 const TYPE_CONFIG: Record<string, TypeConfig> = {
   person:            { color: '#3B82F6', bg: '#EFF6FF', border: '#93C5FD', label: 'Person' },
+  vendor:            { color: '#0D9488', bg: '#F0FDFA', border: '#5EEAD4', label: 'Vendor' },
+  company:           { color: '#0D9488', bg: '#F0FDFA', border: '#5EEAD4', label: 'Company' },
   organization:      { color: '#0D9488', bg: '#F0FDFA', border: '#5EEAD4', label: 'Organization' },
   location:          { color: '#16A34A', bg: '#F0FDF4', border: '#86EFAC', label: 'Location' },
+  bank_account:      { color: '#CA8A04', bg: '#FEFCE8', border: '#FDE047', label: 'Bank Account' },
   financial:         { color: '#CA8A04', bg: '#FEFCE8', border: '#FDE047', label: 'Financial' },
   financial_account: { color: '#CA8A04', bg: '#FEFCE8', border: '#FDE047', label: 'Financial' },
+  po:                { color: '#64748B', bg: '#F8FAFC', border: '#CBD5E1', label: 'PO' },
+  invoice:           { color: '#64748B', bg: '#F8FAFC', border: '#CBD5E1', label: 'Invoice' },
   document:          { color: '#64748B', bg: '#F8FAFC', border: '#CBD5E1', label: 'Document' },
+  reference:         { color: '#64748B', bg: '#F8FAFC', border: '#CBD5E1', label: 'Reference' },
+  phone:             { color: '#EC4899', bg: '#FDF2F8', border: '#F9A8D4', label: 'Phone' },
+  benefit:           { color: '#F97316', bg: '#FFF7ED', border: '#FDBA74', label: 'Benefit' },
 }
 const FALLBACK_CONFIG: TypeConfig = { color: '#8B5CF6', bg: '#F5F3FF', border: '#C4B5FD', label: 'Other' }
 

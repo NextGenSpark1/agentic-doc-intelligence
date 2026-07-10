@@ -128,8 +128,11 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
     const chunk = findChunkForField(str)
     if (!chunk || typeof chunk.page !== 'number') return
     setLocatedChunk(chunk)
-    setPageNumber(chunk.page + 1)
-    setPageRendered(false)
+    const targetPage = chunk.page + 1
+    if (targetPage !== pageNumber) {
+      setPageRendered(false)
+      setPageNumber(targetPage)
+    }
   }
 
   useEffect(() => {
