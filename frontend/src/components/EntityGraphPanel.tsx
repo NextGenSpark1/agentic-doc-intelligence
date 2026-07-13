@@ -55,7 +55,7 @@ function typeConfig(t: string): TypeConfig {
 function EntityNode({ data, selected }: NodeProps) {
   const entity = data.entity as Entity
   const cfg = typeConfig(entity.entity_type)
-  const pct = Math.round((entity.confidence_score ?? 1) * 100)
+  const confidencePercentage = Math.round((entity.confidence_score ?? 1) * 100)
 
   return (
     <>
@@ -93,7 +93,7 @@ function EntityNode({ data, selected }: NodeProps) {
             {cfg.label}
           </span>
           <span style={{ fontSize: 11, color: '#9CA3AF', fontVariantNumeric: 'tabular-nums' }}>
-            {pct}%
+            {confidencePercentage}%
           </span>
         </div>
       </div>
@@ -116,8 +116,8 @@ function normalizeName(name: string): string {
     .toLowerCase()
 }
 
-const NODE_W = 260
-const NODE_H = 100
+const NODE_WIDTH = 260
+const NODE_HEIGHT = 100
 
 function buildGraph(
   entities: Entity[],
@@ -150,7 +150,7 @@ function buildGraph(
   // Register all entity nodes
   const registeredIds = new Set<string>()
   entities.forEach(e => {
-    g.setNode(e.canonical_name, { width: NODE_W, height: NODE_H })
+    g.setNode(e.canonical_name, { width: NODE_WIDTH, height: NODE_HEIGHT })
     registeredIds.add(e.canonical_name)
   })
 
@@ -165,7 +165,7 @@ function buildGraph(
     ]
     pairs.forEach(([id, aiType]) => {
       if (!registeredIds.has(id)) {
-        g.setNode(id, { width: NODE_W, height: NODE_H })
+        g.setNode(id, { width: NODE_WIDTH, height: NODE_HEIGHT })
         registeredIds.add(id)
         virtualEntities.set(id, {
           entity_id: `virt-${id}`,
@@ -197,7 +197,7 @@ function buildGraph(
     return {
       id,
       type: 'entityNode',
-      position: { x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 },
+      position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
       data: { entity },
     }
   })
@@ -232,7 +232,7 @@ function EntityDetail({
   onClose: () => void
 }) {
   const cfg = typeConfig(entity.entity_type)
-  const pct = Math.round((entity.confidence_score ?? 1) * 100)
+  const confidencePercentage = Math.round((entity.confidence_score ?? 1) * 100)
   const outgoing = relationships.filter(r => r.source_name === entity.canonical_name)
   const incoming = relationships.filter(r => r.target_name === entity.canonical_name)
 
@@ -266,9 +266,9 @@ function EntityDetail({
           <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Confidence</p>
           <div className="flex items-center gap-2">
             <div className="flex-1 h-1.5 bg-panel-3 rounded-full overflow-hidden">
-              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: cfg.color }} />
+              <div className="h-full rounded-full" style={{ width: `${confidencePercentage}%`, background: cfg.color }} />
             </div>
-            <span className="text-xs font-semibold text-text tabular-nums">{pct}%</span>
+            <span className="text-xs font-semibold text-text tabular-nums">{confidencePercentage}%</span>
           </div>
         </div>
 

@@ -247,16 +247,16 @@ def build(case_id: str) -> list[dict]:
     return deduped
 
 
-def _edge(case_id, a, b, label, meta, source_flag="rule", reasoning=None, confidence=None):
+def _edge(case_id, source_name, target_name, relationship_type, meta, source_flag="rule", reasoning=None, confidence=None):
     evidence = dict(meta)
     if confidence is not None:
         evidence["confidence"] = confidence
     edge = {
         "relationship_id": str(uuid.uuid4()),
         "case_id": case_id,
-        "source_name": a,
-        "target_name": b,
-        "relationship_type": label,
+        "source_name": source_name,
+        "target_name": target_name,
+        "relationship_type": relationship_type,
         "evidence": evidence,
         "source": source_flag,
     }

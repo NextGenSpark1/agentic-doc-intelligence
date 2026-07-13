@@ -97,11 +97,11 @@ def compute_events(extractions: list[dict], case_id: str | None = None) -> list[
     events: list[dict] = []
     for ex in extractions:
         d = ex.get("extracted_json") or {}
-        eid = case_id or ex.get("case_id")
+        event_case_id = case_id or ex.get("case_id")
         doc_id = ex.get("document_id")
 
         def evt(date_iso: str, label: str) -> dict:
-            return {"event_id": str(uuid.uuid4()), "case_id": eid,
+            return {"event_id": str(uuid.uuid4()), "case_id": event_case_id,
                     "event_date": date_iso, "label": label, "document_id": doc_id}
 
         # financial / audit / payment_tracing — payment_date
@@ -113,9 +113,9 @@ def compute_events(extractions: list[dict], case_id: str | None = None) -> list[
 
         # communication — dates list
         for cdate in (d.get("dates") or []):
-            ciso = parse_date(cdate)
-            if ciso:
-                events.append(evt(ciso, "Communication event"))
+            comm_date_iso = parse_date(cdate)
+            if comm_date_iso:
+                events.append(evt(comm_date_iso, "Communication event"))
 
         # procurement_fraud — extract dates from approval_timeline text with context labels
         timeline_text = d.get("approval_timeline") or ""
@@ -125,9 +125,9 @@ def compute_events(extractions: list[dict], case_id: str | None = None) -> list[
 
         # general — key_dates list
         for kdate in (d.get("key_dates") or []):
-            kiso = parse_date(kdate)
-            if kiso:
-                events.append(evt(kiso, "Document date"))
+            key_date_iso = parse_date(kdate)
+            if key_date_iso:
+                events.append(evt(key_date_iso, "Document date"))
 
         # any custom date fields users might add (submission_date, award_date, etc.)
         for field in ("submission_date", "award_date", "report_date", "contract_date"):

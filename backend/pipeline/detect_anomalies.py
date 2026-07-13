@@ -140,10 +140,10 @@ def _to_float(v) -> float:
     return float(cleaned) if cleaned else 0.0
 
 
-def _finding(ftype: str, severity: str, confidence: float, statement: str, doc_ids: list[str],
+def _finding(finding_type: str, severity: str, confidence: float, statement: str, doc_ids: list[str],
              source: str = "rule") -> dict:
     return {
-        "finding_type": ftype,
+        "finding_type": finding_type,
         "severity": severity,
         "confidence": confidence,
         "statement": statement,
