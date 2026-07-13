@@ -117,7 +117,7 @@ def _index_chunks(case_id: str, document_id: str, chunks: list[dict]) -> None:
         return
     vectors = _embed_in_batches(texts, case_id, document_id)
 
-    rows, vi = [], 0
+    rows, vector_index = [], 0
     for c in chunks:
         if not c.get("text"):
             continue
@@ -131,8 +131,8 @@ def _index_chunks(case_id: str, document_id: str, chunks: list[dict]) -> None:
                 "type": c.get("type") or "text",
                 "page": grounding.get("page"),
                 "bbox": grounding.get("bbox") or [],
-                "embedding": vectors[vi],
+                "embedding": vectors[vector_index],
             }
         )
-        vi += 1
+        vector_index += 1
     db.insert_chunks(rows)

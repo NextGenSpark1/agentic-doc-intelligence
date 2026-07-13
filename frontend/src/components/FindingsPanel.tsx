@@ -112,7 +112,7 @@ export default function FindingsPanel({
     }
   }
 
-  const PILL = (active: boolean) =>
+  const getPillButtonClasses = (active: boolean) =>
     `px-3 py-1 rounded-full text-xs font-medium transition-colors duration-150 ${
       active ? 'bg-navy text-white' : 'text-text-mute hover:text-text hover:bg-panel-2'
     }`
@@ -171,7 +171,7 @@ export default function FindingsPanel({
           <div className="flex items-center gap-1">
             <span className="text-[10px] font-semibold text-text-mute uppercase tracking-wide mr-1">Severity</span>
             {['all', 'high', 'medium', 'low'].map(s => (
-              <button key={s} onClick={() => setFilterSeverity(s)} className={PILL(filterSeverity === s)}>
+              <button key={s} onClick={() => setFilterSeverity(s)} className={getPillButtonClasses(filterSeverity === s)}>
                 {s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
               </button>
             ))}
@@ -179,7 +179,7 @@ export default function FindingsPanel({
           <div className="flex items-center gap-1">
             <span className="text-[10px] font-semibold text-text-mute uppercase tracking-wide mr-1">Status</span>
             {['all', 'pending', 'confirmed', 'dismissed'].map(s => (
-              <button key={s} onClick={() => setFilterStatus(s)} className={PILL(filterStatus === s)}>
+              <button key={s} onClick={() => setFilterStatus(s)} className={getPillButtonClasses(filterStatus === s)}>
                 {s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
               </button>
             ))}

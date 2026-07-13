@@ -44,13 +44,13 @@ export default function TimelinePanel({
   // Group events by year
   const grouped = useMemo(() => {
     if (!events) return []
-    const map = new Map<number, TimelineEvent[]>()
+    const eventsByYear = new Map<number, TimelineEvent[]>()
     for (const e of events) {
       const year = parseDate(e.event_date).getFullYear()
-      if (!map.has(year)) map.set(year, [])
-      map.get(year)!.push(e)
+      if (!eventsByYear.has(year)) eventsByYear.set(year, [])
+      eventsByYear.get(year)!.push(e)
     }
-    return Array.from(map.entries()).sort(([a], [b]) => a - b)
+    return Array.from(eventsByYear.entries()).sort(([a], [b]) => a - b)
   }, [events])
 
   if (error) {

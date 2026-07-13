@@ -101,11 +101,11 @@ def _apply_llm_merge(seen: dict[str, dict], case_id: str) -> dict[str, dict]:
     for cluster in clusters if isinstance(clusters, list) else []:
         if not isinstance(cluster, dict):
             continue
-        etype = str(cluster.get("entity_type") or "").strip()
+        entity_type = str(cluster.get("entity_type") or "").strip()
         members = cluster.get("members") or []
         valid_keys = list(dict.fromkeys(
-            by_type_name[(etype, m)] for m in members
-            if (etype, m) in by_type_name and by_type_name[(etype, m)] in merged
+            by_type_name[(entity_type, m)] for m in members
+            if (entity_type, m) in by_type_name and by_type_name[(entity_type, m)] in merged
         ))
         if len(valid_keys) < 2:
             continue  # not enough grounded members to justify a merge
@@ -130,22 +130,22 @@ def resolve(case_id: str) -> list[dict]:
     # canonical_key -> {type, display_name, doc_ids}
     seen: dict[str, dict] = {}
 
-    def add(value, etype, doc_id):
+    def add(value, entity_type, doc_id):
         if not value or not str(value).strip():
             return
         display = str(value).strip()
-        key = f"{etype}:{_normalise(display)}"
-        rec = seen.setdefault(key, {"type": etype, "display": display, "docs": set()})
+        key = f"{entity_type}:{_normalise(display)}"
+        rec = seen.setdefault(key, {"type": entity_type, "display": display, "docs": set()})
         rec["docs"].add(doc_id)
 
     for ex in extractions:
         doc_id = ex["document_id"]
         data = ex.get("extracted_json") or {}
-        for field, etype in _FIELD_TO_TYPE.items():
-            add(data.get(field), etype, doc_id)
-        for field, etype in _LIST_FIELD_TO_TYPE.items():
+        for field, entity_type in _FIELD_TO_TYPE.items():
+            add(data.get(field), entity_type, doc_id)
+        for field, entity_type in _LIST_FIELD_TO_TYPE.items():
             for v in (data.get(field) or []):
-                add(v, etype, doc_id)
+                add(v, entity_type, doc_id)
 
     seen = _apply_llm_merge(seen, case_id)
 
