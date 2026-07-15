@@ -133,7 +133,7 @@ export async function fetchFindings(caseId: string): Promise<Finding[]> {
 
 export async function reviewFinding(
   findingId: string,
-  status: 'confirmed' | 'dismissed',
+  status: 'confirmed' | 'dismissed' | 'pending',
   reviewedBy: string,
   dismissalReason?: string,
 ): Promise<Finding> {

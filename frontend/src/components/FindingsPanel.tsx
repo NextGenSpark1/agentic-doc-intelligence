@@ -140,6 +140,19 @@ export default function FindingsPanel({
     }
   }
 
+  async function handleRevert(findingId: string) {
+    const reviewer = (user?.user_metadata?.full_name as string | undefined) || user?.email || 'investigator'
+    setProcessing(prev => new Set(prev).add(findingId))
+    try {
+      const updated = await reviewFinding(findingId, 'pending', reviewer)
+      setFindings(prev => prev?.map(f => f.finding_id === findingId ? updated : f) ?? prev)
+    } catch {
+      setError('Failed to revert finding.')
+    } finally {
+      setProcessing(prev => { const n = new Set(prev); n.delete(findingId); return n })
+    }
+  }
+
   async function handleDismiss(findingId: string, reason: string) {
     const reviewer = (user?.user_metadata?.full_name as string | undefined) || user?.email || 'investigator'
     setProcessing(prev => new Set(prev).add(findingId))
@@ -327,6 +340,16 @@ export default function FindingsPanel({
                   )}
                   {finding.dismissal_reason && (
                     <span className="text-[10px] text-text-mute italic">"{finding.dismissal_reason}"</span>
+                  )}
+
+                  {!isPending && !isDismissing && (
+                    <button
+                      onClick={() => handleRevert(finding.finding_id)}
+                      className="ml-auto text-[10px] text-text-mute hover:text-text transition-colors duration-150"
+                      title="Revert to pending review"
+                    >
+                      Revert to pending
+                    </button>
                   )}
 
                   {isPending && !isDismissing && (

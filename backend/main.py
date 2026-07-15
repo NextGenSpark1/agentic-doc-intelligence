@@ -459,8 +459,8 @@ LLM generation failed. This is a fallback template. Configure LLM_API_KEY to ena
 @app.patch("/findings/{finding_id}/review")
 async def review_finding(finding_id: str, body: FindingReview, user: dict = Depends(get_current_user)):
     """Phase 5 — human-in-the-loop. Investigator confirms or dismisses a finding."""
-    if body.status not in ("confirmed", "dismissed"):
-        raise HTTPException(400, "status must be 'confirmed' or 'dismissed'")
+    if body.status not in ("confirmed", "dismissed", "pending"):
+        raise HTTPException(400, "status must be 'confirmed', 'dismissed', or 'pending'")
     patch = {
         "human_review_status": body.status,
         "reviewed_by": body.reviewed_by,
@@ -468,11 +468,12 @@ async def review_finding(finding_id: str, body: FindingReview, user: dict = Depe
         "dismissal_reason": body.dismissal_reason,
     }
     updated = await asyncio.to_thread(db.update_finding, finding_id, patch)
-    case_id = updated.get("case_id", "unknown")
-    await asyncio.to_thread(db.write_audit, case_id, body.reviewed_by, f"finding_{body.status}", {
-        "finding_id": finding_id,
-        "dismissal_reason": body.dismissal_reason,
-    })
+    if body.status != "pending":
+        case_id = updated.get("case_id", "unknown")
+        await asyncio.to_thread(db.write_audit, case_id, body.reviewed_by, f"finding_{body.status}", {
+            "finding_id": finding_id,
+            "dismissal_reason": body.dismissal_reason,
+        })
     return updated
 
 
