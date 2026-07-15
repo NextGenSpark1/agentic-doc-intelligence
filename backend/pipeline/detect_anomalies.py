@@ -128,9 +128,17 @@ _FINDINGS_PROMPT = (
     "If a pattern is partially supported, state what is confirmed and what requires further investigation. "
     "A finding that says 'cannot be confirmed from documents alone' is still valuable — flag it.\n\n"
 
+    "EVIDENCE QUOTES\n"
+    "Each document in the input includes a `text_sample` — the actual parsed text from that document. "
+    "For each finding, include a `quoted_evidence` array: for each supporting document, copy the single "
+    "most relevant sentence or short phrase VERBATIM from its `text_sample` that most directly supports "
+    "this finding. Only quote text that genuinely appears in the provided text_sample. "
+    "If no suitable passage exists in the text_sample, omit that document from quoted_evidence.\n\n"
+
     'Reply with strict JSON: {"findings": [{"finding_type": str, '
     '"severity": "high"|"medium"|"low", "confidence": float (0.0-1.0), '
-    '"statement": str, "supporting_document_ids": [str]}]}.\n'
+    '"statement": str, "supporting_document_ids": [str, ...], '
+    '"quoted_evidence": [{"document_id": str, "passage": str}]}]}.\n'
     "Severity: high = direct evidence of fraud, violation, or undisclosed conflict; "
     "medium = suspicious pattern that warrants investigation or escalation; "
     "low = procedural gap, missing document, or minor irregularity worth noting.\n"
@@ -244,9 +252,21 @@ def _llm_findings(case_id: str, extractions: list[dict]) -> list[dict]:
     if not valid_doc_ids:
         return []
 
+    # Build a text sample per document so the LLM can cite specific passages
+    doc_text: dict[str, str] = {}
+    for doc_id in valid_doc_ids:
+        chunks = db.list_chunks(doc_id)
+        parts = [_clean_chunk_text(c.get("text") or "") for c in chunks[:6] if c.get("text")]
+        if parts:
+            doc_text[doc_id] = "\n\n".join(parts)[:2000]
+
     payload = {
         "documents": [
-            {"document_id": ex["document_id"], "fields": ex.get("extracted_json") or {}}
+            {
+                "document_id": ex["document_id"],
+                "fields": ex.get("extracted_json") or {},
+                "text_sample": doc_text.get(ex["document_id"], ""),
+            }
             for ex in extractions
         ],
         "entities": [
@@ -278,12 +298,31 @@ def _llm_findings(case_id: str, extractions: list[dict]) -> list[dict]:
         if not statement or not doc_ids:
             continue  # ungrounded — drop rather than persist an unsupported claim
         ftype = str(item.get("finding_type") or "").strip() or "llm_detected"
-        out.append(_finding(
+
+        # Parse LLM-cited passages — only accept quotes from documents we actually sent
+        supporting_chunks = []
+        for ev in (item.get("quoted_evidence") or []):
+            if not isinstance(ev, dict):
+                continue
+            ev_doc_id = str(ev.get("document_id") or "").strip()
+            passage = str(ev.get("passage") or "").strip()
+            if ev_doc_id in valid_doc_ids and passage:
+                supporting_chunks.append({
+                    "document_id": ev_doc_id,
+                    "chunk_id": "",
+                    "page": None,
+                    "quoted_text": passage[:400],
+                })
+
+        finding = _finding(
             ftype,
             llm_reasoning.clamp_severity(item.get("severity")),
             llm_reasoning.clamp_confidence(item.get("confidence"), default=0.6),
             statement, doc_ids, source="llm",
-        ))
+        )
+        if supporting_chunks:
+            finding["supporting_chunks"] = supporting_chunks
+        out.append(finding)
     return out
 
 
@@ -349,5 +388,7 @@ def detect(case_id: str) -> list[dict]:
         }
         persisted.append(db.insert_finding(row))
 
-    _attach_supporting_chunks(case_id, persisted)
+    # Vector search fallback only for findings the LLM didn't already quote
+    needs_chunks = [f for f in persisted if not f.get("supporting_chunks")]
+    _attach_supporting_chunks(case_id, needs_chunks)
     return persisted
