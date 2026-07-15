@@ -59,7 +59,7 @@ function SourcePassages({ chunks, docMap }: { chunks: FindingChunk[]; docMap: Re
                   title={docMap[chunk.document_id] ?? chunk.document_id}>
                   {docMap[chunk.document_id] ?? chunk.document_id}
                 </span>
-                {chunk.page != null && (
+                {chunk.page != null && chunk.page > 0 && (
                   <span className="text-[10px] font-mono text-text-mute">p.{chunk.page}</span>
                 )}
               </div>

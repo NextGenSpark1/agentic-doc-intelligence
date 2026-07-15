@@ -20,6 +20,14 @@ from __future__ import annotations
 
 import re
 import uuid
+
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_WHITESPACE_RE = re.compile(r"\s{2,}")
+
+
+def _clean_chunk_text(text: str) -> str:
+    cleaned = _HTML_TAG_RE.sub(" ", text or "")
+    return _WHITESPACE_RE.sub(" ", cleaned).strip()
 from collections import defaultdict
 from datetime import datetime, timezone
 
@@ -309,8 +317,8 @@ def _attach_supporting_chunks(case_id: str, persisted: list[dict]) -> None:
                 passages.append({
                     "document_id": doc_id,
                     "chunk_id": chunk.get("chunk_id", ""),
-                    "page": chunk.get("page"),
-                    "quoted_text": (chunk.get("text") or "")[:300].strip(),
+                    "page": chunk.get("page") or None,
+                    "quoted_text": _clean_chunk_text(chunk.get("text") or "")[:300],
                 })
                 if len(passages) >= 2:
                     break
