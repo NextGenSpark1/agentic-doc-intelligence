@@ -36,8 +36,12 @@ def get_case(case_id: str) -> Optional[dict]:
     return rows[0] if rows else None
 
 
-def list_cases() -> list[dict]:
-    return get_client().table("cases").select("*").order("created_at", desc=True).execute().data
+def list_cases(owner_id: str | None = None) -> list[dict]:
+    query = get_client().table("cases").select("*").order("created_at", desc=True)
+    if owner_id:
+        # Show cases owned by this user AND legacy cases with no owner (NULL = pre-isolation rows)
+        query = query.or_(f"owner_id.eq.{owner_id},owner_id.is.null")
+    return query.execute().data
 
 
 def update_case(case_id: str, patch: dict) -> dict:

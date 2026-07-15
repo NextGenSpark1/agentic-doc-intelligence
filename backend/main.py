@@ -146,6 +146,13 @@ async def health():
 
 
 # ------------------------------ cases -----------------------------
+def _assert_case_access(case: dict, user_id: str) -> None:
+    """Raise 403 if the case has an owner and it isn't the current user."""
+    owner = case.get("owner_id")
+    if owner and owner != user_id:
+        raise HTTPException(403, "access denied")
+
+
 @app.post("/cases", status_code=201)
 async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
     case_id = f"INV-{datetime.now().year}-{uuid.uuid4().hex[:4].upper()}"
@@ -157,6 +164,7 @@ async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
         "lead_investigator": body.lead_investigator,
         "allegation_summary": body.allegation_summary,
         "schema_fields": body.schema_fields,
+        "owner_id": user["user_id"],
         "risk_score": 0.0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -167,9 +175,7 @@ async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
 
 @app.get("/cases")
 async def list_cases(user: dict = Depends(get_current_user)):
-    cases = await asyncio.to_thread(db.list_cases)
-    # Stats for the Cases page header cards
-    docs_total = 0
+    cases = await asyncio.to_thread(db.list_cases, user["user_id"])
     pending = 0
     enriched = []
     for c in cases:
@@ -185,6 +191,7 @@ async def get_case(case_id: str, user: dict = Depends(get_current_user)):
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
+    _assert_case_access(case, user["user_id"])
     return case
 
 
@@ -193,6 +200,7 @@ async def update_case(case_id: str, body: CasePatch, user: dict = Depends(get_cu
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
+    _assert_case_access(case, user["user_id"])
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
     if not patch:
         raise HTTPException(400, "no fields to update")
@@ -205,6 +213,7 @@ async def delete_case(case_id: str, user: dict = Depends(get_current_user)):
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
+    _assert_case_access(case, user["user_id"])
     await asyncio.to_thread(db.delete_case, case_id)
 
 
@@ -459,6 +468,11 @@ async def review_finding(finding_id: str, body: FindingReview, user: dict = Depe
         "dismissal_reason": body.dismissal_reason,
     }
     updated = await asyncio.to_thread(db.update_finding, finding_id, patch)
+    case_id = updated.get("case_id", "unknown")
+    await asyncio.to_thread(db.write_audit, case_id, body.reviewed_by, f"finding_{body.status}", {
+        "finding_id": finding_id,
+        "dismissal_reason": body.dismissal_reason,
+    })
     return updated
 
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import type { Finding, Document as CaseDocument } from '../types'
+import type { Finding, FindingChunk, Document as CaseDocument } from '../types'
 import { fetchFindings, reviewFinding } from '../api'
 import { useAuth } from '../context/AuthContext'
 
@@ -16,7 +16,11 @@ const REVIEW_STYLES: Record<string, { label: string; color: string }> = {
 }
 
 function formatType(t: string) {
-  return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  return t.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function formatReviewDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function ConfidenceBar({ value }: { value: number }) {
@@ -28,6 +32,44 @@ function ConfidenceBar({ value }: { value: number }) {
         <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: color }} />
       </div>
       <span className="text-[10px] text-text-mute tabular-nums">{pct}%</span>
+    </div>
+  )
+}
+
+function SourcePassages({ chunks, docMap }: { chunks: FindingChunk[]; docMap: Record<string, string> }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="flex items-center gap-1.5 text-[10px] font-semibold text-teal hover:text-teal-soft transition-colors duration-150 w-fit"
+      >
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 150ms' }}>
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+        {expanded ? 'Hide' : 'View'} source passage{chunks.length > 1 ? 's' : ''}
+      </button>
+      {expanded && (
+        <div className="flex flex-col gap-2 pl-1">
+          {chunks.map((chunk, i) => (
+            <div key={i} className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] bg-panel-2 border border-border text-text-mid px-2 py-0.5 rounded-full truncate max-w-[180px]"
+                  title={docMap[chunk.document_id] ?? chunk.document_id}>
+                  {docMap[chunk.document_id] ?? chunk.document_id}
+                </span>
+                {chunk.page != null && (
+                  <span className="text-[10px] font-mono text-text-mute">p.{chunk.page}</span>
+                )}
+              </div>
+              <blockquote className="text-[11px] text-text-mid italic leading-relaxed border-l-2 border-teal/40 pl-2.5 py-0.5">
+                "{chunk.quoted_text}"
+              </blockquote>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -86,7 +128,7 @@ export default function FindingsPanel({
   }, [findings])
 
   async function handleConfirm(findingId: string) {
-    const reviewer = user?.email ?? 'investigator'
+    const reviewer = (user?.user_metadata?.full_name as string | undefined) || user?.email || 'investigator'
     setProcessing(prev => new Set(prev).add(findingId))
     try {
       const updated = await reviewFinding(findingId, 'confirmed', reviewer)
@@ -99,7 +141,7 @@ export default function FindingsPanel({
   }
 
   async function handleDismiss(findingId: string, reason: string) {
-    const reviewer = user?.email ?? 'investigator'
+    const reviewer = (user?.user_metadata?.full_name as string | undefined) || user?.email || 'investigator'
     setProcessing(prev => new Set(prev).add(findingId))
     setDismissState(null)
     try {
@@ -266,6 +308,11 @@ export default function FindingsPanel({
                   </div>
                 )}
 
+                {/* Source passages (traceability) */}
+                {finding.supporting_chunks && finding.supporting_chunks.length > 0 && (
+                  <SourcePassages chunks={finding.supporting_chunks} docMap={docMap} />
+                )}
+
                 {/* Review status + actions */}
                 <div className="flex items-center gap-3 pt-1 border-t border-border flex-wrap">
                   <span className="flex items-center gap-1.5 text-xs" style={{ color: revStyle.color }}>
@@ -273,7 +320,10 @@ export default function FindingsPanel({
                     {revStyle.label}
                   </span>
                   {finding.reviewed_by && (
-                    <span className="text-[10px] text-text-mute">by {finding.reviewed_by}</span>
+                    <span className="text-[10px] text-text-mute">
+                      by {finding.reviewed_by}
+                      {finding.reviewed_at && ` · ${formatReviewDate(finding.reviewed_at)}`}
+                    </span>
                   )}
                   {finding.dismissal_reason && (
                     <span className="text-[10px] text-text-mute italic">"{finding.dismissal_reason}"</span>

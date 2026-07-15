@@ -279,6 +279,47 @@ def _llm_findings(case_id: str, extractions: list[dict]) -> list[dict]:
     return out
 
 
+def _attach_supporting_chunks(case_id: str, persisted: list[dict]) -> None:
+    """Best-effort: embed each finding statement, find the top matching chunk(s) from the
+    finding's cited documents, and store them as supporting_chunks for traceability.
+    Failures are silently skipped — the finding is already persisted regardless."""
+    from .. import db, llm
+
+    if not persisted:
+        return
+    try:
+        statements = [f["statement"] for f in persisted]
+        embeddings = llm.embed(statements)
+    except Exception:
+        return  # embedding unavailable — skip, non-critical
+
+    for finding, embedding in zip(persisted, embeddings):
+        if not embedding:
+            continue
+        try:
+            valid_doc_ids = set(finding.get("supporting_document_ids") or [])
+            chunks = db.match_chunks(case_id, embedding, 10)
+            seen_docs: set[str] = set()
+            passages = []
+            for chunk in chunks:
+                doc_id = chunk.get("document_id", "")
+                if doc_id not in valid_doc_ids or doc_id in seen_docs:
+                    continue
+                seen_docs.add(doc_id)
+                passages.append({
+                    "document_id": doc_id,
+                    "chunk_id": chunk.get("chunk_id", ""),
+                    "page": chunk.get("page"),
+                    "quoted_text": (chunk.get("text") or "")[:300].strip(),
+                })
+                if len(passages) >= 2:
+                    break
+            if passages:
+                db.update_finding(finding["finding_id"], {"supporting_chunks": passages})
+        except Exception:
+            continue  # skip this finding, non-critical
+
+
 def detect(case_id: str) -> list[dict]:
     from .. import db
 
@@ -302,4 +343,6 @@ def detect(case_id: str) -> list[dict]:
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         persisted.append(db.insert_finding(row))
+
+    _attach_supporting_chunks(case_id, persisted)
     return persisted

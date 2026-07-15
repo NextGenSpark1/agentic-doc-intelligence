@@ -4,6 +4,12 @@
 -- MIGRATIONS — run once in the Supabase SQL editor if upgrading an existing database:
 ALTER TABLE extractions ADD COLUMN IF NOT EXISTS summary text;
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS schema_fields jsonb DEFAULT '[]'::jsonb;
+-- Per-user isolation: each case is owned by the Supabase user who created it.
+-- Existing rows keep NULL and remain visible to all authenticated users (safe migration path).
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS owner_id text;
+-- Finding traceability: stores the top matching chunk(s) per finding as {document_id, chunk_id, page, quoted_text}.
+-- Populated automatically after analysis; empty on old findings until analysis is re-run.
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS supporting_chunks jsonb DEFAULT '[]'::jsonb;
 ALTER TABLE chunks ADD COLUMN IF NOT EXISTS type text DEFAULT 'text';
 
 -- LLM case-reasoning pass on top of the rule-based stages: every findings/entities/
