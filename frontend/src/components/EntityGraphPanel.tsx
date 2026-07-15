@@ -7,6 +7,7 @@ import {
   Controls,
   useNodesState,
   useEdgesState,
+  addEdge,
   MarkerType,
   Handle,
   Position,
@@ -14,6 +15,7 @@ import {
   type ReactFlowInstance,
   type Node,
   type Edge,
+  type Connection,
 } from '@xyflow/react'
 import type { Entity, Relationship } from '../types'
 import { fetchEntities } from '../api'
@@ -56,17 +58,19 @@ function EntityNode({ data, selected }: NodeProps) {
   const entity = data.entity as Entity
   const cfg = typeConfig(entity.entity_type)
   const confidencePercentage = Math.round((entity.confidence_score ?? 1) * 100)
+  const editMode = data.editMode as boolean | undefined
+  const onDelete = data.onDelete as ((id: string) => void) | undefined
 
   return (
     <>
-      <Handle type="target" position={Position.Top}    id="t" style={{ opacity: 0, width: 1, height: 1 }} isConnectable={false} />
-      <Handle type="target" position={Position.Left}   id="l" style={{ opacity: 0, width: 1, height: 1 }} isConnectable={false} />
-      <Handle type="source" position={Position.Bottom} id="b" style={{ opacity: 0, width: 1, height: 1 }} isConnectable={false} />
-      <Handle type="source" position={Position.Right}  id="r" style={{ opacity: 0, width: 1, height: 1 }} isConnectable={false} />
+      <Handle type="target" position={Position.Top}    id="t" style={{ opacity: editMode ? 1 : 0, width: editMode ? 8 : 1, height: editMode ? 8 : 1, background: '#0E7C86', border: '2px solid #fff' }} isConnectable={!!editMode} />
+      <Handle type="target" position={Position.Left}   id="l" style={{ opacity: editMode ? 1 : 0, width: editMode ? 8 : 1, height: editMode ? 8 : 1, background: '#0E7C86', border: '2px solid #fff' }} isConnectable={!!editMode} />
+      <Handle type="source" position={Position.Bottom} id="b" style={{ opacity: editMode ? 1 : 0, width: editMode ? 8 : 1, height: editMode ? 8 : 1, background: '#0E7C86', border: '2px solid #fff' }} isConnectable={!!editMode} />
+      <Handle type="source" position={Position.Right}  id="r" style={{ opacity: editMode ? 1 : 0, width: editMode ? 8 : 1, height: editMode ? 8 : 1, background: '#0E7C86', border: '2px solid #fff' }} isConnectable={!!editMode} />
 
       <div style={{
         background: cfg.bg,
-        border: `${selected ? 2.5 : 1.5}px solid ${selected ? cfg.color : cfg.border}`,
+        border: `${selected ? 2.5 : 1.5}px solid ${selected ? cfg.color : (editMode ? cfg.color + '88' : cfg.border)}`,
         borderRadius: 14,
         padding: '14px 18px',
         minWidth: 200,
@@ -76,7 +80,24 @@ function EntityNode({ data, selected }: NodeProps) {
           : '0 2px 8px rgba(0,0,0,0.10)',
         cursor: 'pointer',
         userSelect: 'none',
+        position: 'relative',
       }}>
+        {editMode && onDelete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(entity.entity_id) }}
+            title="Remove node"
+            style={{
+              position: 'absolute', top: 6, right: 6,
+              width: 18, height: 18, borderRadius: '50%',
+              background: '#FEE2E2', border: '1px solid #FCA5A5',
+              color: '#DC2626', fontSize: 12, lineHeight: '16px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', padding: 0,
+            }}
+          >
+            ×
+          </button>
+        )}
         <div style={{ height: 4, background: cfg.color, borderRadius: 2, marginBottom: 10 }} />
         <p style={{
           fontSize: 14, fontWeight: 700, color: '#1A2332',
@@ -326,6 +347,7 @@ export default function EntityGraphPanel({
   const [error, setError] = useState<string | null>(null)
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null)
   const [statsOpen, setStatsOpen] = useState(false)
+  const [editMode, setEditMode] = useState(false)
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const rfRef = useRef<ReactFlowInstance | null>(null)
@@ -360,6 +382,40 @@ export default function EntityGraphPanel({
   )
 
   const onPaneClick = useCallback(() => setSelectedEntity(null), [])
+
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      setEdges(eds => addEdge({
+        ...connection,
+        id: `manual-${Date.now()}`,
+        type: 'smoothstep',
+        style: { stroke: '#94A3B8', strokeWidth: 1.5, strokeDasharray: '5,3' },
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#94A3B8', width: 12, height: 12 },
+      }, eds))
+    },
+    [setEdges],
+  )
+
+  const onDeleteNode = useCallback(
+    (entityId: string) => {
+      setNodes(ns => ns.filter(n => (n.data.entity as Entity).entity_id !== entityId))
+      setEdges(es => es.filter(e => {
+        const node = nodes.find(n => (n.data.entity as Entity).entity_id === entityId)
+        if (!node) return true
+        return e.source !== node.id && e.target !== node.id
+      }))
+      setSelectedEntity(prev => prev?.entity_id === entityId ? null : prev)
+    },
+    [setNodes, setEdges, nodes],
+  )
+
+  // Keep editMode flag and onDelete handler in each node's data so EntityNode can read them
+  useEffect(() => {
+    setNodes(ns => ns.map(n => ({
+      ...n,
+      data: { ...n.data, editMode, onDelete: editMode ? onDeleteNode : undefined },
+    })))
+  }, [editMode, onDeleteNode, setNodes])
 
   // Legend: only show types present in data
   const presentTypes = useMemo(() => {
@@ -426,14 +482,16 @@ export default function EntityGraphPanel({
           onEdgesChange={onEdgesChange}
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
+          onConnect={onConnect}
           onInit={(instance) => { rfRef.current = instance }}
           fitView
           fitViewOptions={{ padding: 0.3, maxZoom: 0.85 }}
           minZoom={0.2}
           maxZoom={2}
           nodesDraggable
-          nodesConnectable={false}
+          nodesConnectable={editMode}
           elementsSelectable
+          deleteKeyCode={editMode ? 'Delete' : null}
         >
           <Background color="#CBD5E1" gap={20} size={1} />
           <Controls showInteractive={false} style={{ bottom: 16, left: 16 }} />
@@ -522,6 +580,21 @@ export default function EntityGraphPanel({
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
               </svg>
+            </button>
+            <button
+              onClick={() => setEditMode(v => !v)}
+              title={editMode ? 'Exit edit mode' : 'Enter edit mode — drag handles to connect, × to delete'}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl shadow-sm transition-colors ${
+                editMode
+                  ? 'bg-amber-500 text-white border border-amber-400 hover:bg-amber-600'
+                  : 'bg-white/95 text-slate-600 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              {editMode ? 'Done' : 'Edit'}
             </button>
             {onRunAnalysis && (
               <button
