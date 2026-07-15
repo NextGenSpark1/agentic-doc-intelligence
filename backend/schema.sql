@@ -161,6 +161,29 @@ create table if not exists audit_log (
     at        timestamptz not null default now()
 );
 
+-- ----------- per-document vector search (for finding traceability) ----------
+CREATE OR REPLACE FUNCTION match_chunks_in_document(
+    p_document_id text,
+    p_query_embedding vector(1536),
+    p_match_count int
+)
+RETURNS TABLE (
+    document_id text,
+    chunk_id text,
+    text text,
+    page int,
+    bbox jsonb,
+    similarity float
+)
+LANGUAGE sql STABLE AS $$
+    SELECT c.document_id, c.chunk_id, c.text, c.page, c.bbox,
+           1 - (c.embedding <=> p_query_embedding) AS similarity
+    FROM chunks c
+    WHERE c.document_id = p_document_id AND c.embedding IS NOT NULL
+    ORDER BY c.embedding <=> p_query_embedding
+    LIMIT p_match_count;
+$$;
+
 -- ------------------- vector search RPC for chat ------------------
 create or replace function match_chunks(
     p_case_id text,

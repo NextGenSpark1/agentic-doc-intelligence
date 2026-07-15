@@ -288,8 +288,8 @@ def _llm_findings(case_id: str, extractions: list[dict]) -> list[dict]:
 
 
 def _attach_supporting_chunks(case_id: str, persisted: list[dict]) -> None:
-    """Best-effort: embed each finding statement, find the top matching chunk(s) from the
-    finding's cited documents, and store them as supporting_chunks for traceability.
+    """Best-effort: for each finding, search within each cited document individually to find
+    the most relevant passage. Per-document scoping avoids one broad chunk dominating all findings.
     Failures are silently skipped — the finding is already persisted regardless."""
     from .. import db, llm
 
@@ -305,23 +305,20 @@ def _attach_supporting_chunks(case_id: str, persisted: list[dict]) -> None:
         if not embedding:
             continue
         try:
-            valid_doc_ids = set(finding.get("supporting_document_ids") or [])
-            chunks = db.match_chunks(case_id, embedding, 10)
-            seen_docs: set[str] = set()
+            doc_ids = (finding.get("supporting_document_ids") or [])[:2]  # cap at 2 docs
             passages = []
-            for chunk in chunks:
-                doc_id = chunk.get("document_id", "")
-                if doc_id not in valid_doc_ids or doc_id in seen_docs:
+            for doc_id in doc_ids:
+                # Search within this specific document only — avoids case-wide bias
+                chunks = db.match_chunks_in_document(doc_id, embedding, 1)
+                if not chunks:
                     continue
-                seen_docs.add(doc_id)
+                chunk = chunks[0]
                 passages.append({
                     "document_id": doc_id,
                     "chunk_id": chunk.get("chunk_id", ""),
                     "page": chunk.get("page") or None,
                     "quoted_text": _clean_chunk_text(chunk.get("text") or "")[:300],
                 })
-                if len(passages) >= 2:
-                    break
             if passages:
                 db.update_finding(finding["finding_id"], {"supporting_chunks": passages})
         except Exception:

@@ -136,6 +136,14 @@ def match_chunks(case_id: str, query_embedding: list[float], top_k: int) -> list
     ).execute().data or []
 
 
+def match_chunks_in_document(document_id: str, query_embedding: list[float], top_k: int) -> list[dict]:
+    """Vector similarity search scoped to a single document — used for finding traceability."""
+    return get_client().rpc(
+        "match_chunks_in_document",
+        {"p_document_id": document_id, "p_query_embedding": query_embedding, "p_match_count": top_k},
+    ).execute().data or []
+
+
 # ---------------------------- Entities ---------------------------
 def upsert_entity(data: dict) -> dict:
     # on_conflict on (case_id, entity_type, canonical_name) keeps entities deduped
