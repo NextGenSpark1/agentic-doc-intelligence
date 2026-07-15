@@ -409,14 +409,18 @@ async def generate_report(case_id: str, user: dict = Depends(get_current_user)):
 
     all_findings = await asyncio.to_thread(db.list_findings, case_id)
     confirmed = [f for f in all_findings if f.get("human_review_status") == "confirmed"]
+    docs = await asyncio.to_thread(db.list_documents, case_id)
+    doc_name_map = {d["document_id"]: d["filename"] for d in docs}
 
     if not confirmed:
         findings_text = "No confirmed findings available. All findings are pending review."
     else:
-        findings_text = "\n".join(
-            f"- [{f['severity'].upper()}] {f['statement']} (confidence: {int(f['confidence'] * 100)}%)"
-            for f in confirmed
-        )
+        lines = []
+        for f in confirmed:
+            doc_names = [doc_name_map.get(d, d) for d in (f.get("supporting_document_ids") or [])]
+            source_note = f" [Source: {', '.join(doc_names)}]" if doc_names else ""
+            lines.append(f"- [{f['severity'].upper()}] {f['statement']}{source_note}")
+        findings_text = "\n".join(lines)
 
     prompt = (
         f"You are producing a formal forensic investigation report.\n\n"
@@ -429,7 +433,9 @@ async def generate_report(case_id: str, user: dict = Depends(get_current_user)):
         "Include these sections: Executive Summary, Background, Key Findings, Risk Assessment, Recommendations. "
         "Ground every statement in the confirmed findings above — do not speculate, do not add facts not present. "
         "Use professional forensic language. Be specific: include amounts, dates, entity names where available. "
-        "Keep the Executive Summary to 3-4 sentences. Recommendations should be actionable."
+        "In the Key Findings section, cite the source document name for each finding in parentheses. "
+        "Do not include confidence percentages. Keep the Executive Summary to 3-4 sentences. "
+        "Recommendations should be actionable."
     )
 
     try:
