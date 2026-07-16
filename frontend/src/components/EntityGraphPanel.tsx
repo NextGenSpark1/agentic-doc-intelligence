@@ -584,17 +584,22 @@ export default function EntityGraphPanel({
             <button
               onClick={() => setEditMode(v => !v)}
               title={editMode ? 'Exit edit mode' : 'Enter edit mode — drag handles to connect, × to delete'}
-              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl shadow-sm transition-colors ${
-                editMode
-                  ? 'bg-amber-500 text-white border border-amber-400 hover:bg-amber-600'
-                  : 'bg-white/95 text-slate-600 border border-slate-200 hover:bg-slate-50'
-              }`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 12px', fontSize: 12, fontWeight: 600,
+                borderRadius: 12, cursor: 'pointer',
+                background: editMode ? '#F59E0B' : 'rgba(255,255,255,0.95)',
+                color: editMode ? '#fff' : '#475569',
+                border: editMode ? '1px solid #D97706' : '1px solid #E2E8F0',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                transition: 'background 0.15s, color 0.15s',
+              }}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                <path d="M12 20h9"/>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
               </svg>
-              {editMode ? 'Done' : 'Edit'}
+              {editMode ? 'Done editing' : 'Edit graph'}
             </button>
             {onRunAnalysis && (
               <button
