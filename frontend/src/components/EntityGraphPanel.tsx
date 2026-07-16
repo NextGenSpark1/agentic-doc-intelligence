@@ -398,15 +398,15 @@ export default function EntityGraphPanel({
 
   const onDeleteNode = useCallback(
     (entityId: string) => {
-      setNodes(ns => ns.filter(n => (n.data.entity as Entity).entity_id !== entityId))
-      setEdges(es => es.filter(e => {
-        const node = nodes.find(n => (n.data.entity as Entity).entity_id === entityId)
-        if (!node) return true
-        return e.source !== node.id && e.target !== node.id
-      }))
+      setNodes(ns => {
+        const target = ns.find(n => (n.data.entity as Entity).entity_id === entityId)
+        if (!target) return ns
+        setEdges(es => es.filter(e => e.source !== target.id && e.target !== target.id))
+        return ns.filter(n => n !== target)
+      })
       setSelectedEntity(prev => prev?.entity_id === entityId ? null : prev)
     },
-    [setNodes, setEdges, nodes],
+    [setNodes, setEdges],
   )
 
   // Keep editMode flag and onDelete handler in each node's data so EntityNode can read them
