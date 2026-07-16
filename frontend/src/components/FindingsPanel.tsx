@@ -97,6 +97,9 @@ export default function FindingsPanel({
   const [processing, setProcessing] = useState<Set<string>>(new Set())
   const [dismissState, setDismissState] = useState<DismissState | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkDismissOpen, setBulkDismissOpen] = useState(false)
+  const [bulkDismissReason, setBulkDismissReason] = useState('')
 
   const docMap = useMemo(
     () => Object.fromEntries(docs.map(d => [d.document_id, d.filename])),
@@ -165,6 +168,32 @@ export default function FindingsPanel({
     } finally {
       setProcessing(prev => { const n = new Set(prev); n.delete(findingId); return n })
     }
+  }
+
+  async function handleBulkConfirm() {
+    const reviewer = (user?.user_metadata?.full_name as string | undefined) || user?.email || 'investigator'
+    const ids = Array.from(selectedIds)
+    setSelectedIds(new Set())
+    await Promise.allSettled(ids.map(id =>
+      reviewFinding(id, 'confirmed', reviewer)
+        .then(updated => setFindings(prev => prev?.map(f => f.finding_id === id ? updated : f) ?? prev))
+    ))
+  }
+
+  async function handleBulkDismiss() {
+    const reviewer = (user?.user_metadata?.full_name as string | undefined) || user?.email || 'investigator'
+    const ids = Array.from(selectedIds)
+    setSelectedIds(new Set())
+    setBulkDismissOpen(false)
+    setBulkDismissReason('')
+    await Promise.allSettled(ids.map(id =>
+      reviewFinding(id, 'dismissed', reviewer, bulkDismissReason || undefined)
+        .then(updated => setFindings(prev => prev?.map(f => f.finding_id === id ? updated : f) ?? prev))
+    ))
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
 
   const getPillButtonClasses = (active: boolean) =>
@@ -272,6 +301,51 @@ export default function FindingsPanel({
           <p className="text-sm text-text-mute text-center py-10">No findings match the current filters.</p>
         )}
 
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-panel border border-border rounded-xl shadow-sm flex-wrap">
+            {bulkDismissOpen ? (
+              <div className="flex flex-col gap-2 w-full">
+                <p className="text-xs font-medium text-text">Dismiss {selectedIds.size} finding{selectedIds.size > 1 ? 's' : ''}:</p>
+                <textarea
+                  rows={2}
+                  placeholder="Reason for dismissal (optional)…"
+                  value={bulkDismissReason}
+                  onChange={e => setBulkDismissReason(e.target.value)}
+                  className="border border-border-strong rounded-lg px-3 py-2 text-xs text-text bg-panel placeholder:text-text-mute focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal transition-colors duration-150 resize-none"
+                />
+                <div className="flex gap-2">
+                  <button onClick={handleBulkDismiss} className="text-xs font-semibold text-white bg-red hover:bg-red/80 px-4 py-1.5 rounded-lg transition-colors duration-150">
+                    Confirm Dismissal
+                  </button>
+                  <button onClick={() => { setBulkDismissOpen(false); setBulkDismissReason('') }} className="text-xs text-text-mute hover:text-text transition-colors duration-150">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <span className="text-sm text-text-mid flex-1">{selectedIds.size} selected</span>
+                <button
+                  onClick={handleBulkConfirm}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-green border border-green/30 hover:bg-green/5 px-3 py-1.5 rounded-lg transition-colors duration-150"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                  Confirm all
+                </button>
+                <button
+                  onClick={() => setBulkDismissOpen(true)}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-text-mute border border-border hover:border-border-strong hover:text-text px-3 py-1.5 rounded-lg transition-colors duration-150"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                  Dismiss all
+                </button>
+                <button onClick={() => setSelectedIds(new Set())} className="text-sm text-text-mute hover:text-text transition-colors">✕ Clear</button>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Finding cards */}
         <div className="flex flex-col gap-3">
           {filtered.map(finding => {
@@ -280,16 +354,25 @@ export default function FindingsPanel({
             const isPending = finding.human_review_status === 'pending'
             const isProcessing = processing.has(finding.finding_id)
             const isDismissing = dismissState?.findingId === finding.finding_id
+            const isSelected = selectedIds.has(finding.finding_id)
 
             return (
               <div
                 key={finding.finding_id}
                 className={`bg-panel border rounded-xl p-5 flex flex-col gap-4 transition-opacity duration-150 ${
                   finding.human_review_status === 'dismissed' ? 'opacity-60' : ''
-                } ${isProcessing ? 'opacity-50 pointer-events-none' : ''} border-border`}
+                } ${isProcessing ? 'opacity-50 pointer-events-none' : ''} ${isSelected ? 'border-teal/40 ring-1 ring-teal/20' : 'border-border'}`}
               >
-                {/* Top row: badges + confidence */}
+                {/* Top row: select checkbox + badges + confidence */}
                 <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggleSelect(finding.finding_id)}
+                    onClick={e => e.stopPropagation()}
+                    className="accent-teal cursor-pointer shrink-0"
+                    title="Select for bulk action"
+                  />
                   <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${sevStyle.badge}`}>
                     {finding.severity}
                   </span>

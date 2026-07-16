@@ -17,8 +17,8 @@ import {
   type Edge,
   type Connection,
 } from '@xyflow/react'
-import type { Entity, Relationship } from '../types'
-import { fetchEntities } from '../api'
+import type { Entity, Relationship, Document as CaseDocument } from '../types'
+import { fetchEntities, fetchGraphState, saveGraphState } from '../api'
 
 // ── Type colour system ─────────────────────────────────────────────────────
 
@@ -332,38 +332,146 @@ function EntityDetail({
   )
 }
 
+// ── Relationship detail side-panel ────────────────────────────────────────
+
+function RelationshipDetail({
+  relationship,
+  docMap,
+  onClose,
+}: {
+  relationship: Relationship
+  docMap: Record<string, string>
+  onClose: () => void
+}) {
+  const evidence = relationship.evidence ?? {}
+  const evidenceEntries = Object.entries(evidence).filter(
+    ([k]) => k !== 'source_type' && k !== 'target_type',
+  )
+  const docIds: string[] = Array.isArray(evidence.document_ids)
+    ? (evidence.document_ids as string[])
+    : evidence.document_id
+      ? [evidence.document_id as string]
+      : []
+
+  return (
+    <aside className="w-64 shrink-0 bg-panel border-l border-border flex flex-col overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-1 min-w-0">
+          <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full self-start text-slate-500 bg-slate-100 border border-slate-200">
+            Relationship
+          </span>
+          <p className="text-xs font-bold text-text leading-snug break-words">
+            {relationship.relationship_type.replace(/_/g, ' ')}
+          </p>
+        </div>
+        <button onClick={onClose} className="shrink-0 text-text-mute hover:text-text mt-0.5 transition-colors" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+        {/* Entities */}
+        <div className="flex flex-col gap-1.5">
+          <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Entities</p>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="font-semibold text-text truncate">{relationship.source_name}</span>
+            <span className="text-teal shrink-0">→</span>
+            <span className="font-semibold text-text truncate">{relationship.target_name}</span>
+          </div>
+        </div>
+
+        {/* Supporting documents */}
+        {docIds.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Evidence from</p>
+            <div className="flex flex-col gap-1">
+              {docIds.map(id => (
+                <span key={id} className="text-[10px] bg-panel-2 border border-border text-text-mid px-2 py-0.5 rounded-full truncate" title={docMap[id] ?? id}>
+                  {docMap[id] ?? id}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Other evidence fields */}
+        {evidenceEntries.filter(([k]) => k !== 'document_id' && k !== 'document_ids').length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Details</p>
+            {evidenceEntries
+              .filter(([k]) => k !== 'document_id' && k !== 'document_ids')
+              .map(([k, v]) => (
+                <div key={k} className="flex flex-col gap-0.5">
+                  <span className="text-[10px] font-medium text-text-mute capitalize">{k.replace(/_/g, ' ')}</span>
+                  <span className="text-xs text-text">{String(v)}</span>
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
+    </aside>
+  )
+}
+
 // ── Main panel ─────────────────────────────────────────────────────────────
 
 export default function EntityGraphPanel({
   caseId,
+  docs = [],
   onRunAnalysis,
   analysisState,
 }: {
   caseId: string
+  docs?: CaseDocument[]
   onRunAnalysis?: () => void
   analysisState?: string
 }) {
   const [data, setData] = useState<{ entities: Entity[]; relationships: Relationship[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null)
+  const [selectedRelationship, setSelectedRelationship] = useState<Relationship | null>(null)
   const [statsOpen, setStatsOpen] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const rfRef = useRef<ReactFlowInstance | null>(null)
+  const docMap = useMemo(
+    () => Object.fromEntries(docs.map(d => [d.document_id, d.filename])),
+    [docs],
+  )
 
   function fitAfterLoad() {
     setTimeout(() => rfRef.current?.fitView({ padding: 0.3, maxZoom: 0.85, duration: 400 }), 80)
   }
 
   useEffect(() => {
-    fetchEntities(caseId)
-      .then(d => {
+    Promise.all([
+      fetchEntities(caseId),
+      fetchGraphState(caseId),
+    ])
+      .then(([d, savedState]) => {
         setData(d)
         const { nodes: n, edges: e } = buildGraph(d.entities, d.relationships)
-        setNodes(n)
-        setEdges(e)
-        fitAfterLoad()
+
+        // Apply saved node positions if available
+        const pos = savedState?.node_positions ?? {}
+        const positioned = Object.keys(pos).length > 0
+          ? n.map(node => pos[node.id] ? { ...node, position: pos[node.id] } : node)
+          : n
+
+        // Restore manually drawn edges
+        const manualEdges: Edge[] = (savedState?.manual_edges ?? []).map(me => ({
+          ...me,
+          type: 'smoothstep',
+          style: { stroke: '#94A3B8', strokeWidth: 1.5, strokeDasharray: '5,3' },
+          markerEnd: { type: MarkerType.ArrowClosed, color: '#94A3B8', width: 12, height: 12 },
+        }))
+
+        setNodes(positioned)
+        setEdges([...e, ...manualEdges])
+        if (Object.keys(pos).length === 0) fitAfterLoad()
       })
       .catch(() => setError('Failed to load entity graph.'))
   }, [caseId, setNodes, setEdges])
@@ -373,15 +481,31 @@ export default function EntityGraphPanel({
     [data],
   )
 
+  const relationshipMap = useMemo(
+    () => Object.fromEntries((data?.relationships ?? []).map(r => [r.relationship_id, r])),
+    [data],
+  )
+
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      // Use entity from node data directly so virtual nodes are also clickable
+      setSelectedRelationship(null)
       setSelectedEntity((node.data.entity as Entity) ?? entityMap[node.id] ?? null)
     },
     [entityMap],
   )
 
-  const onPaneClick = useCallback(() => setSelectedEntity(null), [])
+  const onEdgeClick = useCallback(
+    (_: React.MouseEvent, edge: Edge) => {
+      const rel = relationshipMap[edge.id]
+      if (rel) {
+        setSelectedEntity(null)
+        setSelectedRelationship(rel)
+      }
+    },
+    [relationshipMap],
+  )
+
+  const onPaneClick = useCallback(() => { setSelectedEntity(null); setSelectedRelationship(null) }, [])
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -481,6 +605,7 @@ export default function EntityGraphPanel({
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeClick={onNodeClick}
+          onEdgeClick={onEdgeClick}
           onPaneClick={onPaneClick}
           onConnect={onConnect}
           onInit={(instance) => { rfRef.current = instance }}
@@ -582,8 +707,19 @@ export default function EntityGraphPanel({
               </svg>
             </button>
             <button
-              onClick={() => setEditMode(v => !v)}
-              title={editMode ? 'Exit edit mode' : 'Enter edit mode — drag handles to connect, × to delete'}
+              onClick={() => {
+                if (editMode) {
+                  // Save layout when exiting edit mode
+                  const node_positions: Record<string, { x: number; y: number }> = {}
+                  nodes.forEach(n => { node_positions[n.id] = n.position })
+                  const manual_edges = edges
+                    .filter(e => e.id.startsWith('manual-'))
+                    .map(e => ({ id: e.id, source: e.source, target: e.target }))
+                  saveGraphState(caseId, { node_positions, manual_edges }).catch(() => {})
+                }
+                setEditMode(v => !v)
+              }}
+              title={editMode ? 'Exit edit mode and save layout' : 'Enter edit mode — drag handles to connect, × to delete'}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 padding: '6px 12px', fontSize: 12, fontWeight: 600,
@@ -623,6 +759,15 @@ export default function EntityGraphPanel({
           entity={selectedEntity}
           relationships={data.relationships}
           onClose={() => setSelectedEntity(null)}
+        />
+      )}
+
+      {/* Relationship detail panel */}
+      {selectedRelationship && !selectedEntity && (
+        <RelationshipDetail
+          relationship={selectedRelationship}
+          docMap={docMap}
+          onClose={() => setSelectedRelationship(null)}
         />
       )}
     </div>

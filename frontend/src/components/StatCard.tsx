@@ -6,6 +6,7 @@ interface StatCardProps {
   note?: string
   accent?: 'teal' | 'red' | 'default'
   icon?: LucideIcon
+  onClick?: () => void
 }
 
 const accentMap = {
@@ -14,12 +15,13 @@ const accentMap = {
   default: { border: '#D5DAE1', iconClass: 'bg-panel-3 text-text-mute' },
 }
 
-export default function StatCard({ label, value, note, accent = 'default', icon: Icon }: StatCardProps) {
+export default function StatCard({ label, value, note, accent = 'default', icon: Icon, onClick }: StatCardProps) {
   const { border, iconClass } = accentMap[accent]
 
   return (
     <div
-      className="bg-panel border border-border shadow-sm rounded-xl px-5 py-4 flex items-start justify-between gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-150"
+      onClick={onClick}
+      className={`bg-panel border border-border shadow-sm rounded-xl px-5 py-4 flex items-start justify-between gap-3 hover:-translate-y-0.5 hover:shadow-md transition-all duration-150 ${onClick ? 'cursor-pointer' : ''}`}
       style={{ borderLeft: `4px solid ${border}` }}
     >
       <div className="flex flex-col min-w-0">

@@ -231,7 +231,10 @@ export default function CaseTable({ cases, onDelete, onBulkDelete }: CaseTablePr
               <span className="text-sm text-text-mid tabular-nums font-medium">{c.doc_count ?? '—'}</span>
 
               {/* Risk */}
-              <div className="flex items-center gap-2">
+              <div
+                className="flex items-center gap-2"
+                title={`Risk score: ${riskPct}% — derived from confirmed finding severity and count`}
+              >
                 <div className="flex-1 h-1.5 bg-panel-3 rounded-full overflow-hidden">
                   <div className="h-full rounded-full transition-all" style={{ width: `${riskPct}%`, backgroundColor: color }} />
                 </div>

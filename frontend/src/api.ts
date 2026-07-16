@@ -159,6 +159,26 @@ export async function sendChatMessage(
   return response.data
 }
 
+export interface GraphState {
+  node_positions: Record<string, { x: number; y: number }>
+  manual_edges: Array<{ id: string; source: string; target: string }>
+}
+
+export async function fetchGraphState(caseId: string): Promise<GraphState | null> {
+  try {
+    const response = await client.get<GraphState>(`/cases/${caseId}/graph-state`)
+    const s = response.data
+    if (!s || !s.node_positions) return null
+    return s
+  } catch {
+    return null
+  }
+}
+
+export async function saveGraphState(caseId: string, state: GraphState): Promise<void> {
+  await client.put(`/cases/${caseId}/graph-state`, state)
+}
+
 export async function uploadDocumentWithProgress(
   caseId: string,
   file: File,

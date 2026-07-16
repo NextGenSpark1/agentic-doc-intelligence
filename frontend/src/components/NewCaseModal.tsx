@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createCase } from '../api'
 import type { CreateCasePayload, SchemaField } from '../types'
 import { CASE_TYPE_OPTIONS, PRESET_SCHEMAS } from '../lib/schemaPresets'
+import { useAuth } from '../context/AuthContext'
 
 interface NewCaseModalProps {
   open: boolean
@@ -22,6 +23,7 @@ interface DraftField {
 }
 
 export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalProps) {
+  const { user } = useAuth()
   const [step, setStep] = useState<1 | 2>(1)
   const [form, setForm] = useState<Omit<CreateCasePayload, 'schema_fields'>>({
     title: '',
@@ -29,6 +31,13 @@ export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalP
     case_type: '',
     allegation_summary: '',
   })
+
+  // Auto-fill lead investigator with logged-in user's name when modal opens
+  useEffect(() => {
+    if (!open) return
+    const name = (user?.user_metadata?.full_name as string | undefined) || user?.email || ''
+    if (name) setForm(f => f.lead_investigator ? f : { ...f, lead_investigator: name })
+  }, [open, user])
   const [errors, setErrors] = useState<FormErrors>({})
   const [loading, setLoading] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)

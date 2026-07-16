@@ -649,7 +649,7 @@ export default function CaseWorkspacePage() {
 
       {/* Entity Graph tab */}
       {activeSubtab === 'Entity Graph' && (
-        <EntityGraphPanel caseId={caseId!} onRunAnalysis={handleRunAnalysis} analysisState={analysisState} />
+        <EntityGraphPanel caseId={caseId!} docs={docs} onRunAnalysis={handleRunAnalysis} analysisState={analysisState} />
       )}
 
       {/* Report tab */}

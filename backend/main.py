@@ -217,6 +217,29 @@ async def delete_case(case_id: str, user: dict = Depends(get_current_user)):
     await asyncio.to_thread(db.delete_case, case_id)
 
 
+class GraphStatePayload(BaseModel):
+    node_positions: dict = {}
+    manual_edges: list = []
+
+
+@app.get("/cases/{case_id}/graph-state")
+async def get_graph_state(case_id: str, user: dict = Depends(get_current_user)):
+    case = await asyncio.to_thread(db.get_case, case_id)
+    if not case:
+        raise HTTPException(404, "case not found")
+    _assert_case_access(case, user["user_id"])
+    return case.get("graph_state") or {}
+
+
+@app.put("/cases/{case_id}/graph-state", status_code=204)
+async def save_graph_state(case_id: str, body: GraphStatePayload, user: dict = Depends(get_current_user)):
+    case = await asyncio.to_thread(db.get_case, case_id)
+    if not case:
+        raise HTTPException(404, "case not found")
+    _assert_case_access(case, user["user_id"])
+    await asyncio.to_thread(db.update_case, case_id, {"graph_state": body.model_dump()})
+
+
 # ---------------------------- documents ---------------------------
 @app.post("/cases/{case_id}/documents", status_code=201)
 async def upload_document(case_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
