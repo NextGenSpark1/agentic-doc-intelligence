@@ -212,7 +212,17 @@ export default function CasesPage() {
           </button>
         </div>
       ) : (
-        <CaseTable cases={filteredCases} onDelete={handleDelete} onBulkDelete={handleBulkDelete} />
+        <CaseTable
+          cases={filteredCases}
+          onDelete={handleDelete}
+          onBulkDelete={handleBulkDelete}
+          onStatusChange={(caseId, newStatus) =>
+            setData(prev => prev ? {
+              ...prev,
+              cases: prev.cases.map(c => c.case_id === caseId ? { ...c, status: newStatus } : c)
+            } : prev)
+          }
+        />
       )}
 
       {/* New Case Modal */}

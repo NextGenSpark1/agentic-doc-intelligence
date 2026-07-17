@@ -270,8 +270,10 @@ async def upload_document(case_id: str, file: UploadFile = File(...), user: dict
     created = await asyncio.to_thread(db.insert_document, record)
 
     # Auto-promote case from intake → active when the first document arrives
+    case_patch: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
     if case.get("status", "").lower() == "intake":
-        await asyncio.to_thread(db.update_case, case_id, {"status": "active"})
+        case_patch["status"] = "active"
+    await asyncio.to_thread(db.update_case, case_id, case_patch)
 
     return created
 
@@ -403,6 +405,7 @@ async def run_analysis(case_id: str, background: BackgroundTasks, user: dict = D
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
+    await asyncio.to_thread(db.update_case, case_id, {"updated_at": datetime.now(timezone.utc).isoformat()})
     background.add_task(pipeline.run_case_analysis, case_id)
     return {"status": "analysis_started", "case_id": case_id}
 
@@ -503,8 +506,9 @@ async def review_finding(finding_id: str, body: FindingReview, user: dict = Depe
         "dismissal_reason": body.dismissal_reason,
     }
     updated = await asyncio.to_thread(db.update_finding, finding_id, patch)
+    case_id = updated.get("case_id", "unknown")
+    await asyncio.to_thread(db.update_case, case_id, {"updated_at": datetime.now(timezone.utc).isoformat()})
     if body.status != "pending":
-        case_id = updated.get("case_id", "unknown")
         await asyncio.to_thread(db.write_audit, case_id, body.reviewed_by, f"finding_{body.status}", {
             "finding_id": finding_id,
             "dismissal_reason": body.dismissal_reason,

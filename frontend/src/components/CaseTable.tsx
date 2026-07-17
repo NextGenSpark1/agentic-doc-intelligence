@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { Case } from '../types'
 import Badge from './Badge'
 import { relativeTime, riskColor, formatCaseType } from '../utils'
+import { updateCase } from '../api'
 
 const COLS = 'grid-cols-[36px_160px_1fr_140px_160px_90px_120px_130px_32px]'
 const HEADER_COLS = ['', 'Case ID', 'Title', 'Type', 'Status', 'Docs', 'Risk', 'Last Activity', '']
@@ -19,6 +20,7 @@ interface CaseTableProps {
   cases: Case[]
   onDelete: (caseId: string) => Promise<void>
   onBulkDelete: (caseIds: string[]) => Promise<void>
+  onStatusChange?: (caseId: string, newStatus: string) => void
 }
 
 function TrashIcon() {
@@ -30,7 +32,7 @@ function TrashIcon() {
   )
 }
 
-export default function CaseTable({ cases, onDelete, onBulkDelete }: CaseTableProps) {
+export default function CaseTable({ cases, onDelete, onBulkDelete, onStatusChange }: CaseTableProps) {
   const navigate = useNavigate()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -244,14 +246,29 @@ export default function CaseTable({ cases, onDelete, onBulkDelete }: CaseTablePr
               {/* Last Activity */}
               <span className="text-xs text-text-mute">{relativeTime(c.created_at)}</span>
 
-              {/* Delete button */}
-              <button
-                onClick={e => { e.stopPropagation(); setConfirmDeleteId(c.case_id) }}
-                title="Delete case"
-                className="opacity-0 group-hover:opacity-100 text-text-mute hover:text-red transition-all duration-150 flex items-center justify-center"
-              >
-                <TrashIcon />
-              </button>
+              {/* Row actions */}
+              <div className="flex items-center gap-2 justify-end">
+                {c.status.toLowerCase() === 'archived' && (
+                  <button
+                    onClick={async e => {
+                      e.stopPropagation()
+                      await updateCase(c.case_id, { status: 'active' })
+                      onStatusChange?.(c.case_id, 'active')
+                    }}
+                    title="Reactivate case"
+                    className="opacity-0 group-hover:opacity-100 text-xs font-semibold text-teal hover:underline transition-all duration-150 whitespace-nowrap"
+                  >
+                    Reactivate
+                  </button>
+                )}
+                <button
+                  onClick={e => { e.stopPropagation(); setConfirmDeleteId(c.case_id) }}
+                  title="Delete case"
+                  className="opacity-0 group-hover:opacity-100 text-text-mute hover:text-red transition-all duration-150 flex items-center justify-center"
+                >
+                  <TrashIcon />
+                </button>
+              </div>
             </div>
           )
         })}
