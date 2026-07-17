@@ -130,7 +130,12 @@ def compute_events(extractions: list[dict], case_id: str | None = None) -> list[
                 events.append(evt(key_date_iso, "Document date"))
 
         # any custom date fields users might add (submission_date, award_date, etc.)
-        for field in ("submission_date", "award_date", "report_date", "contract_date"):
+        for field in (
+            "submission_date", "award_date", "report_date", "contract_date",
+            "incorporation_date", "registration_date", "invoice_date",
+            "waiver_date", "review_date", "approval_date", "tender_date",
+            "issue_date", "effective_date", "expiry_date", "completion_date",
+        ):
             iso = parse_date(d.get(field))
             if iso:
                 label = field.replace("_", " ").title()
@@ -146,6 +151,72 @@ def compute_events(extractions: list[dict], case_id: str | None = None) -> list[
             deduped.append(e)
     deduped.sort(key=lambda e: e["event_date"])
     return deduped
+
+
+_LLM_EVENT_EXTRACTION_PROMPT = (
+    "You are a forensic analyst extracting a chronological timeline from investigation documents. "
+    "For each document provided, extract EVERY dated event you can find — incorporation dates, "
+    "award dates, payment dates, invoice dates, approval dates, waiver dates, memo dates, "
+    "meeting dates, submission dates, contract signing dates, review dates — anything with a date. "
+    "Only extract events that have an explicit date in the document text. "
+    "Use the document_id exactly as provided. "
+    'Reply with strict JSON: {"events": [{"document_id": str, "event_date": "YYYY-MM-DD", "label": str}]}. '
+    "Label should be concise and descriptive, e.g. 'Vendor Incorporated', 'Contract Awarded', "
+    "'Advance Payment Issued', 'Waiver Approved', 'Invoice Submitted'. "
+    "Return empty list if no dated events found."
+)
+
+
+def _llm_extract_events(case_id: str, extractions: list[dict]) -> list[dict]:
+    from .. import db
+
+    valid_doc_ids = {ex["document_id"] for ex in extractions}
+    if not valid_doc_ids:
+        return []
+
+    doc_text: dict[str, str] = {}
+    for doc_id in valid_doc_ids:
+        chunks = db.list_chunks(doc_id)
+        parts = [c.get("text") or "" for c in chunks[:25] if c.get("text")]
+        if parts:
+            doc_text[doc_id] = "\n\n".join(parts)[:6000]
+
+    payload = {
+        "documents": [
+            {"document_id": ex["document_id"], "text": doc_text.get(ex["document_id"], "")}
+            for ex in extractions
+            if doc_text.get(ex["document_id"])
+        ]
+    }
+    if not payload["documents"]:
+        return []
+
+    result = llm_reasoning.ask(_LLM_EVENT_EXTRACTION_PROMPT, payload, case_id)
+    items = result.get("events") if isinstance(result, dict) else None
+    if not items or not isinstance(items, list):
+        return []
+
+    out = []
+    seen: set[tuple] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        doc_id = str(item.get("document_id") or "").strip()
+        label = str(item.get("label") or "").strip()
+        raw_date = str(item.get("event_date") or "").strip()
+        iso = parse_date(raw_date)
+        if not iso or doc_id not in valid_doc_ids or not label:
+            continue
+        key = (iso, label, doc_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "event_id": str(uuid.uuid4()), "case_id": case_id,
+            "event_date": iso, "label": label, "document_id": doc_id,
+            "source": "llm", "reasoning": None,
+        })
+    return out
 
 
 def _llm_timeline_flags(events: list[dict], case_id: str) -> list[dict]:
@@ -185,6 +256,16 @@ def build_timeline(case_id: str) -> list[dict]:
     for e in events:
         e.setdefault("source", "rule")
         e.setdefault("reasoning", None)
+
+    # LLM extraction pass — pulls events from full document text
+    llm_events = _llm_extract_events(case_id, extractions)
+    # Merge: deduplicate against rule events by (date, label)
+    existing_keys = {(e["event_date"], e["label"]) for e in events}
+    for le in llm_events:
+        if (le["event_date"], le["label"]) not in existing_keys:
+            events.append(le)
+            existing_keys.add((le["event_date"], le["label"]))
+
     events += _llm_timeline_flags(events, case_id)
 
     db.get_client().table("timeline_events").delete().eq("case_id", case_id).execute()
