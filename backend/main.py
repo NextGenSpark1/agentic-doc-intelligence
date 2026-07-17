@@ -183,7 +183,8 @@ async def list_cases(user: dict = Depends(get_current_user)):
         pending += sum(1 for f in findings if f.get("human_review_status") == "pending")
         docs = await asyncio.to_thread(db.list_documents, c["case_id"])
         enriched.append({**c, "doc_count": len(docs)})
-    return {"cases": enriched, "stats": {"open_cases": len(cases), "findings_pending_review": pending}}
+    open_cases = sum(1 for c in enriched if c.get("status", "").lower() in ("active", "pending review"))
+    return {"cases": enriched, "stats": {"open_cases": open_cases, "findings_pending_review": pending}}
 
 
 @app.get("/cases/{case_id}")
