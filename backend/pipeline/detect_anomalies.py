@@ -256,9 +256,9 @@ def _llm_findings(case_id: str, extractions: list[dict]) -> list[dict]:
     doc_text: dict[str, str] = {}
     for doc_id in valid_doc_ids:
         chunks = db.list_chunks(doc_id)
-        parts = [_clean_chunk_text(c.get("text") or "") for c in chunks[:6] if c.get("text")]
+        parts = [_clean_chunk_text(c.get("text") or "") for c in chunks[:25] if c.get("text")]
         if parts:
-            doc_text[doc_id] = "\n\n".join(parts)[:2000]
+            doc_text[doc_id] = "\n\n".join(parts)[:8000]
 
     payload = {
         "documents": [

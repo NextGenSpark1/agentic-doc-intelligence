@@ -552,25 +552,55 @@ async def chat(case_id: str, body: ChatRequest, user: dict = Depends(get_current
         return ChatResponse(answer="I couldn't find anything relevant in this case's documents yet.",
                             citations=[])
 
-    # 2. Build grounded context and answer
-    context = "\n\n".join(f"[{i+1}] {_strip_html(c['text'])}" for i, c in enumerate(chunks))
+    # 2. Build grounded context — RAG chunks + structured case intelligence
+    doc_context = "\n\n".join(f"[{i+1}] {_strip_html(c['text'])}" for i, c in enumerate(chunks))
+
+    # Load structured intelligence already built on this case
+    try:
+        entities = await asyncio.to_thread(db.list_entities, case_id)
+        all_findings = await asyncio.to_thread(db.list_findings, case_id)
+        confirmed_findings = [f for f in all_findings if f.get("human_review_status") == "confirmed"]
+        relationships = await asyncio.to_thread(db.list_relationships, case_id)
+    except Exception:
+        entities, confirmed_findings, relationships = [], [], []
+
+    structured_parts = []
+    if entities:
+        ent_lines = [f"  - {e.get('entity_type','?').upper()}: {e.get('canonical_name','')} (aliases: {', '.join(e.get('aliases') or [])})" for e in entities[:30]]
+        structured_parts.append("ENTITIES IDENTIFIED IN CASE:\n" + "\n".join(ent_lines))
+    if confirmed_findings:
+        f_lines = [f"  - [{f.get('severity','?').upper()}] {f.get('statement','')}" for f in confirmed_findings[:20]]
+        structured_parts.append("CONFIRMED FINDINGS (human-reviewed):\n" + "\n".join(f_lines))
+    if relationships:
+        r_lines = [f"  - {r.get('source_name','')} → {r.get('relationship_type','')} → {r.get('target_name','')}" for r in relationships[:30]]
+        structured_parts.append("RELATIONSHIPS:\n" + "\n".join(r_lines))
+
+    structured_context = "\n\n".join(structured_parts)
+
     # Keep last 6 history turns (3 exchanges) to stay within token limits
     recent_history = [
         {"role": m["role"], "content": str(m.get("content", ""))}
         for m in (body.history or [])[-6:]
         if m.get("role") in ("user", "assistant")
     ]
+    system_prompt = (
+        "You are an AI assistant for forensic investigators. "
+        "You have access to two types of context: (1) relevant document excerpts retrieved for this question, "
+        "and (2) structured intelligence already extracted from the full case (entities, confirmed findings, relationships). "
+        "Use both to answer. Cite document excerpts inline with their number [1], [2] etc. "
+        "When referencing findings or entities from the structured intelligence, say so explicitly. "
+        "Be precise and factual — if something is not supported by the provided context, say so. "
+        "Never speculate beyond what the evidence states.\n\n"
+    )
+    if structured_context:
+        system_prompt += f"CASE INTELLIGENCE:\n{structured_context}\n\n"
+    system_prompt += f"RELEVANT DOCUMENT EXCERPTS:\n{doc_context}"
+
     try:
         answer = llm.complete(
             tier="reasoning",
             messages=[
-                {"role": "system", "content":
-                    "You are an AI assistant for forensic investigators. "
-                    "Answer the question using ONLY the numbered document excerpts below. "
-                    "Cite each fact with its source number inline, e.g. [1] or [2]. "
-                    "Be precise and factual — if the answer is not in the context, say so explicitly. "
-                    "Never speculate or infer beyond what the documents state.\n\n"
-                    f"Case document excerpts:\n{context}"},
+                {"role": "system", "content": system_prompt},
                 *recent_history,
                 {"role": "user", "content": body.message},
             ],
