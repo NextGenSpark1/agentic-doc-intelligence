@@ -441,9 +441,11 @@ async def get_findings(case_id: str, user: dict = Depends(get_current_user)):
 async def generate_report(
     case_id: str,
     user: dict = Depends(get_current_user),
-    body: ReportRequest = Body(default_factory=ReportRequest),
+    body: ReportRequest = Body(default=None),
 ):
     """Generate a markdown investigation report from confirmed findings."""
+    if body is None:
+        body = ReportRequest()
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
