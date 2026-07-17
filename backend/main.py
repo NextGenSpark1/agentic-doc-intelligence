@@ -14,7 +14,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -221,6 +221,11 @@ async def delete_case(case_id: str, user: dict = Depends(get_current_user)):
 class GraphStatePayload(BaseModel):
     node_positions: dict = {}
     manual_edges: list = []
+
+
+class ReportRequest(BaseModel):
+    sections: list[str] = ["Executive Summary", "Background", "Key Findings", "Risk Assessment", "Recommendations"]
+    instructions: str = ""
 
 
 @app.get("/cases/{case_id}/graph-state")
@@ -433,7 +438,11 @@ async def get_findings(case_id: str, user: dict = Depends(get_current_user)):
 
 
 @app.post("/cases/{case_id}/report")
-async def generate_report(case_id: str, user: dict = Depends(get_current_user)):
+async def generate_report(
+    case_id: str,
+    user: dict = Depends(get_current_user),
+    body: ReportRequest = Body(default_factory=ReportRequest),
+):
     """Generate a markdown investigation report from confirmed findings."""
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
@@ -454,6 +463,9 @@ async def generate_report(case_id: str, user: dict = Depends(get_current_user)):
             lines.append(f"- [{f['severity'].upper()}] {f['statement']}{source_note}")
         findings_text = "\n".join(lines)
 
+    sections_str = ", ".join(body.sections) if body.sections else "Executive Summary, Background, Key Findings, Risk Assessment, Recommendations"
+    custom_note = f"\n\nAdditional instructions from the investigator: {body.instructions.strip()}" if body.instructions.strip() else ""
+
     prompt = (
         f"You are producing a formal forensic investigation report.\n\n"
         f"Case Title: {case['title']}\n"
@@ -461,13 +473,13 @@ async def generate_report(case_id: str, user: dict = Depends(get_current_user)):
         f"Lead Investigator: {case['lead_investigator']}\n"
         f"Allegation: {case.get('allegation_summary', 'N/A')}\n\n"
         f"Confirmed Findings (human-reviewed and approved):\n{findings_text}\n\n"
-        "Write a professional investigation report in markdown. "
-        "Include these sections: Executive Summary, Background, Key Findings, Risk Assessment, Recommendations. "
+        f"Write a professional investigation report in markdown. "
+        f"Include ONLY these sections (in this order): {sections_str}. "
         "Ground every statement in the confirmed findings above — do not speculate, do not add facts not present. "
         "Use professional forensic language. Be specific: include amounts, dates, entity names where available. "
         "In the Key Findings section, cite the source document name for each finding in parentheses. "
         "Do not include confidence percentages. Keep the Executive Summary to 3-4 sentences. "
-        "Recommendations should be actionable."
+        f"Recommendations should be actionable.{custom_note}"
     )
 
     try:

@@ -117,8 +117,13 @@ export async function fetchTimeline(caseId: string): Promise<TimelineEvent[]> {
   return response.data.events
 }
 
-export async function generateReport(caseId: string): Promise<{ markdown: string; finding_count: number }> {
-  const response = await client.post<{ markdown: string; finding_count: number }>(`/cases/${caseId}/report`)
+export interface ReportOptions {
+  sections?: string[]
+  instructions?: string
+}
+
+export async function generateReport(caseId: string, options?: ReportOptions): Promise<{ markdown: string; finding_count: number }> {
+  const response = await client.post<{ markdown: string; finding_count: number }>(`/cases/${caseId}/report`, options ?? {})
   return response.data
 }
 
@@ -161,7 +166,7 @@ export async function sendChatMessage(
 
 export interface GraphState {
   node_positions: Record<string, { x: number; y: number }>
-  manual_edges: Array<{ id: string; source: string; target: string }>
+  manual_edges: Array<{ id: string; source: string; target: string; label?: string }>
 }
 
 export async function fetchGraphState(caseId: string): Promise<GraphState | null> {

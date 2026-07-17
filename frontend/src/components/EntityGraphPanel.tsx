@@ -434,6 +434,8 @@ export default function EntityGraphPanel({
   const [selectedRelationship, setSelectedRelationship] = useState<Relationship | null>(null)
   const [statsOpen, setStatsOpen] = useState(false)
   const [editMode, setEditMode] = useState(false)
+  const [pendingConnection, setPendingConnection] = useState<Connection | null>(null)
+  const [pendingLabel, setPendingLabel] = useState('')
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const rfRef = useRef<ReactFlowInstance | null>(null)
@@ -465,6 +467,10 @@ export default function EntityGraphPanel({
         const manualEdges: Edge[] = (savedState?.manual_edges ?? []).map(me => ({
           ...me,
           type: 'smoothstep',
+          ...(me.label ? {
+            labelStyle: { fontSize: 10, fill: '#64748B' },
+            labelBgStyle: { fill: 'rgba(248,250,252,0.9)', fillOpacity: 0.9 },
+          } : {}),
           style: { stroke: '#94A3B8', strokeWidth: 1.5, strokeDasharray: '5,3' },
           markerEnd: { type: MarkerType.ArrowClosed, color: '#94A3B8', width: 12, height: 12 },
         }))
@@ -509,16 +515,28 @@ export default function EntityGraphPanel({
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges(eds => addEdge({
-        ...connection,
-        id: `manual-${Date.now()}`,
-        type: 'smoothstep',
-        style: { stroke: '#94A3B8', strokeWidth: 1.5, strokeDasharray: '5,3' },
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#94A3B8', width: 12, height: 12 },
-      }, eds))
+      setPendingConnection(connection)
+      setPendingLabel('')
     },
-    [setEdges],
+    [],
   )
+
+  function confirmEdge() {
+    if (!pendingConnection) return
+    const label = pendingLabel.trim() || 'related to'
+    setEdges(eds => addEdge({
+      ...pendingConnection,
+      id: `manual-${Date.now()}`,
+      type: 'smoothstep',
+      label,
+      labelStyle: { fontSize: 10, fill: '#64748B' },
+      labelBgStyle: { fill: 'rgba(248,250,252,0.9)', fillOpacity: 0.9 },
+      style: { stroke: '#94A3B8', strokeWidth: 1.5, strokeDasharray: '5,3' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#94A3B8', width: 12, height: 12 },
+    }, eds))
+    setPendingConnection(null)
+    setPendingLabel('')
+  }
 
   const onDeleteNode = useCallback(
     (entityId: string) => {
@@ -714,7 +732,7 @@ export default function EntityGraphPanel({
                   nodes.forEach(n => { node_positions[n.id] = n.position })
                   const manual_edges = edges
                     .filter(e => e.id.startsWith('manual-'))
-                    .map(e => ({ id: e.id, source: e.source, target: e.target }))
+                    .map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label as string | undefined }))
                   saveGraphState(caseId, { node_positions, manual_edges }).catch(() => {})
                 }
                 setEditMode(v => !v)
@@ -769,6 +787,66 @@ export default function EntityGraphPanel({
           docMap={docMap}
           onClose={() => setSelectedRelationship(null)}
         />
+      )}
+
+      {/* Edge label prompt */}
+      {pendingConnection && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onClick={() => setPendingConnection(null)}
+        >
+          <div
+            style={{
+              background: '#fff', borderRadius: 14, padding: '20px 24px',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.18)', width: 320,
+              display: 'flex', flexDirection: 'column', gap: 14,
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', margin: 0 }}>Name this relationship</p>
+              <p style={{ fontSize: 11, color: '#94A3B8', margin: '4px 0 0' }}>Describe how these two entities are connected</p>
+            </div>
+            <input
+              autoFocus
+              type="text"
+              value={pendingLabel}
+              onChange={e => setPendingLabel(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') confirmEdge(); if (e.key === 'Escape') setPendingConnection(null) }}
+              placeholder="e.g. Owner, Director, Supplier, Approved by…"
+              style={{
+                border: '1.5px solid #E2E8F0', borderRadius: 8, padding: '8px 12px',
+                fontSize: 13, color: '#0F172A', outline: 'none', width: '100%', boxSizing: 'border-box',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setPendingConnection(null)}
+                style={{
+                  padding: '7px 16px', fontSize: 12, fontWeight: 600,
+                  background: 'transparent', border: '1px solid #E2E8F0',
+                  borderRadius: 8, cursor: 'pointer', color: '#64748B',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmEdge}
+                style={{
+                  padding: '7px 16px', fontSize: 12, fontWeight: 600,
+                  background: '#0D9488', border: 'none',
+                  borderRadius: 8, cursor: 'pointer', color: '#fff',
+                }}
+              >
+                Add connection
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
