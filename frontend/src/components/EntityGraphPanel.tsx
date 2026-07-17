@@ -1,5 +1,5 @@
 import '@xyflow/react/dist/style.css'
-import dagre from '@dagrejs/dagre'
+import ELK from 'elkjs/lib/elk.bundled.js'
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   ReactFlow,
@@ -145,6 +145,8 @@ function normalizeName(name: string): string {
 const NODE_WIDTH = 300
 const NODE_HEIGHT = 110
 
+const elk = new ELK()
+
 function edgeColor(relType: string): string {
   const t = relType.toLowerCase()
   if (/conflict|similar|launder|fraud|suspect|shell/.test(t)) return '#EF4444'
@@ -155,10 +157,10 @@ function edgeColor(relType: string): string {
   return '#64748B'
 }
 
-function buildGraph(
+async function buildGraph(
   entities: Entity[],
   relationships: Relationship[],
-): { nodes: Node[]; edges: Edge[] } {
+): Promise<{ nodes: Node[]; edges: Edge[] }> {
   // Multi-key lookup: exact lowercase, normalised form, and all aliases
   const nameMap = new Map<string, string>()
   const entityByCanonical = new Map<string, Entity>()
@@ -178,22 +180,11 @@ function buildGraph(
         ?? raw.trim()
   }
 
-  // Set up dagre graph for automatic layout
-  const g = new dagre.graphlib.Graph()
-  g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({ rankdir: 'TB', nodesep: 120, ranksep: 200, marginx: 100, marginy: 100 })
-
-  // Register all entity nodes
   const registeredIds = new Set<string>()
-  entities.forEach(e => {
-    g.setNode(e.canonical_name, { width: NODE_WIDTH, height: NODE_HEIGHT })
-    registeredIds.add(e.canonical_name)
-  })
-
-  // Register virtual nodes for any relationship endpoint not in the entity list.
-  // Use source_type / target_type from the relationship evidence so the AI's
-  // own type label is shown instead of "unknown".
   const virtualEntities = new Map<string, Entity>()
+
+  entities.forEach(e => registeredIds.add(e.canonical_name))
+
   relationships.forEach(r => {
     const pairs: [string, string][] = [
       [resolveToNodeId(r.source_name), String(r.evidence?.source_type ?? '').toLowerCase().trim()],
@@ -201,44 +192,52 @@ function buildGraph(
     ]
     pairs.forEach(([id, aiType]) => {
       if (!registeredIds.has(id)) {
-        g.setNode(id, { width: NODE_WIDTH, height: NODE_HEIGHT })
         registeredIds.add(id)
         virtualEntities.set(id, {
-          entity_id: `virt-${id}`,
-          case_id: '',
-          canonical_name: id,
-          entity_type: aiType || 'unknown',
-          aliases: [],
-          confidence_score: 0.5,
+          entity_id: `virt-${id}`, case_id: '', canonical_name: id,
+          entity_type: aiType || 'unknown', aliases: [], confidence_score: 0.5,
         } as Entity)
       }
     })
   })
 
-  // Register all edges so dagre can compute a clean layout
-  relationships.forEach(r => {
-    const src = resolveToNodeId(r.source_name)
-    const tgt = resolveToNodeId(r.target_name)
-    if (src !== tgt) g.setEdge(src, tgt)
+  const elkNodes = [...registeredIds].map(id => ({
+    id, width: NODE_WIDTH, height: NODE_HEIGHT,
+  }))
+
+  const elkEdges = relationships
+    .map((r, i) => ({
+      id: r.relationship_id || `e-${i}`,
+      sources: [resolveToNodeId(r.source_name)],
+      targets: [resolveToNodeId(r.target_name)],
+    }))
+    .filter(e => e.sources[0] !== e.targets[0])
+
+  const graph = await elk.layout({
+    id: 'root',
+    layoutOptions: {
+      'elk.algorithm': 'stress',
+      'elk.stress.desiredEdgeLength': '280',
+      'elk.spacing.nodeNode': '80',
+      'elk.padding': '[top=80, left=80, bottom=80, right=80]',
+    },
+    children: elkNodes,
+    edges: elkEdges,
   })
 
-  dagre.layout(g)
-
-  // Convert dagre positions to React Flow nodes
-  const nodes: Node[] = g.nodes().map(id => {
-    const pos = g.node(id)
+  const nodes: Node[] = (graph.children ?? []).map(n => {
+    const id = n.id
     const entity = entityByCanonical.get(id)
       ?? virtualEntities.get(id)
       ?? { entity_id: `virt-${id}`, case_id: '', canonical_name: id, entity_type: 'unknown', aliases: [], confidence_score: 0.5 } as Entity
     return {
       id,
       type: 'entityNode',
-      position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
+      position: { x: n.x ?? 0, y: n.y ?? 0 },
       data: { entity },
     }
   })
 
-  // ALL relationships become edges — color-coded by relationship category
   const edges: Edge[] = relationships.map((r): Edge => {
     const color = edgeColor(r.relationship_type)
     return {
@@ -471,9 +470,9 @@ export default function EntityGraphPanel({
       fetchEntities(caseId),
       fetchGraphState(caseId),
     ])
-      .then(([d, savedState]) => {
+      .then(async ([d, savedState]) => {
         setData(d)
-        const { nodes: n, edges: e } = buildGraph(d.entities, d.relationships)
+        const { nodes: n, edges: e } = await buildGraph(d.entities, d.relationships)
 
         // Apply saved node positions if available
         const pos = savedState?.node_positions ?? {}
