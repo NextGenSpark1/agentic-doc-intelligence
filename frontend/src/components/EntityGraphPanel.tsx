@@ -5,6 +5,7 @@ import {
   ReactFlow,
   Background,
   Controls,
+  MiniMap,
   useNodesState,
   useEdgesState,
   addEdge,
@@ -69,15 +70,16 @@ function EntityNode({ data, selected }: NodeProps) {
       <Handle type="source" position={Position.Right}  id="r" style={{ opacity: editMode ? 1 : 0, width: editMode ? 8 : 1, height: editMode ? 8 : 1, background: '#0E7C86', border: '2px solid #fff' }} isConnectable={!!editMode} />
 
       <div style={{
-        background: cfg.bg,
-        border: `${selected ? 2.5 : 1.5}px solid ${selected ? cfg.color : (editMode ? cfg.color + '88' : cfg.border)}`,
-        borderRadius: 14,
-        padding: '14px 18px',
-        minWidth: 200,
-        maxWidth: 280,
+        background: '#FFFFFF',
+        border: `2px solid ${selected ? cfg.color : (editMode ? cfg.color + '99' : cfg.border)}`,
+        borderLeft: `5px solid ${cfg.color}`,
+        borderRadius: 12,
+        padding: '14px 16px 12px',
+        minWidth: 220,
+        maxWidth: 300,
         boxShadow: selected
-          ? `0 0 0 4px ${cfg.color}33, 0 6px 16px rgba(0,0,0,0.12)`
-          : '0 2px 8px rgba(0,0,0,0.10)',
+          ? `0 0 0 3px ${cfg.color}40, 0 8px 24px rgba(0,0,0,0.14)`
+          : '0 3px 10px rgba(0,0,0,0.10)',
         cursor: 'pointer',
         userSelect: 'none',
         position: 'relative',
@@ -88,9 +90,9 @@ function EntityNode({ data, selected }: NodeProps) {
             title="Remove node"
             style={{
               position: 'absolute', top: 6, right: 6,
-              width: 18, height: 18, borderRadius: '50%',
+              width: 20, height: 20, borderRadius: '50%',
               background: '#FEE2E2', border: '1px solid #FCA5A5',
-              color: '#DC2626', fontSize: 12, lineHeight: '16px',
+              color: '#DC2626', fontSize: 13, lineHeight: '18px',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', padding: 0,
             }}
@@ -98,22 +100,25 @@ function EntityNode({ data, selected }: NodeProps) {
             ×
           </button>
         )}
-        <div style={{ height: 4, background: cfg.color, borderRadius: 2, marginBottom: 10 }} />
+        <span style={{
+          display: 'inline-block', fontSize: 10, fontWeight: 700, color: cfg.color,
+          textTransform: 'uppercase', letterSpacing: '0.08em',
+          background: `${cfg.color}15`, borderRadius: 4, padding: '2px 7px',
+          marginBottom: 8,
+        }}>
+          {cfg.label}
+        </span>
         <p style={{
-          fontSize: 14, fontWeight: 700, color: '#1A2332',
-          lineHeight: 1.4, wordBreak: 'break-word', marginBottom: 8,
+          fontSize: 13, fontWeight: 700, color: '#0F172A',
+          lineHeight: 1.45, wordBreak: 'break-word', marginBottom: 8,
         }}>
           {entity.canonical_name}
         </p>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{
-            fontSize: 11, fontWeight: 700, color: cfg.color,
-            textTransform: 'uppercase', letterSpacing: '0.07em',
-            background: `${cfg.color}18`, borderRadius: 4, padding: '2px 6px',
-          }}>
-            {cfg.label}
-          </span>
-          <span style={{ fontSize: 11, color: '#9CA3AF', fontVariantNumeric: 'tabular-nums' }}>
+          <div style={{ height: 3, flex: 1, background: '#F1F5F9', borderRadius: 2, overflow: 'hidden', marginRight: 8 }}>
+            <div style={{ height: '100%', width: `${confidencePercentage}%`, background: cfg.color, borderRadius: 2 }} />
+          </div>
+          <span style={{ fontSize: 11, color: '#64748B', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
             {confidencePercentage}%
           </span>
         </div>
@@ -137,8 +142,18 @@ function normalizeName(name: string): string {
     .toLowerCase()
 }
 
-const NODE_WIDTH = 260
-const NODE_HEIGHT = 100
+const NODE_WIDTH = 300
+const NODE_HEIGHT = 110
+
+function edgeColor(relType: string): string {
+  const t = relType.toLowerCase()
+  if (/conflict|similar|launder|fraud|suspect|shell/.test(t)) return '#EF4444'
+  if (/own|director|sharehold|relative|family|parent|subsidiar|benefi/.test(t)) return '#F97316'
+  if (/pay|financ|bank|invoice|transfer|fund|receiv/.test(t)) return '#D97706'
+  if (/award|contract|approv|authoris|sign|waiv/.test(t)) return '#7C3AED'
+  if (/employ|work|manag|report|supervis/.test(t)) return '#0D9488'
+  return '#64748B'
+}
 
 function buildGraph(
   entities: Entity[],
@@ -166,7 +181,7 @@ function buildGraph(
   // Set up dagre graph for automatic layout
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({ rankdir: 'LR', nodesep: 70, ranksep: 160, marginx: 60, marginy: 60 })
+  g.setGraph({ rankdir: 'TB', nodesep: 120, ranksep: 200, marginx: 100, marginy: 100 })
 
   // Register all entity nodes
   const registeredIds = new Set<string>()
@@ -223,20 +238,23 @@ function buildGraph(
     }
   })
 
-  // ALL relationships become edges — nothing is ever dropped
-  const edges: Edge[] = relationships.map((r): Edge => ({
-    id: r.relationship_id,
-    source: resolveToNodeId(r.source_name),
-    target: resolveToNodeId(r.target_name),
-    label: r.relationship_type.replace(/_/g, ' '),
-    type: 'smoothstep',
-    style: { stroke: '#94A3B8', strokeWidth: 1.5 },
-    labelStyle: { fontSize: 10, fill: '#475569', fontWeight: 600 },
-    labelBgStyle: { fill: '#F8FAFC', fillOpacity: 0.95 },
-    labelBgPadding: [5, 3] as [number, number],
-    labelBgBorderRadius: 4,
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#94A3B8', width: 12, height: 12 },
-  }))
+  // ALL relationships become edges — color-coded by relationship category
+  const edges: Edge[] = relationships.map((r): Edge => {
+    const color = edgeColor(r.relationship_type)
+    return {
+      id: r.relationship_id,
+      source: resolveToNodeId(r.source_name),
+      target: resolveToNodeId(r.target_name),
+      label: r.relationship_type.replace(/_/g, ' '),
+      type: 'bezier',
+      style: { stroke: color, strokeWidth: 2 },
+      labelStyle: { fontSize: 11, fill: '#0F172A', fontWeight: 700 },
+      labelBgStyle: { fill: '#FFFFFF', fillOpacity: 1 },
+      labelBgPadding: [6, 4] as [number, number],
+      labelBgBorderRadius: 6,
+      markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
+    }
+  })
 
   return { nodes, edges }
 }
@@ -466,13 +484,15 @@ export default function EntityGraphPanel({
         // Restore manually drawn edges
         const manualEdges: Edge[] = (savedState?.manual_edges ?? []).map(me => ({
           ...me,
-          type: 'smoothstep',
+          type: 'bezier',
           ...(me.label ? {
-            labelStyle: { fontSize: 10, fill: '#64748B' },
-            labelBgStyle: { fill: 'rgba(248,250,252,0.9)', fillOpacity: 0.9 },
+            labelStyle: { fontSize: 11, fill: '#0F172A', fontWeight: 700 },
+            labelBgStyle: { fill: '#FFFFFF', fillOpacity: 1 },
+            labelBgPadding: [6, 4] as [number, number],
+            labelBgBorderRadius: 6,
           } : {}),
-          style: { stroke: '#94A3B8', strokeWidth: 1.5, strokeDasharray: '5,3' },
-          markerEnd: { type: MarkerType.ArrowClosed, color: '#94A3B8', width: 12, height: 12 },
+          style: { stroke: '#94A3B8', strokeWidth: 2, strokeDasharray: '6,3' },
+          markerEnd: { type: MarkerType.ArrowClosed, color: '#94A3B8', width: 16, height: 16 },
         }))
 
         setNodes(positioned)
@@ -527,12 +547,14 @@ export default function EntityGraphPanel({
     setEdges(eds => addEdge({
       ...pendingConnection,
       id: `manual-${Date.now()}`,
-      type: 'smoothstep',
+      type: 'bezier',
       label,
-      labelStyle: { fontSize: 10, fill: '#64748B' },
-      labelBgStyle: { fill: 'rgba(248,250,252,0.9)', fillOpacity: 0.9 },
-      style: { stroke: '#94A3B8', strokeWidth: 1.5, strokeDasharray: '5,3' },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#94A3B8', width: 12, height: 12 },
+      labelStyle: { fontSize: 11, fill: '#0F172A', fontWeight: 700 },
+      labelBgStyle: { fill: '#FFFFFF', fillOpacity: 1 },
+      labelBgPadding: [6, 4] as [number, number],
+      labelBgBorderRadius: 6,
+      style: { stroke: '#94A3B8', strokeWidth: 2, strokeDasharray: '6,3' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#94A3B8', width: 16, height: 16 },
     }, eds))
     setPendingConnection(null)
     setPendingLabel('')
@@ -628,30 +650,57 @@ export default function EntityGraphPanel({
           onConnect={onConnect}
           onInit={(instance) => { rfRef.current = instance }}
           fitView
-          fitViewOptions={{ padding: 0.3, maxZoom: 0.85 }}
-          minZoom={0.2}
-          maxZoom={2}
+          fitViewOptions={{ padding: 0.35, maxZoom: 1.1 }}
+          minZoom={0.1}
+          maxZoom={3}
           nodesDraggable
           nodesConnectable={editMode}
           elementsSelectable
           deleteKeyCode={editMode ? 'Delete' : null}
+          edgesFocusable
+          elevateEdgesOnSelect
         >
-          <Background color="#CBD5E1" gap={20} size={1} />
-          <Controls showInteractive={false} style={{ bottom: 16, left: 16 }} />
+          <Background color="#E2E8F0" gap={24} size={1.5} />
+          <Controls showInteractive={false} style={{ bottom: 60, left: 16 }} />
+          <MiniMap
+            nodeColor={n => typeConfig(((n.data?.entity) as Entity | undefined)?.entity_type ?? 'unknown').color}
+            maskColor="rgba(241,245,249,0.85)"
+            style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 10, bottom: 16, right: 16 }}
+            pannable
+            zoomable
+          />
 
           {/* Legend */}
           {presentTypes.length > 0 && (
             <div
-              className="absolute top-3 left-3 z-10 bg-white/95 border border-slate-200 rounded-xl px-3 py-2.5 flex flex-col gap-1.5 shadow-sm"
-              style={{ backdropFilter: 'blur(4px)' }}
+              style={{ position: 'absolute', top: 12, left: 12, zIndex: 10, background: 'rgba(255,255,255,0.97)', border: '1px solid #E2E8F0', borderRadius: 12, padding: '10px 14px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', backdropFilter: 'blur(4px)', minWidth: 130 }}
             >
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Entity Types</p>
-              {presentTypes.map(([, cfg]) => (
-                <div key={cfg.label} className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: cfg.color }} />
-                  <span className="text-[10px] text-slate-600 font-medium">{cfg.label}</span>
-                </div>
-              ))}
+              <p style={{ fontSize: 9, fontWeight: 800, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>Entity Types</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {presentTypes.map(([, cfg]) => (
+                  <div key={cfg.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
+                    <span style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>{cfg.label}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ height: 1, background: '#F1F5F9', margin: '10px 0' }} />
+              <p style={{ fontSize: 9, fontWeight: 800, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>Relationship Types</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {[
+                  { color: '#EF4444', label: 'Conflict / Fraud' },
+                  { color: '#F97316', label: 'Ownership / Family' },
+                  { color: '#D97706', label: 'Financial' },
+                  { color: '#7C3AED', label: 'Contract / Approval' },
+                  { color: '#0D9488', label: 'Employment' },
+                  { color: '#64748B', label: 'Other' },
+                ].map(e => (
+                  <div key={e.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 18, height: 2, background: e.color, borderRadius: 1, flexShrink: 0 }} />
+                    <span style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>{e.label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
