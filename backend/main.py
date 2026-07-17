@@ -267,6 +267,11 @@ async def upload_document(case_id: str, file: UploadFile = File(...), user: dict
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
     }
     created = await asyncio.to_thread(db.insert_document, record)
+
+    # Auto-promote case from intake → active when the first document arrives
+    if case.get("status", "").lower() == "intake":
+        await asyncio.to_thread(db.update_case, case_id, {"status": "active"})
+
     return created
 
 
