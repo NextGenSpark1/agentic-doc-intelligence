@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import type { Finding, Document as CaseDocument } from '../types'
+import type { Finding, FindingChunk, Document as CaseDocument } from '../types'
 import { fetchFindings, reviewFinding } from '../api'
 import { useAuth } from '../context/AuthContext'
 
@@ -16,7 +16,11 @@ const REVIEW_STYLES: Record<string, { label: string; color: string }> = {
 }
 
 function formatType(t: string) {
-  return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  return t.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function formatReviewDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function ConfidenceBar({ value }: { value: number }) {
@@ -28,6 +32,44 @@ function ConfidenceBar({ value }: { value: number }) {
         <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: color }} />
       </div>
       <span className="text-[10px] text-text-mute tabular-nums">{pct}%</span>
+    </div>
+  )
+}
+
+function SourcePassages({ chunks, docMap }: { chunks: FindingChunk[]; docMap: Record<string, string> }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="flex items-center gap-1.5 text-[10px] font-semibold text-teal hover:text-teal-soft transition-colors duration-150 w-fit"
+      >
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 150ms' }}>
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+        {expanded ? 'Hide' : 'View'} source passage{chunks.length > 1 ? 's' : ''}
+      </button>
+      {expanded && (
+        <div className="flex flex-col gap-2 pl-1">
+          {chunks.map((chunk, i) => (
+            <div key={i} className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] bg-panel-2 border border-border text-text-mid px-2 py-0.5 rounded-full truncate max-w-[180px]"
+                  title={docMap[chunk.document_id] ?? chunk.document_id}>
+                  {docMap[chunk.document_id] ?? chunk.document_id}
+                </span>
+                {chunk.page != null && chunk.page > 0 && (
+                  <span className="text-[10px] font-mono text-text-mute">p.{chunk.page}</span>
+                )}
+              </div>
+              <blockquote className="text-[11px] text-text-mid italic leading-relaxed border-l-2 border-teal/40 pl-2.5 py-0.5">
+                "{chunk.quoted_text}"
+              </blockquote>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -55,6 +97,9 @@ export default function FindingsPanel({
   const [processing, setProcessing] = useState<Set<string>>(new Set())
   const [dismissState, setDismissState] = useState<DismissState | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkDismissOpen, setBulkDismissOpen] = useState(false)
+  const [bulkDismissReason, setBulkDismissReason] = useState('')
 
   const docMap = useMemo(
     () => Object.fromEntries(docs.map(d => [d.document_id, d.filename])),
@@ -86,7 +131,7 @@ export default function FindingsPanel({
   }, [findings])
 
   async function handleConfirm(findingId: string) {
-    const reviewer = user?.email ?? 'investigator'
+    const reviewer = (user?.user_metadata?.full_name as string | undefined) || user?.email || 'investigator'
     setProcessing(prev => new Set(prev).add(findingId))
     try {
       const updated = await reviewFinding(findingId, 'confirmed', reviewer)
@@ -98,8 +143,21 @@ export default function FindingsPanel({
     }
   }
 
+  async function handleRevert(findingId: string) {
+    const reviewer = (user?.user_metadata?.full_name as string | undefined) || user?.email || 'investigator'
+    setProcessing(prev => new Set(prev).add(findingId))
+    try {
+      const updated = await reviewFinding(findingId, 'pending', reviewer)
+      setFindings(prev => prev?.map(f => f.finding_id === findingId ? updated : f) ?? prev)
+    } catch {
+      setError('Failed to revert finding.')
+    } finally {
+      setProcessing(prev => { const n = new Set(prev); n.delete(findingId); return n })
+    }
+  }
+
   async function handleDismiss(findingId: string, reason: string) {
-    const reviewer = user?.email ?? 'investigator'
+    const reviewer = (user?.user_metadata?.full_name as string | undefined) || user?.email || 'investigator'
     setProcessing(prev => new Set(prev).add(findingId))
     setDismissState(null)
     try {
@@ -112,7 +170,33 @@ export default function FindingsPanel({
     }
   }
 
-  const PILL = (active: boolean) =>
+  async function handleBulkConfirm() {
+    const reviewer = (user?.user_metadata?.full_name as string | undefined) || user?.email || 'investigator'
+    const ids = Array.from(selectedIds)
+    setSelectedIds(new Set())
+    await Promise.allSettled(ids.map(id =>
+      reviewFinding(id, 'confirmed', reviewer)
+        .then(updated => setFindings(prev => prev?.map(f => f.finding_id === id ? updated : f) ?? prev))
+    ))
+  }
+
+  async function handleBulkDismiss() {
+    const reviewer = (user?.user_metadata?.full_name as string | undefined) || user?.email || 'investigator'
+    const ids = Array.from(selectedIds)
+    setSelectedIds(new Set())
+    setBulkDismissOpen(false)
+    setBulkDismissReason('')
+    await Promise.allSettled(ids.map(id =>
+      reviewFinding(id, 'dismissed', reviewer, bulkDismissReason || undefined)
+        .then(updated => setFindings(prev => prev?.map(f => f.finding_id === id ? updated : f) ?? prev))
+    ))
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+
+  const getPillButtonClasses = (active: boolean) =>
     `px-3 py-1 rounded-full text-xs font-medium transition-colors duration-150 ${
       active ? 'bg-navy text-white' : 'text-text-mute hover:text-text hover:bg-panel-2'
     }`
@@ -171,7 +255,7 @@ export default function FindingsPanel({
           <div className="flex items-center gap-1">
             <span className="text-[10px] font-semibold text-text-mute uppercase tracking-wide mr-1">Severity</span>
             {['all', 'high', 'medium', 'low'].map(s => (
-              <button key={s} onClick={() => setFilterSeverity(s)} className={PILL(filterSeverity === s)}>
+              <button key={s} onClick={() => setFilterSeverity(s)} className={getPillButtonClasses(filterSeverity === s)}>
                 {s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
               </button>
             ))}
@@ -179,7 +263,7 @@ export default function FindingsPanel({
           <div className="flex items-center gap-1">
             <span className="text-[10px] font-semibold text-text-mute uppercase tracking-wide mr-1">Status</span>
             {['all', 'pending', 'confirmed', 'dismissed'].map(s => (
-              <button key={s} onClick={() => setFilterStatus(s)} className={PILL(filterStatus === s)}>
+              <button key={s} onClick={() => setFilterStatus(s)} className={getPillButtonClasses(filterStatus === s)}>
                 {s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
               </button>
             ))}
@@ -217,6 +301,51 @@ export default function FindingsPanel({
           <p className="text-sm text-text-mute text-center py-10">No findings match the current filters.</p>
         )}
 
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-panel border border-border rounded-xl shadow-sm flex-wrap">
+            {bulkDismissOpen ? (
+              <div className="flex flex-col gap-2 w-full">
+                <p className="text-xs font-medium text-text">Dismiss {selectedIds.size} finding{selectedIds.size > 1 ? 's' : ''}:</p>
+                <textarea
+                  rows={2}
+                  placeholder="Reason for dismissal (optional)…"
+                  value={bulkDismissReason}
+                  onChange={e => setBulkDismissReason(e.target.value)}
+                  className="border border-border-strong rounded-lg px-3 py-2 text-xs text-text bg-panel placeholder:text-text-mute focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal transition-colors duration-150 resize-none"
+                />
+                <div className="flex gap-2">
+                  <button onClick={handleBulkDismiss} className="text-xs font-semibold text-white bg-red hover:bg-red/80 px-4 py-1.5 rounded-lg transition-colors duration-150">
+                    Confirm Dismissal
+                  </button>
+                  <button onClick={() => { setBulkDismissOpen(false); setBulkDismissReason('') }} className="text-xs text-text-mute hover:text-text transition-colors duration-150">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <span className="text-sm text-text-mid flex-1">{selectedIds.size} selected</span>
+                <button
+                  onClick={handleBulkConfirm}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-green border border-green/30 hover:bg-green/5 px-3 py-1.5 rounded-lg transition-colors duration-150"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                  Confirm all
+                </button>
+                <button
+                  onClick={() => setBulkDismissOpen(true)}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-text-mute border border-border hover:border-border-strong hover:text-text px-3 py-1.5 rounded-lg transition-colors duration-150"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                  Dismiss all
+                </button>
+                <button onClick={() => setSelectedIds(new Set())} className="text-sm text-text-mute hover:text-text transition-colors">✕ Clear</button>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Finding cards */}
         <div className="flex flex-col gap-3">
           {filtered.map(finding => {
@@ -225,22 +354,35 @@ export default function FindingsPanel({
             const isPending = finding.human_review_status === 'pending'
             const isProcessing = processing.has(finding.finding_id)
             const isDismissing = dismissState?.findingId === finding.finding_id
+            const isSelected = selectedIds.has(finding.finding_id)
 
             return (
               <div
                 key={finding.finding_id}
                 className={`bg-panel border rounded-xl p-5 flex flex-col gap-4 transition-opacity duration-150 ${
                   finding.human_review_status === 'dismissed' ? 'opacity-60' : ''
-                } ${isProcessing ? 'opacity-50 pointer-events-none' : ''} border-border`}
+                } ${isProcessing ? 'opacity-50 pointer-events-none' : ''} ${isSelected ? 'border-teal/40 ring-1 ring-teal/20' : 'border-border'}`}
               >
-                {/* Top row: badges + confidence */}
+                {/* Top row: select checkbox + badges + confidence */}
                 <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggleSelect(finding.finding_id)}
+                    onClick={e => e.stopPropagation()}
+                    className="accent-teal cursor-pointer shrink-0"
+                    title="Select for bulk action"
+                  />
                   <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${sevStyle.badge}`}>
                     {finding.severity}
                   </span>
                   <span className="text-[10px] font-medium text-text-mid bg-panel-2 border border-border px-2 py-0.5 rounded-full">
                     {formatType(finding.finding_type)}
                   </span>
+                  {finding.source === 'llm'
+                    ? <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#1558D4] border border-[#93C5FD]">AI</span>
+                    : <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-panel-2 text-text-mute border border-border">Rule</span>
+                  }
                   <div className="flex-1" />
                   <ConfidenceBar value={finding.confidence} />
                 </div>
@@ -262,6 +404,11 @@ export default function FindingsPanel({
                   </div>
                 )}
 
+                {/* Source passages (traceability) */}
+                {finding.supporting_chunks && finding.supporting_chunks.length > 0 && (
+                  <SourcePassages chunks={finding.supporting_chunks} docMap={docMap} />
+                )}
+
                 {/* Review status + actions */}
                 <div className="flex items-center gap-3 pt-1 border-t border-border flex-wrap">
                   <span className="flex items-center gap-1.5 text-xs" style={{ color: revStyle.color }}>
@@ -269,10 +416,23 @@ export default function FindingsPanel({
                     {revStyle.label}
                   </span>
                   {finding.reviewed_by && (
-                    <span className="text-[10px] text-text-mute">by {finding.reviewed_by}</span>
+                    <span className="text-[10px] text-text-mute">
+                      by {finding.reviewed_by}
+                      {finding.reviewed_at && ` · ${formatReviewDate(finding.reviewed_at)}`}
+                    </span>
                   )}
                   {finding.dismissal_reason && (
                     <span className="text-[10px] text-text-mute italic">"{finding.dismissal_reason}"</span>
+                  )}
+
+                  {!isPending && !isDismissing && (
+                    <button
+                      onClick={() => handleRevert(finding.finding_id)}
+                      className="ml-auto text-[10px] text-text-mute hover:text-text transition-colors duration-150"
+                      title="Revert to pending review"
+                    >
+                      Revert to pending
+                    </button>
                   )}
 
                   {isPending && !isDismissing && (

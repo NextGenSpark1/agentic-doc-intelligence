@@ -26,13 +26,13 @@ _HEURISTICS = {
 
 
 def heuristic(text: str) -> str:
-    low = text.lower()
-    best, score = "other", 0
-    for t, kws in _HEURISTICS.items():
-        hits = sum(1 for k in kws if k in low)
-        if hits > score:
-            best, score = t, hits
-    return best
+    text_lower = text.lower()
+    best_type, hit_count = "other", 0
+    for doc_type, keywords in _HEURISTICS.items():
+        hits = sum(1 for k in keywords if k in text_lower)
+        if hits > hit_count:
+            best_type, hit_count = doc_type, hits
+    return best_type
 
 
 def classify(markdown: str) -> str:

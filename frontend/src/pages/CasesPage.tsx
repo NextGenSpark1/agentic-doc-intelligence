@@ -162,10 +162,10 @@ export default function CasesPage() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard label="Total Cases"    value={cases.length}  note="All time"               accent="default" icon={FolderOpen} />
-        <StatCard label="Open Cases"     value={openCases}     note="Currently active"       accent="teal"    icon={Activity} />
-        <StatCard label="Pending Review" value={pendingReview} note="Findings awaiting action" accent="red"   icon={Clock} />
-        <StatCard label="Archived"       value={counts.archived} note="Closed investigations" accent="default" icon={Archive} />
+        <StatCard label="Total Cases"        value={cases.length}     note="All time"               accent="default" icon={FolderOpen} onClick={() => setActiveFilter('all')} />
+        <StatCard label="Open Cases"         value={openCases}        note="Currently active"       accent="teal"    icon={Activity}   onClick={() => setActiveFilter('active')} />
+        <StatCard label="Findings to Review" value={pendingReview}    note="Findings awaiting action" accent="red"   icon={Clock} />
+        <StatCard label="Archived"           value={counts.archived}  note="Closed investigations"  accent="default" icon={Archive}    onClick={() => setActiveFilter('archived')} />
       </div>
 
       {/* Filters + search row */}
@@ -212,7 +212,17 @@ export default function CasesPage() {
           </button>
         </div>
       ) : (
-        <CaseTable cases={filteredCases} onDelete={handleDelete} onBulkDelete={handleBulkDelete} />
+        <CaseTable
+          cases={filteredCases}
+          onDelete={handleDelete}
+          onBulkDelete={handleBulkDelete}
+          onStatusChange={(caseId, newStatus) =>
+            setData(prev => prev ? {
+              ...prev,
+              cases: prev.cases.map(c => c.case_id === caseId ? { ...c, status: newStatus } : c)
+            } : prev)
+          }
+        />
       )}
 
       {/* New Case Modal */}

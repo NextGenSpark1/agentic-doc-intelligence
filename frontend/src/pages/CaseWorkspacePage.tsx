@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import { fetchCase, fetchDocuments, uploadDocumentWithProgress, deleteDocument, extractDocument, updateCase, runCaseAnalysis } from '../api'
 import type { Case, Document as CaseDocument, SchemaField } from '../types'
 import { PRESET_SCHEMAS, CASE_TYPE_OPTIONS } from '../lib/schemaPresets'
@@ -13,6 +14,11 @@ import EntityGraphPanel from '../components/EntityGraphPanel'
 import ReportPanel from '../components/ReportPanel'
 
 const SUBTABS = ['Workspace', 'Entity Graph', 'Timeline', 'Findings', 'Report', 'Settings']
+const TAB_SLUG: Record<string, string> = {
+  'Workspace': 'workspace', 'Entity Graph': 'entity-graph', 'Timeline': 'timeline',
+  'Findings': 'findings', 'Report': 'report', 'Settings': 'settings',
+}
+const SLUG_TAB: Record<string, string> = Object.fromEntries(Object.entries(TAB_SLUG).map(([k, v]) => [v, k]))
 
 const STATUS_MAP: Record<string, { color: string; label: string }> = {
   uploaded:   { color: '#9CA3AF', label: 'Uploaded' },
@@ -346,6 +352,7 @@ function PlaceholderPanel({ name }: { name: string }) {
 export default function CaseWorkspacePage() {
   const { caseId } = useParams<{ caseId: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [caseData, setCaseData] = useState<Case | null>(null)
   const [docs, setDocs] = useState<CaseDocument[]>([])
@@ -358,7 +365,8 @@ export default function CaseWorkspacePage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
-  const [activeSubtab, setActiveSubtab] = useState('Workspace')
+  const activeSubtab = SLUG_TAB[searchParams.get('tab') ?? ''] ?? 'Workspace'
+  const setActiveSubtab = (tab: string) => setSearchParams(p => { p.set('tab', TAB_SLUG[tab]); return p }, { replace: true })
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const [docSearch, setDocSearch] = useState('')
@@ -504,19 +512,38 @@ export default function CaseWorkspacePage() {
 
   async function handleRunAnalysis() {
     if (!caseId || analysisState === 'running') return
+    const beforeTimestamp = caseData?.last_analysed_at ?? null
     setAnalysisState('running')
     try {
-      await runCaseAnalysis(caseId)
-      setAnalysisState('done')
-      try {
-        const updated = await fetchDocuments(caseId)
-        setDocs(updated)
-      } catch { /* non-fatal */ }
+      await runCaseAnalysis(caseId)   // 202 — job kicked off, returns immediately
     } catch {
       setAnalysisState('failed')
-    } finally {
-      setTimeout(() => setAnalysisState('idle'), 2000)
+      toast.error('Failed to start analysis. Please try again.')
+      setTimeout(() => setAnalysisState('idle'), 3000)
+      return
     }
+
+    // Poll until last_analysed_at changes (backend writes it when all 4 stages finish)
+    const pollRef = setInterval(async () => {
+      try {
+        const updated = await fetchCase(caseId)
+        if (updated.last_analysed_at && updated.last_analysed_at !== beforeTimestamp) {
+          clearInterval(pollRef)
+          clearTimeout(safetyRef)
+          setCaseData(updated)
+          setAnalysisState('done')
+          toast.success('Analysis complete — refresh the tab to see updated results.', { duration: 5000 })
+          setTimeout(() => setAnalysisState('idle'), 4000)
+        }
+      } catch { /* keep polling */ }
+    }, 3000)
+
+    // Safety: stop after 3 minutes no matter what
+    const safetyRef = setTimeout(() => {
+      clearInterval(pollRef)
+      setAnalysisState('idle')
+      toast('Analysis is taking longer than expected — check back shortly.', { icon: '⏳', duration: 5000 })
+    }, 180000)
   }
 
   function handleLeftDragStart(e: React.MouseEvent) {
@@ -602,6 +629,14 @@ export default function CaseWorkspacePage() {
         </div>
       </div>
 
+      {/* Analysis running banner — visible from any tab */}
+      {analysisState === 'running' && (
+        <div className="shrink-0 bg-[#1558D4]/8 border-b border-[#1558D4]/20 px-5 py-2 flex items-center gap-2.5">
+          <span className="w-3.5 h-3.5 border-2 border-[#1558D4]/30 border-t-[#1558D4] rounded-full animate-spin shrink-0" />
+          <p className="text-xs font-medium text-[#1558D4]">Analysis running — AI is reasoning across all documents. This takes 20–30 seconds…</p>
+        </div>
+      )}
+
       {/* Findings tab */}
       {activeSubtab === 'Findings' && (
         <FindingsPanel caseId={caseId!} docs={docs} onRunAnalysis={handleRunAnalysis} analysisState={analysisState} />
@@ -614,7 +649,7 @@ export default function CaseWorkspacePage() {
 
       {/* Entity Graph tab */}
       {activeSubtab === 'Entity Graph' && (
-        <EntityGraphPanel caseId={caseId!} onRunAnalysis={handleRunAnalysis} analysisState={analysisState} />
+        <EntityGraphPanel caseId={caseId!} docs={docs} onRunAnalysis={handleRunAnalysis} analysisState={analysisState} />
       )}
 
       {/* Report tab */}
@@ -636,9 +671,9 @@ export default function CaseWorkspacePage() {
             </div>
       )}
 
-      {/* Workspace — three-panel layout */}
-      {activeSubtab === 'Workspace' && (
-        <div className="flex flex-1 overflow-hidden" ref={panelContainerRef}>
+      {/* Workspace — always mounted so chat history survives tab switches */}
+      <div className="flex flex-1 overflow-hidden" ref={panelContainerRef}
+        style={{ display: activeSubtab === 'Workspace' ? 'flex' : 'none' }}>
 
           {/* Left panel */}
           <aside
@@ -922,7 +957,6 @@ export default function CaseWorkspacePage() {
             )}
           </aside>
         </div>
-      )}
     </div>
   )
 }

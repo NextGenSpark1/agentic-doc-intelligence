@@ -4,6 +4,12 @@
 -- MIGRATIONS — run once in the Supabase SQL editor if upgrading an existing database:
 ALTER TABLE extractions ADD COLUMN IF NOT EXISTS summary text;
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS schema_fields jsonb DEFAULT '[]'::jsonb;
+-- Per-user isolation: each case is owned by the Supabase user who created it.
+-- Existing rows keep NULL and remain visible to all authenticated users (safe migration path).
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS owner_id text;
+-- Finding traceability: stores the top matching chunk(s) per finding as {document_id, chunk_id, page, quoted_text}.
+-- Populated automatically after analysis; empty on old findings until analysis is re-run.
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS supporting_chunks jsonb DEFAULT '[]'::jsonb;
 ALTER TABLE chunks ADD COLUMN IF NOT EXISTS type text DEFAULT 'text';
 
 -- LLM case-reasoning pass on top of the rule-based stages: every findings/entities/
@@ -154,6 +160,29 @@ create table if not exists audit_log (
     detail    jsonb default '{}'::jsonb,
     at        timestamptz not null default now()
 );
+
+-- ----------- per-document vector search (for finding traceability) ----------
+CREATE OR REPLACE FUNCTION match_chunks_in_document(
+    p_document_id text,
+    p_query_embedding vector(1536),
+    p_match_count int
+)
+RETURNS TABLE (
+    document_id text,
+    chunk_id text,
+    text text,
+    page int,
+    bbox jsonb,
+    similarity float
+)
+LANGUAGE sql STABLE AS $$
+    SELECT c.document_id, c.chunk_id, c.text, c.page, c.bbox,
+           1 - (c.embedding <=> p_query_embedding) AS similarity
+    FROM chunks c
+    WHERE c.document_id = p_document_id AND c.embedding IS NOT NULL
+    ORDER BY c.embedding <=> p_query_embedding
+    LIMIT p_match_count;
+$$;
 
 -- ------------------- vector search RPC for chat ------------------
 create or replace function match_chunks(

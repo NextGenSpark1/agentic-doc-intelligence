@@ -8,6 +8,14 @@ interface Props {
 
 marked.setOptions({ gfm: true, breaks: true })
 
+const ALL_SECTIONS = [
+  'Executive Summary',
+  'Background',
+  'Key Findings',
+  'Risk Assessment',
+  'Recommendations',
+]
+
 const PRINT_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -33,14 +41,27 @@ export default function ReportPanel({ caseId }: Props) {
   const [markdown, setMarkdown] = useState<string | null>(null)
   const [findingCount, setFindingCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [sections, setSections] = useState<Set<string>>(new Set(ALL_SECTIONS))
+  const [instructions, setInstructions] = useState('')
 
   const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+
+  function toggleSection(s: string) {
+    setSections(prev => {
+      const next = new Set(prev)
+      if (next.has(s)) { if (next.size > 1) next.delete(s) } else next.add(s)
+      return next
+    })
+  }
 
   async function handleGenerate() {
     setState('loading')
     setError(null)
     try {
-      const result = await generateReport(caseId)
+      const result = await generateReport(caseId, {
+        sections: ALL_SECTIONS.filter(s => sections.has(s)),
+        instructions: instructions.trim(),
+      })
       setMarkdown(result.markdown)
       setFindingCount(result.finding_count)
       setState('done')
@@ -86,28 +107,67 @@ export default function ReportPanel({ caseId }: Props) {
 
   if (state === 'idle' || state === 'error') {
     return (
-      <div className="flex-1 bg-canvas-deep flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4 text-center px-6 max-w-sm">
-          <div className="w-12 h-12 bg-panel border border-border rounded-xl flex items-center justify-center">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4A5568" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="9" y1="13" x2="15" y2="13" />
-              <line x1="9" y1="17" x2="15" y2="17" />
-            </svg>
+      <div className="flex-1 bg-canvas-deep overflow-y-auto">
+        <div className="max-w-lg mx-auto py-12 px-6 flex flex-col gap-6">
+
+          {/* Header */}
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="w-12 h-12 bg-panel border border-border rounded-xl flex items-center justify-center">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4A5568" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="9" y1="13" x2="15" y2="13" />
+                <line x1="9" y1="17" x2="15" y2="17" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-text-mid">Generate Investigation Report</p>
+              <p className="text-xs text-text-mute mt-1">
+                Compiles confirmed findings into a structured report. Choose what to include below.
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="text-sm font-semibold text-text-mid">Generate Investigation Report</p>
-            <p className="text-xs text-text-mute mt-1">
-              Compiles confirmed findings into a structured report with executive summary, risk assessment, and recommendations.
-            </p>
+
+          {/* Sections */}
+          <div className="bg-panel border border-border rounded-xl px-5 py-4 flex flex-col gap-3">
+            <p className="text-xs font-semibold text-text-mid uppercase tracking-wider">Sections to include</p>
+            <div className="flex flex-wrap gap-2">
+              {ALL_SECTIONS.map(s => (
+                <button
+                  key={s}
+                  onClick={() => toggleSection(s)}
+                  className="text-xs font-medium px-3 py-1.5 rounded-full border transition-colors duration-150"
+                  style={{
+                    background: sections.has(s) ? '#0E7C86' : 'transparent',
+                    color: sections.has(s) ? '#fff' : '#64748B',
+                    borderColor: sections.has(s) ? '#0E7C86' : '#CBD5E1',
+                  }}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* Custom instructions */}
+          <div className="bg-panel border border-border rounded-xl px-5 py-4 flex flex-col gap-3">
+            <p className="text-xs font-semibold text-text-mid uppercase tracking-wider">Custom instructions <span className="font-normal normal-case tracking-normal text-text-mute">(optional)</span></p>
+            <textarea
+              value={instructions}
+              onChange={e => setInstructions(e.target.value)}
+              placeholder="e.g. Focus on financial irregularities. Write for a non-technical audience. Include a recommendations section with specific next steps."
+              rows={3}
+              className="text-sm text-text bg-canvas-deep border border-border rounded-lg px-3 py-2.5 resize-none placeholder:text-text-mute focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal transition-colors"
+            />
+          </div>
+
           {error && (
-            <p className="text-xs text-red bg-red-bg border border-red/20 rounded px-3 py-2">{error}</p>
+            <p className="text-xs text-red bg-red-bg border border-red/20 rounded px-3 py-2 text-center">{error}</p>
           )}
+
           <button
             onClick={handleGenerate}
-            className="px-5 py-2 text-sm font-semibold text-white bg-navy rounded-lg hover:bg-navy-soft transition-colors duration-150"
+            className="self-center px-6 py-2.5 text-sm font-semibold text-white bg-navy rounded-lg hover:bg-navy-soft transition-colors duration-150"
           >
             Generate Report
           </button>
@@ -139,6 +199,12 @@ export default function ReportPanel({ caseId }: Props) {
             ? 'Generated from case details (no confirmed findings)'
             : `Based on ${findingCount} confirmed finding${findingCount !== 1 ? 's' : ''}`}
         </p>
+        <button
+          onClick={() => setState('idle')}
+          className="text-xs text-text-mute hover:text-text border border-border hover:border-border-strong rounded px-3 py-1.5 transition-colors duration-150"
+        >
+          Reconfigure
+        </button>
         <button
           onClick={handleGenerate}
           className="text-xs text-text-mute hover:text-text border border-border hover:border-border-strong rounded px-3 py-1.5 transition-colors duration-150"

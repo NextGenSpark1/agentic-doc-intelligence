@@ -117,8 +117,13 @@ export async function fetchTimeline(caseId: string): Promise<TimelineEvent[]> {
   return response.data.events
 }
 
-export async function generateReport(caseId: string): Promise<{ markdown: string; finding_count: number }> {
-  const response = await client.post<{ markdown: string; finding_count: number }>(`/cases/${caseId}/report`)
+export interface ReportOptions {
+  sections?: string[]
+  instructions?: string
+}
+
+export async function generateReport(caseId: string, options?: ReportOptions): Promise<{ markdown: string; finding_count: number }> {
+  const response = await client.post<{ markdown: string; finding_count: number }>(`/cases/${caseId}/report`, options ?? {})
   return response.data
 }
 
@@ -133,7 +138,7 @@ export async function fetchFindings(caseId: string): Promise<Finding[]> {
 
 export async function reviewFinding(
   findingId: string,
-  status: 'confirmed' | 'dismissed',
+  status: 'confirmed' | 'dismissed' | 'pending',
   reviewedBy: string,
   dismissalReason?: string,
 ): Promise<Finding> {
@@ -157,6 +162,26 @@ export async function sendChatMessage(
     history,
   })
   return response.data
+}
+
+export interface GraphState {
+  node_positions: Record<string, { x: number; y: number }>
+  manual_edges: Array<{ id: string; source: string; target: string; label?: string }>
+}
+
+export async function fetchGraphState(caseId: string): Promise<GraphState | null> {
+  try {
+    const response = await client.get<GraphState>(`/cases/${caseId}/graph-state`)
+    const s = response.data
+    if (!s || !s.node_positions) return null
+    return s
+  } catch {
+    return null
+  }
+}
+
+export async function saveGraphState(caseId: string, state: GraphState): Promise<void> {
+  await client.put(`/cases/${caseId}/graph-state`, state)
 }
 
 export async function uploadDocumentWithProgress(

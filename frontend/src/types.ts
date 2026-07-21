@@ -16,6 +16,7 @@ export interface Case {
   allegation_summary: string
   risk_score: number
   created_at: string
+  last_analysed_at?: string
   doc_count?: number
   schema_fields: SchemaField[]
 }
@@ -58,6 +59,13 @@ export interface Citation {
   chunk_id: string
 }
 
+export interface FindingChunk {
+  document_id: string
+  chunk_id: string
+  page: number | null
+  quoted_text: string
+}
+
 export interface Finding {
   finding_id: string
   case_id: string
@@ -66,10 +74,12 @@ export interface Finding {
   confidence: number
   statement: string
   supporting_document_ids: string[]
+  supporting_chunks?: FindingChunk[]
   human_review_status: string
   reviewed_by?: string
   reviewed_at?: string
   dismissal_reason?: string
+  source?: string
 }
 
 export interface Entity {

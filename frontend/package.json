@@ -10,10 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^3.0.0",
     "@supabase/supabase-js": "^2.108.2",
     "@types/marked": "^5.0.2",
     "@xyflow/react": "^12.11.1",
     "axios": "^1.18.1",
+    "elkjs": "^0.12.0",
     "lucide-react": "^1.21.0",
     "marked": "^18.0.5",
     "react": "^19.2.6",
@@ -24,6 +26,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/dagre": "^0.7.54",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

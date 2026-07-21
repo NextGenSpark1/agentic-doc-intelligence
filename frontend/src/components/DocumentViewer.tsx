@@ -90,6 +90,7 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
   const [pdfSplit, setPdfSplit] = useState(60)
   const splitContainerRef = useRef<HTMLDivElement | null>(null)
   const isDraggingRef = useRef(false)
+  const [showEmptyFields, setShowEmptyFields] = useState(false)
 
   function handleDragStart(e: React.MouseEvent) {
     e.preventDefault()
@@ -233,6 +234,9 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
 
   const status = doc.extraction_status
   const fieldEntries = extraction ? Object.entries(extraction.extracted_json) : []
+  const filledEntries = fieldEntries.filter(([, val]) => renderFieldValue(val) !== '—')
+  const emptyEntries  = fieldEntries.filter(([, val]) => renderFieldValue(val) === '—')
+  const visibleEntries = showEmptyFields ? fieldEntries : filledEntries
 
   return (
     <div className="flex flex-col h-full" ref={containerRef}>
@@ -481,12 +485,16 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
                 <p className="text-xs text-text-mute text-center py-8">No fields extracted.</p>
               )}
 
+              {status === 'done' && extraction && filledEntries.length === 0 && emptyEntries.length === 0 && (
+                <p className="text-xs text-text-mute text-center py-8">No fields extracted.</p>
+              )}
+
               {status === 'done' && extraction && fieldEntries.length > 0 && (
                 <div className="flex flex-col">
                   <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider px-4 pt-3 pb-1">
                     {extraction.schema_name ?? 'Fields'}
                   </p>
-                  {fieldEntries.map(([key, val]) => {
+                  {visibleEntries.map(([key, val]) => {
                     const str = renderFieldValue(val)
                     const locatable = str !== '—'
                     const isLocated = locatable && locatedChunk !== null && findChunkForField(str) === locatedChunk
@@ -520,6 +528,16 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
                       </div>
                     )
                   })}
+                  {emptyEntries.length > 0 && (
+                    <button
+                      onClick={() => setShowEmptyFields(v => !v)}
+                      className="w-full py-2.5 text-[10px] font-medium text-text-mute hover:text-text hover:bg-panel-2 transition-colors duration-150 border-t border-border"
+                    >
+                      {showEmptyFields
+                        ? `Hide ${emptyEntries.length} empty field${emptyEntries.length !== 1 ? 's' : ''}`
+                        : `Show ${emptyEntries.length} empty field${emptyEntries.length !== 1 ? 's' : ''}`}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -583,7 +601,23 @@ export default function DocumentViewer({ doc, caseId, onExtract, jumpToPage, onJ
           {status === 'done' && summary && (
             <div className="p-5">
               <div className="rounded-lg border border-border bg-canvas p-5 flex flex-col gap-3">
-                <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">AI Summary</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">AI Summary</p>
+                  <button
+                    onClick={() => {
+                      setSummary(undefined)
+                      setSummaryError(null)
+                      if (doc) {
+                        fetchSummary(caseId, doc.document_id)
+                          .then(data => setSummary(data?.summary ?? null))
+                          .catch((err: Error) => { setSummaryError(err.message); setSummary(null) })
+                      }
+                    }}
+                    className="text-[10px] font-semibold text-text-mute hover:text-teal transition-colors duration-150"
+                  >
+                    Regenerate
+                  </button>
+                </div>
                 <p className="text-sm leading-relaxed text-text">{summary}</p>
               </div>
             </div>

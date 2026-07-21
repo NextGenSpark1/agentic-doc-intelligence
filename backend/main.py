@@ -14,7 +14,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -146,6 +146,13 @@ async def health():
 
 
 # ------------------------------ cases -----------------------------
+def _assert_case_access(case: dict, user_id: str) -> None:
+    """Raise 403 if the case has an owner and it isn't the current user."""
+    owner = case.get("owner_id")
+    if owner and owner != user_id:
+        raise HTTPException(403, "access denied")
+
+
 @app.post("/cases", status_code=201)
 async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
     case_id = f"INV-{datetime.now().year}-{uuid.uuid4().hex[:4].upper()}"
@@ -157,6 +164,7 @@ async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
         "lead_investigator": body.lead_investigator,
         "allegation_summary": body.allegation_summary,
         "schema_fields": body.schema_fields,
+        "owner_id": user["user_id"],
         "risk_score": 0.0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -167,9 +175,7 @@ async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
 
 @app.get("/cases")
 async def list_cases(user: dict = Depends(get_current_user)):
-    cases = await asyncio.to_thread(db.list_cases)
-    # Stats for the Cases page header cards
-    docs_total = 0
+    cases = await asyncio.to_thread(db.list_cases, user["user_id"])
     pending = 0
     enriched = []
     for c in cases:
@@ -177,7 +183,8 @@ async def list_cases(user: dict = Depends(get_current_user)):
         pending += sum(1 for f in findings if f.get("human_review_status") == "pending")
         docs = await asyncio.to_thread(db.list_documents, c["case_id"])
         enriched.append({**c, "doc_count": len(docs)})
-    return {"cases": enriched, "stats": {"open_cases": len(cases), "findings_pending_review": pending}}
+    open_cases = sum(1 for c in enriched if c.get("status", "").lower() in ("active", "pending review"))
+    return {"cases": enriched, "stats": {"open_cases": open_cases, "findings_pending_review": pending}}
 
 
 @app.get("/cases/{case_id}")
@@ -185,6 +192,7 @@ async def get_case(case_id: str, user: dict = Depends(get_current_user)):
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
+    _assert_case_access(case, user["user_id"])
     return case
 
 
@@ -193,6 +201,7 @@ async def update_case(case_id: str, body: CasePatch, user: dict = Depends(get_cu
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
+    _assert_case_access(case, user["user_id"])
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
     if not patch:
         raise HTTPException(400, "no fields to update")
@@ -205,7 +214,36 @@ async def delete_case(case_id: str, user: dict = Depends(get_current_user)):
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
+    _assert_case_access(case, user["user_id"])
     await asyncio.to_thread(db.delete_case, case_id)
+
+
+class GraphStatePayload(BaseModel):
+    node_positions: dict = {}
+    manual_edges: list = []
+
+
+class ReportRequest(BaseModel):
+    sections: list[str] = ["Executive Summary", "Background", "Key Findings", "Risk Assessment", "Recommendations"]
+    instructions: str = ""
+
+
+@app.get("/cases/{case_id}/graph-state")
+async def get_graph_state(case_id: str, user: dict = Depends(get_current_user)):
+    case = await asyncio.to_thread(db.get_case, case_id)
+    if not case:
+        raise HTTPException(404, "case not found")
+    _assert_case_access(case, user["user_id"])
+    return case.get("graph_state") or {}
+
+
+@app.put("/cases/{case_id}/graph-state", status_code=204)
+async def save_graph_state(case_id: str, body: GraphStatePayload, user: dict = Depends(get_current_user)):
+    case = await asyncio.to_thread(db.get_case, case_id)
+    if not case:
+        raise HTTPException(404, "case not found")
+    _assert_case_access(case, user["user_id"])
+    await asyncio.to_thread(db.update_case, case_id, {"graph_state": body.model_dump()})
 
 
 # ---------------------------- documents ---------------------------
@@ -235,6 +273,13 @@ async def upload_document(case_id: str, file: UploadFile = File(...), user: dict
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
     }
     created = await asyncio.to_thread(db.insert_document, record)
+
+    # Auto-promote case from intake → active when the first document arrives
+    case_patch: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    if case.get("status", "").lower() == "intake":
+        case_patch["status"] = "active"
+    await asyncio.to_thread(db.update_case, case_id, case_patch)
+
     return created
 
 
@@ -292,9 +337,13 @@ async def get_document_summary(case_id: str, document_id: str, user: dict = Depe
     if not extraction:
         raise HTTPException(404, "no extraction available for this document")
 
-    # Return cached summary — but regenerate if it's an old-style fallback dump
+    # Return cached summary — regenerate if it's stale (old fallback or old preamble format)
     cached = extraction.get("summary") or ""
-    if cached and not cached.startswith("Extracted "):
+    _stale = (
+        cached.startswith("Extracted ")
+        or bool(re.match(r"here(?:'s| is)(?: a)? (?:summary|brief)", cached, re.IGNORECASE))
+    )
+    if cached and not _stale:
         return {"summary": cached}
 
     fields = extraction.get("extracted_json") or {}
@@ -306,12 +355,19 @@ async def get_document_summary(case_id: str, document_id: str, user: dict = Depe
             tier="fast",
             messages=[
                 {"role": "system", "content": (
-                    "Summarize this document in 2-3 plain sentences for an investigator "
-                    "reviewing case evidence. Be factual, don't speculate beyond what's given."
+                    "You are assisting a forensic investigator. Write a concise 2-3 sentence "
+                    "factual summary of the document using only the extracted fields provided. "
+                    "Start directly with the facts — no preamble, no 'Here is a summary', "
+                    "no meta-commentary. Include key names, amounts, dates, and identifiers."
                 )},
                 {"role": "user", "content": f"Document type: {schema_name}\n\nExtracted fields:\n{fields_text}"},
             ],
         )
+        # Strip any LLM preamble the model still produces despite instructions
+        summary = re.sub(
+            r"^(?:here(?:'s| is)(?: a)? (?:summary|brief summary)[^:]*:\s*|summary:\s*)",
+            "", summary, flags=re.IGNORECASE,
+        ).strip()
     except Exception:
         summary = _fallback_summary(fields, schema_name)
 
@@ -354,6 +410,7 @@ async def run_analysis(case_id: str, background: BackgroundTasks, user: dict = D
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
+    await asyncio.to_thread(db.update_case, case_id, {"updated_at": datetime.now(timezone.utc).isoformat()})
     background.add_task(pipeline.run_case_analysis, case_id)
     return {"status": "analysis_started", "case_id": case_id}
 
@@ -381,33 +438,50 @@ async def get_findings(case_id: str, user: dict = Depends(get_current_user)):
 
 
 @app.post("/cases/{case_id}/report")
-async def generate_report(case_id: str, user: dict = Depends(get_current_user)):
+async def generate_report(
+    case_id: str,
+    user: dict = Depends(get_current_user),
+    body: ReportRequest = Body(default=None),
+):
     """Generate a markdown investigation report from confirmed findings."""
+    if body is None:
+        body = ReportRequest()
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
 
     all_findings = await asyncio.to_thread(db.list_findings, case_id)
     confirmed = [f for f in all_findings if f.get("human_review_status") == "confirmed"]
+    docs = await asyncio.to_thread(db.list_documents, case_id)
+    doc_name_map = {d["document_id"]: d["filename"] for d in docs}
 
     if not confirmed:
         findings_text = "No confirmed findings available. All findings are pending review."
     else:
-        findings_text = "\n".join(
-            f"- [{f['severity'].upper()}] {f['statement']} (confidence: {int(f['confidence'] * 100)}%)"
-            for f in confirmed
-        )
+        lines = []
+        for f in confirmed:
+            doc_names = [doc_name_map.get(d, d) for d in (f.get("supporting_document_ids") or [])]
+            source_note = f" [Source: {', '.join(doc_names)}]" if doc_names else ""
+            lines.append(f"- [{f['severity'].upper()}] {f['statement']}{source_note}")
+        findings_text = "\n".join(lines)
+
+    sections_str = ", ".join(body.sections) if body.sections else "Executive Summary, Background, Key Findings, Risk Assessment, Recommendations"
+    custom_note = f"\n\nAdditional instructions from the investigator: {body.instructions.strip()}" if body.instructions.strip() else ""
 
     prompt = (
-        f"You are producing a formal investigation report for the following case.\n\n"
-        f"Case: {case['title']}\n"
-        f"Type: {case['case_type']}\n"
+        f"You are producing a formal forensic investigation report.\n\n"
+        f"Case Title: {case['title']}\n"
+        f"Case Type: {case['case_type']}\n"
         f"Lead Investigator: {case['lead_investigator']}\n"
         f"Allegation: {case.get('allegation_summary', 'N/A')}\n\n"
-        f"Confirmed Findings:\n{findings_text}\n\n"
-        "Write a structured investigation report in markdown with sections: "
-        "Executive Summary, Background, Key Findings, Risk Assessment, Recommendations. "
-        "Be factual and professional. Do not speculate beyond the provided findings."
+        f"Confirmed Findings (human-reviewed and approved):\n{findings_text}\n\n"
+        f"Write a professional investigation report in markdown. "
+        f"Include ONLY these sections (in this order): {sections_str}. "
+        "Ground every statement in the confirmed findings above — do not speculate, do not add facts not present. "
+        "Use professional forensic language. Be specific: include amounts, dates, entity names where available. "
+        "In the Key Findings section, cite the source document name for each finding in parentheses. "
+        "Do not include confidence percentages. Keep the Executive Summary to 3-4 sentences. "
+        f"Recommendations should be actionable.{custom_note}"
     )
 
     try:
@@ -437,8 +511,8 @@ LLM generation failed. This is a fallback template. Configure LLM_API_KEY to ena
 @app.patch("/findings/{finding_id}/review")
 async def review_finding(finding_id: str, body: FindingReview, user: dict = Depends(get_current_user)):
     """Phase 5 — human-in-the-loop. Investigator confirms or dismisses a finding."""
-    if body.status not in ("confirmed", "dismissed"):
-        raise HTTPException(400, "status must be 'confirmed' or 'dismissed'")
+    if body.status not in ("confirmed", "dismissed", "pending"):
+        raise HTTPException(400, "status must be 'confirmed', 'dismissed', or 'pending'")
     patch = {
         "human_review_status": body.status,
         "reviewed_by": body.reviewed_by,
@@ -446,6 +520,13 @@ async def review_finding(finding_id: str, body: FindingReview, user: dict = Depe
         "dismissal_reason": body.dismissal_reason,
     }
     updated = await asyncio.to_thread(db.update_finding, finding_id, patch)
+    case_id = updated.get("case_id", "unknown")
+    await asyncio.to_thread(db.update_case, case_id, {"updated_at": datetime.now(timezone.utc).isoformat()})
+    if body.status != "pending":
+        await asyncio.to_thread(db.write_audit, case_id, body.reviewed_by, f"finding_{body.status}", {
+            "finding_id": finding_id,
+            "dismissal_reason": body.dismissal_reason,
+        })
     return updated
 
 
@@ -473,22 +554,55 @@ async def chat(case_id: str, body: ChatRequest, user: dict = Depends(get_current
         return ChatResponse(answer="I couldn't find anything relevant in this case's documents yet.",
                             citations=[])
 
-    # 2. Build grounded context and answer
-    context = "\n\n".join(f"[{i+1}] {_strip_html(c['text'])}" for i, c in enumerate(chunks))
+    # 2. Build grounded context — RAG chunks + structured case intelligence
+    doc_context = "\n\n".join(f"[{i+1}] {_strip_html(c['text'])}" for i, c in enumerate(chunks))
+
+    # Load structured intelligence already built on this case
+    try:
+        entities = await asyncio.to_thread(db.list_entities, case_id)
+        all_findings = await asyncio.to_thread(db.list_findings, case_id)
+        confirmed_findings = [f for f in all_findings if f.get("human_review_status") == "confirmed"]
+        relationships = await asyncio.to_thread(db.list_relationships, case_id)
+    except Exception:
+        entities, confirmed_findings, relationships = [], [], []
+
+    structured_parts = []
+    if entities:
+        ent_lines = [f"  - {e.get('entity_type','?').upper()}: {e.get('canonical_name','')} (aliases: {', '.join(e.get('aliases') or [])})" for e in entities[:30]]
+        structured_parts.append("ENTITIES IDENTIFIED IN CASE:\n" + "\n".join(ent_lines))
+    if confirmed_findings:
+        f_lines = [f"  - [{f.get('severity','?').upper()}] {f.get('statement','')}" for f in confirmed_findings[:20]]
+        structured_parts.append("CONFIRMED FINDINGS (human-reviewed):\n" + "\n".join(f_lines))
+    if relationships:
+        r_lines = [f"  - {r.get('source_name','')} → {r.get('relationship_type','')} → {r.get('target_name','')}" for r in relationships[:30]]
+        structured_parts.append("RELATIONSHIPS:\n" + "\n".join(r_lines))
+
+    structured_context = "\n\n".join(structured_parts)
+
     # Keep last 6 history turns (3 exchanges) to stay within token limits
     recent_history = [
         {"role": m["role"], "content": str(m.get("content", ""))}
         for m in (body.history or [])[-6:]
         if m.get("role") in ("user", "assistant")
     ]
+    system_prompt = (
+        "You are an AI assistant for forensic investigators. "
+        "You have access to two types of context: (1) relevant document excerpts retrieved for this question, "
+        "and (2) structured intelligence already extracted from the full case (entities, confirmed findings, relationships). "
+        "Use both to answer. Cite document excerpts inline with their number [1], [2] etc. "
+        "When referencing findings or entities from the structured intelligence, say so explicitly. "
+        "Be precise and factual — if something is not supported by the provided context, say so. "
+        "Never speculate beyond what the evidence states.\n\n"
+    )
+    if structured_context:
+        system_prompt += f"CASE INTELLIGENCE:\n{structured_context}\n\n"
+    system_prompt += f"RELEVANT DOCUMENT EXCERPTS:\n{doc_context}"
+
     try:
         answer = llm.complete(
             tier="reasoning",
             messages=[
-                {"role": "system", "content":
-                    "Answer the investigator's question using ONLY the numbered context. "
-                    "Cite sources inline as [n]. If the answer isn't in the context, say so.\n\n"
-                    f"Context:\n{context}"},
+                {"role": "system", "content": system_prompt},
                 *recent_history,
                 {"role": "user", "content": body.message},
             ],

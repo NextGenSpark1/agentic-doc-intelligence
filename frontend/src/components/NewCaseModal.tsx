@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createCase } from '../api'
 import type { CreateCasePayload, SchemaField } from '../types'
 import { CASE_TYPE_OPTIONS, PRESET_SCHEMAS } from '../lib/schemaPresets'
+import { useAuth } from '../context/AuthContext'
 
 interface NewCaseModalProps {
   open: boolean
@@ -22,6 +23,7 @@ interface DraftField {
 }
 
 export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalProps) {
+  const { user } = useAuth()
   const [step, setStep] = useState<1 | 2>(1)
   const [form, setForm] = useState<Omit<CreateCasePayload, 'schema_fields'>>({
     title: '',
@@ -29,6 +31,13 @@ export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalP
     case_type: '',
     allegation_summary: '',
   })
+
+  // Auto-fill lead investigator with logged-in user's name when modal opens
+  useEffect(() => {
+    if (!open) return
+    const name = (user?.user_metadata?.full_name as string | undefined) || user?.email || ''
+    if (name) setForm(f => f.lead_investigator ? f : { ...f, lead_investigator: name })
+  }, [open, user])
   const [errors, setErrors] = useState<FormErrors>({})
   const [loading, setLoading] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -86,10 +95,6 @@ export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalP
     return PRESET_SCHEMAS[form.case_type]?.fields ?? []
   }
 
-  function maxCustomFields(): number {
-    return fromScratch ? Infinity : 5
-  }
-
   function computedSchemaFields(): SchemaField[] {
     if (fromScratch) return customFields
     return [...presetFields(), ...customFields]
@@ -102,10 +107,6 @@ export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalP
     if (!description) { setDraftError('Description is required.'); return }
     const allNames = [...presetFields().map(f => f.name), ...customFields.map(f => f.name)]
     if (allNames.includes(name)) { setDraftError('A field with that name already exists.'); return }
-    if (customFields.length >= maxCustomFields()) {
-      setDraftError(`Maximum ${maxCustomFields()} custom fields when using a preset.`)
-      return
-    }
     setCustomFields(prev => [...prev, { name, description, is_array: draft.is_array, custom: true }])
     setDraft({ name: '', description: '', is_array: false })
     setDraftError(null)
@@ -297,7 +298,7 @@ export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalP
               <div className="border border-border rounded-lg overflow-hidden">
                 <div className="px-3 py-2 bg-bg-subtle border-b border-border">
                   <span className="text-xs font-medium text-text-mute uppercase tracking-wide">
-                    Custom Fields ({customFields.length}{!fromScratch ? '/5' : ''})
+                    Custom Fields ({customFields.length})
                   </span>
                 </div>
                 <div className="divide-y divide-border max-h-32 overflow-y-auto">
@@ -322,8 +323,7 @@ export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalP
             )}
 
             {/* Add custom field form */}
-            {(fromScratch || customFields.length < 5) && (
-              <div className="border border-border-strong rounded-lg p-3 flex flex-col gap-2">
+            <div className="border border-border-strong rounded-lg p-3 flex flex-col gap-2">
                 <span className="text-xs font-medium text-text-mute uppercase tracking-wide">Add Field</span>
                 {draftError && <p className="text-xs text-red">{draftError}</p>}
                 <div className="flex gap-2">
@@ -361,8 +361,7 @@ export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalP
                     Add
                   </button>
                 </div>
-              </div>
-            )}
+            </div>
 
             {/* Footer */}
             <div className="flex items-center justify-end gap-3 pt-1">

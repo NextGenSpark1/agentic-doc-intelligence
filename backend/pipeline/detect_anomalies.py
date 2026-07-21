@@ -20,6 +20,14 @@ from __future__ import annotations
 
 import re
 import uuid
+
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_WHITESPACE_RE = re.compile(r"\s{2,}")
+
+
+def _clean_chunk_text(text: str) -> str:
+    cleaned = _HTML_TAG_RE.sub(" ", text or "")
+    return _WHITESPACE_RE.sub(" ", cleaned).strip()
 from collections import defaultdict
 from datetime import datetime, timezone
 
@@ -29,20 +37,112 @@ _SPLIT_PAYMENT_WINDOW_DAYS = 3
 _NON_NUMERIC_RE = re.compile(r"[^\d.]")
 
 _FINDINGS_PROMPT = (
-    "You are a forensic investigation analyst. Below is the full context for one case: every "
-    "document's extracted structured fields, plus the entities, relationships, and timeline "
-    "already established. Rule-based checks already caught duplicate invoices, shared bank "
-    "accounts, split payments, and budget-ceiling proximity — do NOT repeat those. Look instead "
-    "for things that need real cross-document reasoning: a vendor formed shortly before winning "
-    "a contract, a vendor sharing a director with the approving officer's other awards, "
-    "narrative inconsistencies between two documents describing the same event, circular or "
-    "round-trip payments, timing that doesn't logically add up. Every finding must cite at "
-    "least one supporting document_id that is present in the input below — never invent a "
-    "document, entity, or fact that isn't there.\n\n"
-    'Reply with strict JSON: {"findings": [{"finding_type": str, "severity": '
-    '"high"|"medium"|"low", "confidence": float, "statement": str, '
-    '"supporting_document_ids": [str, ...]}]}. Return an empty list if nothing stands out '
-    "beyond what the rules already found."
+    "You are a senior forensic analyst with expertise across procurement fraud, financial crime, "
+    "corruption, conflict of interest, money laundering, and document forgery. "
+    "You are examining a full investigation case. Below is the complete case context: every "
+    "document's extracted structured fields (including any relationship_indicators, risk_notes, "
+    "compliance_flags, or narrative observations captured during extraction), plus the entities, "
+    "relationships, and timeline already established from prior analysis passes.\n\n"
+    "Rule-based checks have already flagged duplicate invoices, shared bank accounts, split "
+    "payments, and budget-ceiling proximity — do NOT repeat those.\n\n"
+
+    "Systematically check every category below. Report any finding you can support with evidence "
+    "from the documents — do not limit yourself to the patterns listed. These are starting points, "
+    "not an exhaustive ceiling.\n\n"
+
+    "IDENTITY AND NAME PATTERNS\n"
+    "- Approving officer's surname or given name appears in the vendor/company name "
+    "(e.g. officer 'Rashid' approves 'Rashid & Farid Construction') — strong conflict indicator\n"
+    "- Director or shareholder of the vendor shares a name with a public official, officer, or "
+    "internal staff member in the awarding organisation\n"
+    "- Same person appears as both a signatory for the vendor and an approver for the awarding body\n"
+    "- Entity names that are near-identical or differ only by a word (shell company variation)\n\n"
+
+    "ADDRESS AND CONTACT OVERLAP\n"
+    "- Vendor director's registered address matches a home or emergency-contact address of an "
+    "approving officer or internal staff member found in any document\n"
+    "- Multiple vendors sharing the same registered address (possible shell/front company cluster)\n"
+    "- Same phone number, email, or contact appearing across different vendors or individuals\n"
+    "- Vendor business address is a residential address or virtual-office indicator\n\n"
+
+    "VENDOR ELIGIBILITY AND REGISTRATION\n"
+    "- Vendor incorporated or registered within 6 months of contract award\n"
+    "- Vendor age at time of award suggests no track record for a contract of that scale or complexity\n"
+    "- Vendor's stated business nature does not match the contract scope\n"
+    "- Vendor registration number, tax ID, or licence missing or inconsistent across documents\n\n"
+
+    "PROCUREMENT PROCESS INTEGRITY\n"
+    "- Open or competitive tender waived without adequate documented justification\n"
+    "- Emergency or urgent procurement clause invoked but no independent technical urgency report found\n"
+    "- Procurement steps out of logical order (award before evaluation, payment before contract, "
+    "invoice date before award date)\n"
+    "- Conflict-of-interest declaration missing, incomplete, or not submitted by the approving officer\n"
+    "- Single-source or direct negotiation used repeatedly for the same vendor or officer combination\n"
+    "- Evaluation criteria or scoring sheets absent from the procurement file\n"
+    "- Contract scope, timeline, or value modified significantly after award without re-tendering\n\n"
+
+    "FINANCIAL PATTERNS\n"
+    "- Advance or mobilisation payment processed before compliance documents were cleared\n"
+    "- Payment authorised by the same person who approved the contract award\n"
+    "- Round-number or suspiciously uniform payment amounts across multiple transactions\n"
+    "- Large advance payment (above 20–30% of contract) without performance bond or insurance\n"
+    "- Invoiced amount inflated relative to contract value or market benchmarks stated in documents\n"
+    "- Circular payment: funds flow A → B → C → back to A or a related party\n"
+    "- Layered transactions: multiple intermediaries with no clear commercial purpose\n"
+    "- Payments to a bank account not previously registered to the vendor\n"
+    "- Transaction amounts structured just below reporting or approval thresholds\n\n"
+
+    "CONFLICT OF INTEREST AND RELATED-PARTY INDICATORS\n"
+    "- Any relationship_indicators field mentioning family, business, or personal ties between "
+    "vendor parties and approving officers\n"
+    "- Director or beneficial owner of vendor is a current or former employee of the awarding body\n"
+    "- Vendor's directors or shareholders include relatives of approving officers (even if not "
+    "explicitly stated — look for surname matches or address overlaps as circumstantial evidence)\n"
+    "- Approving officer is also listed as a witness, signatory, or contact in vendor documents\n"
+    "- Risk or compliance notes in extracted fields flagging a relationship or undisclosed interest\n\n"
+
+    "DOCUMENT INTEGRITY AND CONSISTENCY\n"
+    "- Dates, amounts, reference numbers, or names that differ between documents describing the "
+    "same transaction or event\n"
+    "- A document references an attachment, report, or supporting file that is absent from the case\n"
+    "- Missing signatures, missing dates, or unsigned approvals on documents that require them\n"
+    "- A memo or review document explicitly notes missing compliance items — treat each noted gap "
+    "as a finding in its own right\n"
+    "- Document numbering gaps or sequence anomalies suggesting removed or inserted pages\n"
+    "- Fonts, formatting, or metadata inconsistencies suggesting alteration or fabrication\n\n"
+
+    "COMMUNICATION AND BEHAVIOURAL PATTERNS\n"
+    "- Communications that reveal pre-arrangement, bid coordination, or price-fixing intent\n"
+    "- Use of informal channels (personal email, messaging) for official procurement decisions\n"
+    "- Urgency language used to bypass controls ('must award today', 'waive the process')\n"
+    "- Commitments made before formal approval, suggesting decision was predetermined\n\n"
+
+    "CONCENTRATION AND SYSTEMIC RISK\n"
+    "- Multiple contracts awarded to the same vendor by the same officer across the case documents\n"
+    "- All contracts in a programme going to vendors with common directors, addresses, or bank accounts\n"
+    "- A single officer approving an unusually high volume or value of awards without countersignature\n\n"
+
+    "GROUNDING RULES — NON-NEGOTIABLE\n"
+    "Every finding must cite at least one document_id present in the input. "
+    "Never invent a document, entity, name, amount, or date not present in the provided data. "
+    "If a pattern is partially supported, state what is confirmed and what requires further investigation. "
+    "A finding that says 'cannot be confirmed from documents alone' is still valuable — flag it.\n\n"
+
+    "EVIDENCE QUOTES\n"
+    "Each document in the input includes a `text_sample` — the actual parsed text from that document. "
+    "For each finding, include a `quoted_evidence` array: for each supporting document, copy the single "
+    "most relevant sentence or short phrase VERBATIM from its `text_sample` that most directly supports "
+    "this finding. Only quote text that genuinely appears in the provided text_sample. "
+    "If no suitable passage exists in the text_sample, omit that document from quoted_evidence.\n\n"
+
+    'Reply with strict JSON: {"findings": [{"finding_type": str, '
+    '"severity": "high"|"medium"|"low", "confidence": float (0.0-1.0), '
+    '"statement": str, "supporting_document_ids": [str, ...], '
+    '"quoted_evidence": [{"document_id": str, "passage": str}]}]}.\n'
+    "Severity: high = direct evidence of fraud, violation, or undisclosed conflict; "
+    "medium = suspicious pattern that warrants investigation or escalation; "
+    "low = procedural gap, missing document, or minor irregularity worth noting.\n"
+    "Return an empty list only if there is genuinely nothing to flag."
 )
 
 
@@ -56,10 +156,10 @@ def _to_float(v) -> float:
     return float(cleaned) if cleaned else 0.0
 
 
-def _finding(ftype: str, severity: str, confidence: float, statement: str, doc_ids: list[str],
+def _finding(finding_type: str, severity: str, confidence: float, statement: str, doc_ids: list[str],
              source: str = "rule") -> dict:
     return {
-        "finding_type": ftype,
+        "finding_type": finding_type,
         "severity": severity,
         "confidence": confidence,
         "statement": statement,
@@ -152,9 +252,21 @@ def _llm_findings(case_id: str, extractions: list[dict]) -> list[dict]:
     if not valid_doc_ids:
         return []
 
+    # Build a text sample per document so the LLM can cite specific passages
+    doc_text: dict[str, str] = {}
+    for doc_id in valid_doc_ids:
+        chunks = db.list_chunks(doc_id)
+        parts = [_clean_chunk_text(c.get("text") or "") for c in chunks[:25] if c.get("text")]
+        if parts:
+            doc_text[doc_id] = "\n\n".join(parts)[:8000]
+
     payload = {
         "documents": [
-            {"document_id": ex["document_id"], "fields": ex.get("extracted_json") or {}}
+            {
+                "document_id": ex["document_id"],
+                "fields": ex.get("extracted_json") or {},
+                "text_sample": doc_text.get(ex["document_id"], ""),
+            }
             for ex in extractions
         ],
         "entities": [
@@ -186,13 +298,70 @@ def _llm_findings(case_id: str, extractions: list[dict]) -> list[dict]:
         if not statement or not doc_ids:
             continue  # ungrounded — drop rather than persist an unsupported claim
         ftype = str(item.get("finding_type") or "").strip() or "llm_detected"
-        out.append(_finding(
+
+        # Parse LLM-cited passages — only accept quotes from documents we actually sent
+        supporting_chunks = []
+        for ev in (item.get("quoted_evidence") or []):
+            if not isinstance(ev, dict):
+                continue
+            ev_doc_id = str(ev.get("document_id") or "").strip()
+            passage = str(ev.get("passage") or "").strip()
+            if ev_doc_id in valid_doc_ids and passage:
+                supporting_chunks.append({
+                    "document_id": ev_doc_id,
+                    "chunk_id": "",
+                    "page": None,
+                    "quoted_text": passage[:400],
+                })
+
+        finding = _finding(
             ftype,
             llm_reasoning.clamp_severity(item.get("severity")),
             llm_reasoning.clamp_confidence(item.get("confidence"), default=0.6),
             statement, doc_ids, source="llm",
-        ))
+        )
+        if supporting_chunks:
+            finding["supporting_chunks"] = supporting_chunks
+        out.append(finding)
     return out
+
+
+def _attach_supporting_chunks(case_id: str, persisted: list[dict]) -> None:
+    """Best-effort: for each finding, search within each cited document individually to find
+    the most relevant passage. Per-document scoping avoids one broad chunk dominating all findings.
+    Failures are silently skipped — the finding is already persisted regardless."""
+    from .. import db, llm
+
+    if not persisted:
+        return
+    try:
+        statements = [f["statement"] for f in persisted]
+        embeddings = llm.embed(statements)
+    except Exception:
+        return  # embedding unavailable — skip, non-critical
+
+    for finding, embedding in zip(persisted, embeddings):
+        if not embedding:
+            continue
+        try:
+            doc_ids = (finding.get("supporting_document_ids") or [])[:2]  # cap at 2 docs
+            passages = []
+            for doc_id in doc_ids:
+                # Search within this specific document only — avoids case-wide bias
+                chunks = db.match_chunks_in_document(doc_id, embedding, 1)
+                if not chunks:
+                    continue
+                chunk = chunks[0]
+                passages.append({
+                    "document_id": doc_id,
+                    "chunk_id": chunk.get("chunk_id", ""),
+                    "page": chunk.get("page") or None,
+                    "quoted_text": _clean_chunk_text(chunk.get("text") or "")[:300],
+                })
+            if passages:
+                db.update_finding(finding["finding_id"], {"supporting_chunks": passages})
+        except Exception:
+            continue  # skip this finding, non-critical
 
 
 def detect(case_id: str) -> list[dict]:
@@ -218,4 +387,8 @@ def detect(case_id: str) -> list[dict]:
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         persisted.append(db.insert_finding(row))
+
+    # Vector search fallback only for findings the LLM didn't already quote
+    needs_chunks = [f for f in persisted if not f.get("supporting_chunks")]
+    _attach_supporting_chunks(case_id, needs_chunks)
     return persisted
