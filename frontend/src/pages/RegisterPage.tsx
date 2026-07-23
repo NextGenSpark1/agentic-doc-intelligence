@@ -52,6 +52,31 @@ export default function RegisterPage() {
     }
   }
 
+  // No invite token → registration is closed
+  if (!inviteToken) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-canvas px-6">
+        <div className="w-full max-w-sm text-center">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-navy/10 mb-5">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-navy">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </div>
+          <h1 className="text-xl font-semibold text-text mb-2">Registration by invitation only</h1>
+          <p className="text-sm text-text-mute mb-6 leading-relaxed max-w-xs mx-auto">
+            NextGen Spark is a closed platform. Ask your organisation admin to send you an invitation link.
+          </p>
+          <Link
+            to="/login"
+            className="inline-flex items-center gap-2 bg-navy hover:bg-navy-soft text-white font-semibold py-2.5 px-6 rounded-lg text-sm transition-colors"
+          >
+            Go to sign in
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex">
 

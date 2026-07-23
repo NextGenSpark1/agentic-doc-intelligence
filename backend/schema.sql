@@ -2,6 +2,9 @@
 -- Run in the Supabase SQL editor. Enables pgvector for RAG.
 
 -- MIGRATIONS — run once in the Supabase SQL editor if upgrading an existing database:
+-- Team-level isolation: who created the case (supervisor's user_id).
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS created_by text;
+CREATE INDEX IF NOT EXISTS idx_cases_created_by ON cases(created_by);
 ALTER TABLE extractions ADD COLUMN IF NOT EXISTS summary text;
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS schema_fields jsonb DEFAULT '[]'::jsonb;
 -- Per-user isolation: each case is owned by the Supabase user who created it.

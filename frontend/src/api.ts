@@ -196,7 +196,7 @@ export async function fetchOrgMembers(orgId: string): Promise<{ members: OrgMemb
   return res.data
 }
 
-export async function inviteMember(orgId: string, email: string, role: string, name?: string): Promise<{ invite_link: string; invite_token: string; email: string; role: string }> {
+export async function inviteMember(orgId: string, email: string, role: string, name?: string): Promise<{ invite_link: string; invite_token: string; email: string; role: string; email_sent: boolean }> {
   const res = await client.post(`/orgs/${orgId}/invite`, { email, role, name })
   return res.data
 }

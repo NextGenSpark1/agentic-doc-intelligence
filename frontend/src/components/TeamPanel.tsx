@@ -22,7 +22,7 @@ export default function TeamPanel() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<'supervisor' | 'member'>('member')
   const [inviting, setInviting] = useState(false)
-  const [lastInviteLink, setLastInviteLink] = useState<string | null>(null)
+  const [lastInvite, setLastInvite] = useState<{ email: string; link: string; emailSent: boolean } | null>(null)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -48,7 +48,11 @@ export default function TeamPanel() {
     setError(null)
     try {
       const result = await inviteMember(orgId, inviteEmail, inviteRole)
-      setLastInviteLink(window.location.origin + '/invite/' + result.invite_token)
+      setLastInvite({
+        email: inviteEmail,
+        link: window.location.origin + '/invite/' + result.invite_token,
+        emailSent: result.email_sent === true,
+      })
       setInviteEmail('')
     } catch (e: unknown) {
       setError((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Failed to send invitation.')
@@ -68,8 +72,8 @@ export default function TeamPanel() {
   }
 
   function copyLink() {
-    if (lastInviteLink) {
-      navigator.clipboard.writeText(lastInviteLink)
+    if (lastInvite) {
+      navigator.clipboard.writeText(lastInvite.link)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }
@@ -121,12 +125,34 @@ export default function TeamPanel() {
             </button>
           </div>
           {error && <p className="text-xs text-red-500">{error}</p>}
-          {lastInviteLink && (
-            <div className="flex items-center gap-2 bg-teal/5 border border-teal/20 rounded-lg px-3 py-2">
-              <p className="text-xs text-text-mid flex-1 font-mono truncate">{lastInviteLink}</p>
-              <button onClick={copyLink} className="text-xs font-semibold text-teal hover:text-teal-soft whitespace-nowrap">
-                {copied ? 'Copied!' : 'Copy link'}
-              </button>
+          {lastInvite && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 bg-teal/5 border border-teal/20 rounded-lg px-3 py-2.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E7C86" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <p className="text-xs text-teal flex-1">
+                  {lastInvite.emailSent
+                    ? <>Invitation email sent to <strong>{lastInvite.email}</strong></>
+                    : <>Invitation created for <strong>{lastInvite.email}</strong> — share the link below</>}
+                </p>
+              </div>
+              {!lastInvite.emailSent && (
+                <div className="flex items-center gap-2 bg-canvas-deep border border-border rounded-lg px-3 py-2">
+                  <p className="text-xs text-text-mute flex-1 font-mono truncate">{lastInvite.link}</p>
+                  <button onClick={copyLink} className="text-xs font-semibold text-teal hover:text-teal-soft whitespace-nowrap">
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              )}
+              {lastInvite.emailSent && (
+                <div className="flex items-center gap-2">
+                  <p className="text-[10px] text-text-mute">Didn't receive it? </p>
+                  <button onClick={copyLink} className="text-[10px] font-semibold text-teal hover:text-teal-soft">
+                    {copied ? 'Copied!' : 'Copy link instead'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

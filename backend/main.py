@@ -147,8 +147,28 @@ async def health():
 
 
 # ------------------------------ cases -----------------------------
-def _assert_case_access(case: dict, user_id: str) -> None:
-    """Raise 403 if the case has an owner and it isn't the current user."""
+def _assert_case_access(case: dict, user_id: str, membership: dict | None = None) -> None:
+    """Raise 403 if the requesting user should not access this case.
+
+    With team isolation: org_admin sees all org cases; supervisor sees their own;
+    member sees their supervisor's. Without membership (no org yet), falls back to owner_id.
+    """
+    if membership:
+        if case.get("org_id") != membership.get("org_id"):
+            raise HTTPException(403, "access denied")
+        role = membership.get("role")
+        if role == "org_admin":
+            return
+        case_creator = case.get("created_by")
+        if role == "supervisor":
+            if case_creator and case_creator != user_id:
+                raise HTTPException(403, "access denied")
+        elif role == "member":
+            supervisor_id = membership.get("invited_by")
+            if case_creator and case_creator != supervisor_id:
+                raise HTTPException(403, "access denied")
+        return
+    # Legacy: no org membership yet — use owner_id isolation
     owner = case.get("owner_id")
     if owner and owner != user_id:
         raise HTTPException(403, "access denied")
@@ -169,6 +189,7 @@ async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
         "schema_fields": body.schema_fields,
         "owner_id": user["user_id"],
         "org_id": org_id,
+        "created_by": user["user_id"],
         "risk_score": 0.0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -180,8 +201,18 @@ async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
 @app.get("/cases")
 async def list_cases(user: dict = Depends(get_current_user)):
     membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
-    org_id = membership["org_id"] if membership else None
-    cases = await asyncio.to_thread(db.list_cases, user["user_id"], org_id)
+    if not membership:
+        cases = await asyncio.to_thread(db.list_cases, owner_id=user["user_id"])
+    else:
+        role = membership["role"]
+        org_id = membership["org_id"]
+        if role == "org_admin":
+            created_by = None          # admin sees every case in the org
+        elif role == "supervisor":
+            created_by = user["user_id"]  # supervisor sees cases they created
+        else:
+            created_by = membership.get("invited_by")  # member sees their supervisor's cases
+        cases = await asyncio.to_thread(db.list_cases, org_id=org_id, created_by=created_by)
     pending = 0
     enriched = []
     for c in cases:
@@ -198,7 +229,8 @@ async def get_case(case_id: str, user: dict = Depends(get_current_user)):
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
-    _assert_case_access(case, user["user_id"])
+    membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    _assert_case_access(case, user["user_id"], membership)
     return case
 
 
@@ -207,7 +239,8 @@ async def update_case(case_id: str, body: CasePatch, user: dict = Depends(get_cu
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
-    _assert_case_access(case, user["user_id"])
+    membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    _assert_case_access(case, user["user_id"], membership)
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
     if not patch:
         raise HTTPException(400, "no fields to update")
@@ -220,7 +253,8 @@ async def delete_case(case_id: str, user: dict = Depends(get_current_user)):
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
-    _assert_case_access(case, user["user_id"])
+    membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    _assert_case_access(case, user["user_id"], membership)
     await asyncio.to_thread(db.delete_case, case_id)
 
 
@@ -239,7 +273,8 @@ async def get_graph_state(case_id: str, user: dict = Depends(get_current_user)):
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
-    _assert_case_access(case, user["user_id"])
+    membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    _assert_case_access(case, user["user_id"], membership)
     return case.get("graph_state") or {}
 
 
@@ -248,7 +283,8 @@ async def save_graph_state(case_id: str, body: GraphStatePayload, user: dict = D
     case = await asyncio.to_thread(db.get_case, case_id)
     if not case:
         raise HTTPException(404, "case not found")
-    _assert_case_access(case, user["user_id"])
+    membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    _assert_case_access(case, user["user_id"], membership)
     await asyncio.to_thread(db.update_case, case_id, {"graph_state": body.model_dump()})
 
 

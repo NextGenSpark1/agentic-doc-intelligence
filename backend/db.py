@@ -36,12 +36,19 @@ def get_case(case_id: str) -> Optional[dict]:
     return rows[0] if rows else None
 
 
-def list_cases(owner_id: str | None = None, org_id: str | None = None) -> list[dict]:
+def list_cases(
+    owner_id: str | None = None,
+    org_id: str | None = None,
+    created_by: str | None = None,
+) -> list[dict]:
     query = get_client().table("cases").select("*").order("created_at", desc=True)
     if org_id:
         query = query.eq("org_id", org_id)
+        if created_by:
+            # Team-scoped: supervisor sees own cases; member sees their supervisor's cases.
+            query = query.eq("created_by", created_by)
     elif owner_id:
-        # Show cases owned by this user AND legacy cases with no owner (NULL = pre-isolation rows)
+        # Legacy path (no org yet): show cases owned by this user + NULL-owner rows.
         query = query.or_(f"owner_id.eq.{owner_id},owner_id.is.null")
     return query.execute().data
 
