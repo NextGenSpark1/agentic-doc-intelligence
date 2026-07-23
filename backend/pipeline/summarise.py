@@ -13,6 +13,13 @@ from .. import db, llm
 _SEVERITY_WEIGHT = {"high": 30, "medium": 15, "low": 5}
 
 
+def active_findings(findings: list[dict]) -> list[dict]:
+    """Findings that still count toward the risk score and case summary. A dismissed finding is
+    an explicit investigator decision that it's NOT real, so it must not inflate risk or be
+    narrated as an irregularity — drop it. Pending and confirmed both stand."""
+    return [f for f in findings if f.get("human_review_status") != "dismissed"]
+
+
 def _risk_score(findings: list[dict]) -> float:
     score = sum(_SEVERITY_WEIGHT.get(f.get("severity", "low"), 5) for f in findings)
     return round(min(score, 100) / 100, 4)
@@ -20,7 +27,7 @@ def _risk_score(findings: list[dict]) -> float:
 
 def summarise(case_id: str) -> dict:
     case = db.get_case(case_id) or {}
-    findings = db.list_findings(case_id)
+    findings = active_findings(db.list_findings(case_id))
     entities = db.list_entities(case_id)
     documents = db.list_documents(case_id)
 

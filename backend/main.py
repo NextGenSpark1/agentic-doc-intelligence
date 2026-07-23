@@ -38,6 +38,36 @@ def _strip_html(text: str) -> str:
     return _WHITESPACE_RE.sub(" ", cleaned).strip()
 
 
+# Common words to ignore when building the chat keyword fallback, so a question doesn't match
+# every chunk on filler like "what" or "there".
+_STOPWORDS = {
+    "what", "when", "where", "which", "whom", "whose", "that", "this", "these", "those",
+    "with", "from", "have", "has", "had", "does", "did", "was", "were", "are", "is",
+    "the", "and", "for", "you", "your", "about", "into", "over", "them", "they", "there",
+    "would", "could", "should", "please", "tell", "show", "give", "find", "list", "any",
+}
+
+
+def _keyword_or_filter(message: str) -> str | None:
+    """Build a PostgREST or-filter matching ANY salient word from the question, used as the
+    keyword fallback when vector search is unavailable. Far better than matching the literal
+    first 40 chars of the question (which rarely appears verbatim in a document). Returns None
+    if the question has no usable words, so the caller can fall back to a substring match."""
+    seen: set[str] = set()
+    picked: list[str] = []
+    for w in re.findall(r"[A-Za-z0-9]{4,}", message or ""):
+        wl = w.lower()
+        if wl in _STOPWORDS or wl in seen:
+            continue
+        seen.add(wl)
+        picked.append(wl)
+        if len(picked) == 6:
+            break
+    if not picked:
+        return None
+    return ",".join(f"text.ilike.%{w}%" for w in picked)
+
+
 def _fmt_field_value(v) -> str:
     """Flatten a field value to a readable string — lists become comma-separated, truncated."""
     if isinstance(v, list):
@@ -109,10 +139,13 @@ def _fallback_summary(fields: dict, schema_name: str) -> str:
     return f"{doc_type}. " + ". ".join(lines) + "."
 
 
-# Dashboard calls the API server-side, so CORS isn't strictly required, but this keeps
-# local browser tools working. Tighten allow_origins before any real deployment.
+# CORS origins come from settings (CORS_ALLOW_ORIGINS env, default "*" for local dev).
+# Set it to the real dashboard origin(s) before deploying.
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    CORSMiddleware,
+    allow_origins=get_settings().cors_origins_list,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -213,13 +246,19 @@ async def list_cases(user: dict = Depends(get_current_user)):
         else:
             created_by = membership.get("invited_by")  # member sees their supervisor's cases
         cases = await asyncio.to_thread(db.list_cases, org_id=org_id, created_by=created_by)
-    pending = 0
-    enriched = []
-    for c in cases:
-        findings = await asyncio.to_thread(db.list_findings, c["case_id"])
-        pending += sum(1 for f in findings if f.get("human_review_status") == "pending")
-        docs = await asyncio.to_thread(db.list_documents, c["case_id"])
-        enriched.append({**c, "doc_count": len(docs)})
+
+    # Enrich each case concurrently with count-only queries (no rows transferred) — the old loop
+    # did two serial DB round-trips per case and pulled every finding row just to count pending.
+    async def enrich(c: dict) -> tuple[dict, int]:
+        doc_count, pending = await asyncio.gather(
+            asyncio.to_thread(db.count_documents, c["case_id"]),
+            asyncio.to_thread(db.count_pending_findings, c["case_id"]),
+        )
+        return {**c, "doc_count": doc_count}, pending
+
+    results = await asyncio.gather(*(enrich(c) for c in cases))
+    enriched = [r[0] for r in results]
+    pending = sum(r[1] for r in results)
     open_cases = sum(1 for c in enriched if c.get("status", "").lower() in ("active", "pending review"))
     return {"cases": enriched, "stats": {"open_cases": open_cases, "findings_pending_review": pending}}
 
@@ -555,6 +594,9 @@ async def review_finding(finding_id: str, body: FindingReview, user: dict = Depe
     """Phase 5 — human-in-the-loop. Investigator confirms or dismisses a finding."""
     if body.status not in ("confirmed", "dismissed", "pending"):
         raise HTTPException(400, "status must be 'confirmed', 'dismissed', or 'pending'")
+    existing = await asyncio.to_thread(db.get_finding, finding_id)
+    if not existing:
+        raise HTTPException(404, "finding not found")
     patch = {
         "human_review_status": body.status,
         "reviewed_by": body.reviewed_by,
@@ -562,6 +604,8 @@ async def review_finding(finding_id: str, body: FindingReview, user: dict = Depe
         "dismissal_reason": body.dismissal_reason,
     }
     updated = await asyncio.to_thread(db.update_finding, finding_id, patch)
+    if not updated:
+        raise HTTPException(404, "finding not found")
     case_id = updated.get("case_id", "unknown")
     await asyncio.to_thread(db.update_case, case_id, {"updated_at": datetime.now(timezone.utc).isoformat()})
     if body.status != "pending":
@@ -586,11 +630,15 @@ async def chat(case_id: str, body: ChatRequest, user: dict = Depends(get_current
             db.match_chunks, case_id, query_vec, settings.rag_top_k
         )
     except Exception:
-        chunks = await asyncio.to_thread(
-            lambda: db.get_client().table("chunks").select("*")
-            .eq("case_id", case_id).ilike("text", f"%{body.message[:40]}%")
-            .limit(settings.rag_top_k).execute().data
-        )
+        # Vector search unavailable — fall back to matching any salient word from the question.
+        keyword_filter = _keyword_or_filter(body.message)
+
+        def _keyword_search():
+            q = db.get_client().table("chunks").select("*").eq("case_id", case_id)
+            q = q.or_(keyword_filter) if keyword_filter else q.ilike("text", f"%{body.message[:40]}%")
+            return q.limit(settings.rag_top_k).execute().data
+
+        chunks = await asyncio.to_thread(_keyword_search)
 
     if not chunks:
         return ChatResponse(answer="I couldn't find anything relevant in this case's documents yet.",

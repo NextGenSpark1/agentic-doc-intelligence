@@ -48,6 +48,16 @@ class Settings(BaseSettings):
     # RAG
     rag_top_k: int = 8
 
+    # --- CORS ---
+    # Comma-separated list of browser origins allowed to call the API. Defaults to "*"
+    # (permissive — fine for local dev). Set CORS_ALLOW_ORIGINS to the real dashboard origin(s)
+    # before any deployment, e.g. "https://app.example.com,https://staging.example.com".
+    cors_allow_origins: str = "*"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()] or ["*"]
+
     # --- Multi-tenancy ---
     # Comma-separated list of emails that have platform admin access (NextGen Spark team).
     platform_admin_emails: list[str] = Field(default_factory=lambda: [e.strip() for e in os.getenv("PLATFORM_ADMIN_EMAILS", "nextgenspark2025@gmail.com,hello@nextgenspark.solutions").split(",")])

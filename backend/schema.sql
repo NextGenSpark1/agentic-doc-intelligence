@@ -53,6 +53,59 @@ LANGUAGE sql STABLE AS $$
     LIMIT p_match_count;
 $$;
 
+-- Idempotent re-analysis: dedupe findings/relationships/timeline on a content hash so re-running
+-- analysis (which deletes + re-inserts) can't leave duplicate rows, even under a race where a
+-- previous run's rows are still present. Backfill the hash, drop existing dups, then enforce it.
+-- The md5 formula here MUST stay in sync with backend/db.py::_content_hash (parts joined by chr(0)).
+-- (entities already dedupe via their unique (case_id, entity_type, canonical_name) constraint.)
+ALTER TABLE findings        ADD COLUMN IF NOT EXISTS content_hash text;
+ALTER TABLE relationships   ADD COLUMN IF NOT EXISTS content_hash text;
+ALTER TABLE timeline_events ADD COLUMN IF NOT EXISTS content_hash text;
+
+UPDATE findings SET content_hash =
+    md5(lower(coalesce(finding_type, '')) || chr(0) || coalesce(statement, ''))
+    WHERE content_hash IS NULL;
+UPDATE relationships SET content_hash =
+    md5(lower(coalesce(source_name, '')) || chr(0) || lower(coalesce(target_name, '')) || chr(0)
+        || lower(coalesce(relationship_type, '')))
+    WHERE content_hash IS NULL;
+UPDATE timeline_events SET content_hash =
+    md5(coalesce(event_date::text, '') || chr(0) || coalesce(label, '') || chr(0)
+        || coalesce(document_id, ''))
+    WHERE content_hash IS NULL;
+
+-- Remove pre-existing duplicates so the unique indexes below can be created.
+-- findings: only pending rows are constrained, so only dedupe those (keep the newest).
+DELETE FROM findings f WHERE f.finding_id IN (
+    SELECT finding_id FROM (
+        SELECT finding_id, row_number() OVER (
+            PARTITION BY case_id, content_hash ORDER BY created_at DESC
+        ) AS rn
+        FROM findings WHERE human_review_status = 'pending'
+    ) ranked WHERE rn > 1
+);
+DELETE FROM relationships a USING relationships b
+    WHERE a.ctid < b.ctid AND a.case_id = b.case_id AND a.content_hash = b.content_hash;
+DELETE FROM timeline_events a USING timeline_events b
+    WHERE a.ctid < b.ctid AND a.case_id = b.case_id AND a.content_hash = b.content_hash;
+
+-- findings: only pending must be unique (a re-run may legitimately re-raise a dismissed finding).
+CREATE UNIQUE INDEX IF NOT EXISTS findings_pending_content_uniq
+    ON findings (case_id, content_hash) WHERE human_review_status = 'pending';
+CREATE UNIQUE INDEX IF NOT EXISTS relationships_content_uniq
+    ON relationships (case_id, content_hash);
+CREATE UNIQUE INDEX IF NOT EXISTS timeline_events_content_uniq
+    ON timeline_events (case_id, content_hash);
+
+-- Swap the chunk vector index from ivfflat to hnsw. ivfflat's recall depends on `lists` being
+-- tuned to the row count and re-tuned as data grows; hnsw gives consistently high recall with
+-- no retuning as the corpus grows, at the cost of a slower one-time index build. Worth it for
+-- legal/forensic RAG, where missing a relevant chunk is worse than a slower query.
+-- No application code changes — match_chunks() and the <=> query are unaffected by index type.
+DROP INDEX IF EXISTS chunks_embedding_idx;
+CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks
+    USING hnsw (embedding vector_cosine_ops);
+
 create extension if not exists vector;
 
 -- ----------------------------- cases -----------------------------
@@ -126,7 +179,9 @@ create table if not exists relationships (
     source_name       text,
     target_name       text,
     relationship_type text,
-    evidence          jsonb default '{}'::jsonb
+    evidence          jsonb default '{}'::jsonb,
+    content_hash      text,   -- md5(source + target + type); dedup key, see db.py
+    unique (case_id, content_hash)
 );
 
 -- ----------------------------- findings --------------------------
@@ -142,16 +197,22 @@ create table if not exists findings (
     reviewed_by             text,
     reviewed_at             timestamptz,
     dismissal_reason        text,
+    content_hash            text,            -- md5(finding_type + statement); dedup key, see db.py
     created_at              timestamptz not null default now()
 );
+-- No two *pending* findings with the same content per case (a re-run may re-raise a dismissed one).
+create unique index if not exists findings_pending_content_uniq
+    on findings (case_id, content_hash) where human_review_status = 'pending';
 
 -- -------------------------- timeline events ----------------------
 create table if not exists timeline_events (
-    event_id    text primary key,
-    case_id     text references cases(case_id) on delete cascade,
-    event_date  date,
-    label       text,
-    document_id text
+    event_id     text primary key,
+    case_id      text references cases(case_id) on delete cascade,
+    event_date   date,
+    label        text,
+    document_id  text,
+    content_hash text,   -- md5(event_date + label + document_id); dedup key, see db.py
+    unique (case_id, content_hash)
 );
 
 -- ----------------------------- audit log -------------------------

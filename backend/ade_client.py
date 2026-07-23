@@ -24,7 +24,7 @@ import os
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Any, List, Optional, Type, Union, get_args, get_origin
+from typing import Any, Type, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
@@ -244,21 +244,6 @@ def parse_document(source: Source) -> dict:
             "grounding": [g],
         })
     return {"markdown": result.markdown, "chunks": chunks, "page_count": max_page or 1}
-
-
-def extract_fields(source: Source, model: Type[BaseModel]) -> dict:
-    """Phase 3. Schema-driven extraction using landingai-ade's two-step approach:
-    parse() → markdown, then extract() → fields.
-
-    NOTE: per-field confidence is not documented in landingai-ade v1.x.
-    The confidence dict will be empty. Update this when/if confidence is exposed.
-    """
-    if get_settings().mock_ade:
-        return {"fields": _mock_fields(model), "confidence": {}}
-
-    parsed = parse_document(source)
-    fields = _extract_from_markdown(parsed["markdown"], model)
-    return {"fields": fields, "confidence": {}}
 
 
 def parse_and_extract_raw(source: Source, schema_dict: dict) -> dict:

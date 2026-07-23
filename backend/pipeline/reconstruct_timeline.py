@@ -269,7 +269,6 @@ def build_timeline(case_id: str) -> list[dict]:
     events += _llm_timeline_flags(events, case_id)
 
     db.get_client().table("timeline_events").delete().eq("case_id", case_id).execute()
-    if events:
-        db.get_client().table("timeline_events").insert(events).execute()
+    db.insert_timeline_events(events)  # deduped insert — safe if a concurrent re-run overlaps
     return events
 

@@ -229,22 +229,39 @@ def build(case_id: str) -> list[dict]:
     # Clear existing relationships before rebuild to prevent duplicates on re-run
     db.get_client().table("relationships").delete().eq("case_id", case_id).execute()
     extractions = db.list_extractions(case_id)
-    # AI-first: LLM relationship discovery is the primary output
-    edges = _llm_relationships(extractions, case_id)
-    # Rules are a fallback only when LLM returns nothing
-    if not edges:
-        edges = compute_relationships(extractions, case_id)
-    # Deduplicate: keep first occurrence of each (source, target, type) triple
-    seen: set[tuple] = set()
-    deduped = []
+    # Rules and LLM run TOGETHER, not either/or. The deterministic joins (provable shared bank
+    # account / shared principal / approved award) are always kept; the LLM pass adds
+    # narrative-implied edges on top. If the LLM returns nothing (quota/key/provider down) we
+    # still have the rule edges; if the rules find nothing we still have the LLM edges.
+    edges = compute_relationships(extractions, case_id)
+    edges += _dedupe_llm_edges(_llm_relationships(extractions, case_id), edges)
     for e in edges:
-        key = (e["source_name"].lower().strip(), e["target_name"].lower().strip(), e["relationship_type"])
-        if key not in seen:
-            seen.add(key)
-            deduped.append(e)
-    for e in deduped:
         db.insert_relationship(e)
-    return deduped
+    return edges
+
+
+def _edge_signature(e: dict) -> tuple:
+    """Undirected (type, {source, target}) key so a rule edge and an LLM edge describing the
+    same tie collapse to one."""
+    pair = frozenset({
+        (e.get("source_name") or "").strip().lower(),
+        (e.get("target_name") or "").strip().lower(),
+    })
+    return ((e.get("relationship_type") or "").strip().lower(), pair)
+
+
+def _dedupe_llm_edges(llm_edges: list[dict], rule_edges: list[dict]) -> list[dict]:
+    """Drop LLM edges that duplicate a rule edge (same type + same undirected pair). The rule
+    edge is provable, so it wins any collision."""
+    seen = {_edge_signature(e) for e in rule_edges}
+    out: list[dict] = []
+    for e in llm_edges:
+        sig = _edge_signature(e)
+        if sig in seen:
+            continue
+        seen.add(sig)
+        out.append(e)
+    return out
 
 
 def _edge(case_id, source_name, target_name, relationship_type, meta, source_flag="rule", reasoning=None, confidence=None):

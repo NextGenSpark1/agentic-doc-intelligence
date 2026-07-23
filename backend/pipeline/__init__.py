@@ -51,11 +51,19 @@ def run_case_analysis(case_id: str) -> dict:
     )
 
     db.write_audit(case_id, "system", "analysis_started", {})
-    resolve_entities.resolve(case_id)
-    build_relationships.build(case_id)
-    reconstruct_timeline.build_timeline(case_id)
-    detect_anomalies.detect(case_id)
-    result = summarise.summarise(case_id)
-    db.update_case(case_id, {"last_analysed_at": datetime.now(timezone.utc).isoformat()})
-    db.write_audit(case_id, "system", "analysis_completed", result)
-    return result
+    try:
+        resolve_entities.resolve(case_id)
+        build_relationships.build(case_id)
+        reconstruct_timeline.build_timeline(case_id)
+        detect_anomalies.detect(case_id)
+        result = summarise.summarise(case_id)
+        db.update_case(case_id, {"last_analysed_at": datetime.now(timezone.utc).isoformat()})
+        db.write_audit(case_id, "system", "analysis_completed", result)
+        return result
+    except Exception as exc:  # noqa: BLE001 — record failure, don't let the worker die silently
+        # Without this the BackgroundTask dies with no trace: no analysis_completed, no
+        # last_analysed_at, and any UI polling for completion hangs forever. Log it so a failed
+        # run is diagnosable (mirrors process_document's failure handling).
+        traceback.print_exc()
+        db.write_audit(case_id, "system", "analysis_failed", {"error": str(exc)[:500]})
+        return {"error": str(exc)}

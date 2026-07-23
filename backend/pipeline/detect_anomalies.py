@@ -364,6 +364,25 @@ def _attach_supporting_chunks(case_id: str, persisted: list[dict]) -> None:
             continue  # skip this finding, non-critical
 
 
+def _finding_signature(f: dict) -> tuple:
+    return ((f.get("finding_type") or "").strip().lower(),
+            frozenset(f.get("supporting_document_ids") or []))
+
+
+def _dedupe_llm_findings(llm_findings: list[dict], rule_findings: list[dict]) -> list[dict]:
+    """Drop LLM findings that duplicate a rule finding (same type + same document set). The rule
+    finding is provable, so it wins any collision."""
+    seen = {_finding_signature(f) for f in rule_findings}
+    out: list[dict] = []
+    for f in llm_findings:
+        sig = _finding_signature(f)
+        if sig in seen:
+            continue
+        seen.add(sig)
+        out.append(f)
+    return out
+
+
 def detect(case_id: str) -> list[dict]:
     from .. import db
 
@@ -371,11 +390,12 @@ def detect(case_id: str) -> list[dict]:
     db.get_client().table("findings").delete().eq("case_id", case_id).eq("human_review_status", "pending").execute()
 
     extractions = db.list_extractions(case_id)
-    # AI-first: LLM cross-document reasoning is the primary output
-    findings = _llm_findings(case_id, extractions)
-    # Rules are a fallback only when LLM returns nothing (quota exhausted, key missing, etc.)
-    if not findings:
-        findings = compute_findings(extractions)
+    # Rules and LLM run TOGETHER, not either/or. The deterministic rule findings (duplicate
+    # invoice, shared bank account, split payment, budget-ceiling proximity) are provable and
+    # always kept; the LLM pass adds cross-document reasoning on top. Any LLM finding that
+    # collides with a rule finding (same type + same documents) is dropped for the provable one.
+    findings = compute_findings(extractions)
+    findings += _dedupe_llm_findings(_llm_findings(case_id, extractions), findings)
 
     persisted = []
     for f in findings:
@@ -386,7 +406,9 @@ def detect(case_id: str) -> list[dict]:
             "human_review_status": "pending",
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
-        persisted.append(db.insert_finding(row))
+        inserted = db.insert_finding(row)  # None when an identical pending finding already exists
+        if inserted:
+            persisted.append(inserted)
 
     # Vector search fallback only for findings the LLM didn't already quote
     needs_chunks = [f for f in persisted if not f.get("supporting_chunks")]
