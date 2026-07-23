@@ -36,9 +36,11 @@ def get_case(case_id: str) -> Optional[dict]:
     return rows[0] if rows else None
 
 
-def list_cases(owner_id: str | None = None) -> list[dict]:
+def list_cases(owner_id: str | None = None, org_id: str | None = None) -> list[dict]:
     query = get_client().table("cases").select("*").order("created_at", desc=True)
-    if owner_id:
+    if org_id:
+        query = query.eq("org_id", org_id)
+    elif owner_id:
         # Show cases owned by this user AND legacy cases with no owner (NULL = pre-isolation rows)
         query = query.or_(f"owner_id.eq.{owner_id},owner_id.is.null")
     return query.execute().data
@@ -225,3 +227,67 @@ def delete_document(document_id: str, storage_path: str) -> None:
     s = get_settings()
     get_client().storage.from_(s.storage_bucket).remove([storage_path])
     get_client().table("documents").delete().eq("document_id", document_id).execute()
+
+
+# ─────────────────────── Organisations ───────────────────────────
+
+def create_org(org_id: str, name: str, plan: str, created_by: str) -> dict:
+    return get_client().table("organisations").insert({
+        "org_id": org_id, "name": name, "plan": plan, "created_by": created_by,
+    }).execute().data[0]
+
+
+def get_org(org_id: str) -> dict | None:
+    rows = get_client().table("organisations").select("*").eq("org_id", org_id).execute().data
+    return rows[0] if rows else None
+
+
+def list_orgs() -> list[dict]:
+    return get_client().table("organisations").select("*").order("created_at", desc=True).execute().data
+
+
+def get_org_member(org_id: str, user_id: str) -> dict | None:
+    rows = get_client().table("org_members").select("*").eq("org_id", org_id).eq("user_id", user_id).execute().data
+    return rows[0] if rows else None
+
+
+def get_user_membership(user_id: str) -> dict | None:
+    """Return the user's org membership (first org found — users belong to one org)."""
+    rows = get_client().table("org_members").select("*, organisations(name, plan)").eq("user_id", user_id).execute().data
+    return rows[0] if rows else None
+
+
+def list_org_members(org_id: str) -> list[dict]:
+    return get_client().table("org_members").select("*").eq("org_id", org_id).order("joined_at").execute().data
+
+
+def add_org_member(org_id: str, user_id: str, email: str, role: str, invited_by: str, full_name: str | None = None) -> dict:
+    return get_client().table("org_members").insert({
+        "org_id": org_id, "user_id": user_id, "email": email,
+        "role": role, "invited_by": invited_by, "full_name": full_name,
+    }).execute().data[0]
+
+
+def remove_org_member(org_id: str, user_id: str) -> None:
+    get_client().table("org_members").delete().eq("org_id", org_id).eq("user_id", user_id).execute()
+
+
+def create_invitation(org_id: str, email: str, role: str, invited_by: str) -> dict:
+    return get_client().table("invitations").insert({
+        "org_id": org_id, "email": email, "role": role, "invited_by": invited_by,
+    }).execute().data[0]
+
+
+def get_invitation_by_token(token: str) -> dict | None:
+    rows = get_client().table("invitations").select("*, organisations(name)").eq("token", token).execute().data
+    return rows[0] if rows else None
+
+
+def accept_invitation(token: str) -> None:
+    from datetime import datetime, timezone
+    get_client().table("invitations").update({"accepted_at": datetime.now(timezone.utc).isoformat()}).eq("token", token).execute()
+
+
+def list_org_cases_count(org_id: str) -> int:
+    result = get_client().table("cases").select("case_id", count="exact").eq("org_id", org_id).execute()
+    return result.count or 0

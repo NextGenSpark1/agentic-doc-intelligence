@@ -206,3 +206,46 @@ language sql stable as $$
     order by c.embedding <=> p_query_embedding
     limit p_match_count;
 $$;
+
+-- =================== MULTI-TENANCY MIGRATIONS ===================
+-- Run these in Supabase SQL editor
+
+CREATE TABLE IF NOT EXISTS organisations (
+  org_id     text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  name       text NOT NULL,
+  plan       text NOT NULL DEFAULT 'trial',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by text
+);
+
+CREATE TABLE IF NOT EXISTS org_members (
+  member_id  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id     text NOT NULL REFERENCES organisations(org_id) ON DELETE CASCADE,
+  user_id    text NOT NULL,
+  email      text NOT NULL,
+  full_name  text,
+  role       text NOT NULL CHECK (role IN ('org_admin','supervisor','member')),
+  invited_by text,
+  joined_at  timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(org_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS invitations (
+  invitation_id uuid    PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id        text    NOT NULL REFERENCES organisations(org_id) ON DELETE CASCADE,
+  email         text    NOT NULL,
+  role          text    NOT NULL CHECK (role IN ('org_admin','supervisor','member')),
+  token         text    UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(32), 'hex'),
+  invited_by    text    NOT NULL,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  expires_at    timestamptz NOT NULL DEFAULT now() + interval '7 days',
+  accepted_at   timestamptz,
+  UNIQUE(org_id, email)
+);
+
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS org_id text REFERENCES organisations(org_id);
+
+CREATE INDEX IF NOT EXISTS idx_cases_org_id       ON cases(org_id);
+CREATE INDEX IF NOT EXISTS idx_org_members_user   ON org_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_org_members_org    ON org_members(org_id);
+CREATE INDEX IF NOT EXISTS idx_invitations_token  ON invitations(token);

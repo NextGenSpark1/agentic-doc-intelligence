@@ -12,6 +12,7 @@ import FindingsPanel from '../components/FindingsPanel'
 import TimelinePanel from '../components/TimelinePanel'
 import EntityGraphPanel from '../components/EntityGraphPanel'
 import ReportPanel from '../components/ReportPanel'
+import TeamPanel from '../components/TeamPanel'
 
 const SUBTABS = ['Workspace', 'Entity Graph', 'Timeline', 'Findings', 'Report', 'Settings']
 const TAB_SLUG: Record<string, string> = {
@@ -332,6 +333,12 @@ function CaseSettingsPanel({ caseData, caseId, onUpdate }: { caseData: Case; cas
             {schemaSaveStatus === 'success' && <span className="text-xs text-green">Schema saved</span>}
             {schemaSaveStatus === 'error' && <span className="text-xs text-red">Save failed — try again</span>}
           </div>
+        </div>
+
+        {/* Team management */}
+        <div>
+          <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider mb-4">Team</p>
+          <TeamPanel />
         </div>
       </div>
     </div>

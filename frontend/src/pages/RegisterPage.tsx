@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
@@ -7,6 +7,8 @@ import { useAuth } from '../context/AuthContext'
 export default function RegisterPage() {
   const { signUp, signInWithGoogle } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const inviteToken = searchParams.get('invite')
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -108,9 +110,12 @@ export default function RegisterPage() {
               <p className="text-sm text-text-mute mb-6 max-w-xs mx-auto leading-relaxed">
                 We sent a verification link to <span className="text-text font-medium">{email}</span>.
                 Click the link to activate your account, then sign in.
+                {inviteToken && (
+                  <span className="block mt-2 text-teal font-medium">After signing in, you'll be redirected to complete your invitation.</span>
+                )}
               </p>
               <button
-                onClick={() => navigate('/login', { replace: true })}
+                onClick={() => navigate(inviteToken ? `/login?invite=${inviteToken}` : '/login', { replace: true })}
                 className="inline-flex items-center gap-2 bg-navy hover:bg-navy-soft text-white font-semibold py-2.5 px-6 rounded-lg text-sm transition-colors"
               >
                 Go to sign in

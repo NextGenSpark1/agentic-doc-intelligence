@@ -21,11 +21,12 @@ from pydantic import BaseModel
 
 from shared.schemas import ChatRequest, ChatResponse, CitationSchema  # platform contract
 
-from . import db, llm, pipeline
+from . import db, llm, orgs as orgs_module, pipeline
 from .auth import get_current_user
 from .config import get_settings
 
 app = FastAPI(title="Investigation Intelligence API", version="0.1.0")
+app.include_router(orgs_module.router)
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _WHITESPACE_RE = re.compile(r"\s{2,}")
@@ -156,6 +157,8 @@ def _assert_case_access(case: dict, user_id: str) -> None:
 @app.post("/cases", status_code=201)
 async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
     case_id = f"INV-{datetime.now().year}-{uuid.uuid4().hex[:4].upper()}"
+    membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    org_id = membership["org_id"] if membership else None
     record = {
         "case_id": case_id,
         "title": body.title,
@@ -165,6 +168,7 @@ async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
         "allegation_summary": body.allegation_summary,
         "schema_fields": body.schema_fields,
         "owner_id": user["user_id"],
+        "org_id": org_id,
         "risk_score": 0.0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -175,7 +179,9 @@ async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
 
 @app.get("/cases")
 async def list_cases(user: dict = Depends(get_current_user)):
-    cases = await asyncio.to_thread(db.list_cases, user["user_id"])
+    membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    org_id = membership["org_id"] if membership else None
+    cases = await asyncio.to_thread(db.list_cases, user["user_id"], org_id)
     pending = 0
     enriched = []
     for c in cases:

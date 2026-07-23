@@ -8,6 +8,8 @@ import AccountPage from './pages/AccountPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
+import InviteAcceptPage from './pages/InviteAcceptPage'
+import PlatformAdminPage from './pages/PlatformAdminPage'
 
 function AuthLayout() {
   const { user, loading } = useAuth()
@@ -42,6 +44,8 @@ export default function App() {
       <AuthProvider>
         <Toaster position="top-right" toastOptions={{ style: { fontSize: '0.875rem' } }} />
         <Routes>
+          {/* Public routes — no auth required */}
+          <Route path="/invite/:token" element={<InviteAcceptPage />} />
           <Route element={<GuestLayout />}>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
@@ -53,6 +57,7 @@ export default function App() {
             <Route path="/cases" element={<CasesPage />} />
             <Route path="/cases/:caseId" element={<CaseWorkspacePage />} />
             <Route path="/account" element={<AccountPage />} />
+            <Route path="/admin" element={<PlatformAdminPage />} />
           </Route>
         </Routes>
       </AuthProvider>
