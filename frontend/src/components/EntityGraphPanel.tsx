@@ -5,6 +5,9 @@ import {
   ReactFlow,
   Background,
   Controls,
+  BaseEdge,
+  EdgeLabelRenderer,
+  getBezierPath,
   useNodesState,
   useEdgesState,
   addEdge,
@@ -12,6 +15,7 @@ import {
   Handle,
   Position,
   type NodeProps,
+  type EdgeProps,
   type ReactFlowInstance,
   type Node,
   type Edge,
@@ -127,6 +131,56 @@ function EntityNode({ data, selected }: NodeProps) {
 }
 
 const NODE_TYPES = { entityNode: EntityNode }
+
+// ── Custom edge with delete button in edit mode ────────────────────────────
+
+function CustomEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, markerEnd, data }: EdgeProps) {
+  const [edgePath, labelX, labelY] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition })
+  const label = data?.label as string | undefined
+  const editMode = data?.editMode as boolean | undefined
+  const onDeleteEdge = data?.onDeleteEdge as ((id: string) => void) | undefined
+
+  return (
+    <>
+      <BaseEdge path={edgePath} markerEnd={markerEnd as string} style={style} />
+      {(label || editMode) && (
+        <EdgeLabelRenderer>
+          <div
+            className="nodrag nopan"
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              pointerEvents: 'all',
+              display: 'flex', alignItems: 'center', gap: 4,
+              background: '#FFFFFF', borderRadius: 6,
+              padding: '3px 7px',
+              fontSize: 11, fontWeight: 700, color: '#0F172A',
+              border: '1px solid #E2E8F0',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {label}
+            {editMode && onDeleteEdge && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onDeleteEdge(id) }}
+                title="Remove edge"
+                style={{
+                  width: 16, height: 16, borderRadius: '50%',
+                  background: '#FEE2E2', border: '1px solid #FCA5A5',
+                  color: '#DC2626', fontSize: 11,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', padding: 0, flexShrink: 0, lineHeight: 1,
+                }}
+              >×</button>
+            )}
+          </div>
+        </EdgeLabelRenderer>
+      )}
+    </>
+  )
+}
+
+const EDGE_TYPES = { custom: CustomEdge }
 
 // ── Layout ─────────────────────────────────────────────────────────────────
 
@@ -273,13 +327,9 @@ async function buildGraph(
       id: group.map(r => r.relationship_id).join('||'),
       source: src,
       target: tgt,
-      label,
-      type: 'bezier',
+      type: 'custom',
+      data: { label },
       style: { stroke: color, strokeWidth: 2 },
-      labelStyle: { fontSize: 11, fill: '#0F172A', fontWeight: 700 },
-      labelBgStyle: { fill: '#FFFFFF', fillOpacity: 1 },
-      labelBgPadding: [6, 4] as [number, number],
-      labelBgBorderRadius: 6,
       markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
     })
   }
@@ -502,13 +552,8 @@ export default function EntityGraphPanel({
         // Restore manually drawn edges
         const manualEdges: Edge[] = (savedState?.manual_edges ?? []).map(me => ({
           ...me,
-          type: 'bezier',
-          ...(me.label ? {
-            labelStyle: { fontSize: 11, fill: '#0F172A', fontWeight: 700 },
-            labelBgStyle: { fill: '#FFFFFF', fillOpacity: 1 },
-            labelBgPadding: [6, 4] as [number, number],
-            labelBgBorderRadius: 6,
-          } : {}),
+          type: 'custom',
+          data: { label: me.label },
           style: { stroke: '#94A3B8', strokeWidth: 2, strokeDasharray: '6,3' },
           markerEnd: { type: MarkerType.ArrowClosed, color: '#94A3B8', width: 16, height: 16 },
         }))
@@ -565,12 +610,8 @@ export default function EntityGraphPanel({
     setEdges(eds => addEdge({
       ...pendingConnection,
       id: `manual-${Date.now()}`,
-      type: 'bezier',
-      label,
-      labelStyle: { fontSize: 11, fill: '#0F172A', fontWeight: 700 },
-      labelBgStyle: { fill: '#FFFFFF', fillOpacity: 1 },
-      labelBgPadding: [6, 4] as [number, number],
-      labelBgBorderRadius: 6,
+      type: 'custom',
+      data: { label },
       style: { stroke: '#94A3B8', strokeWidth: 2, strokeDasharray: '6,3' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#94A3B8', width: 16, height: 16 },
     }, eds))
@@ -591,13 +632,25 @@ export default function EntityGraphPanel({
     [setNodes, setEdges],
   )
 
-  // Keep editMode flag and onDelete handler in each node's data so EntityNode can read them
+  const onDeleteEdge = useCallback(
+    (edgeId: string) => setEdges(es => es.filter(e => e.id !== edgeId)),
+    [setEdges],
+  )
+
+  // Keep editMode flag and handlers in each node's and edge's data
   useEffect(() => {
     setNodes(ns => ns.map(n => ({
       ...n,
       data: { ...n.data, editMode, onDelete: editMode ? onDeleteNode : undefined },
     })))
   }, [editMode, onDeleteNode, setNodes])
+
+  useEffect(() => {
+    setEdges(es => es.map(e => ({
+      ...e,
+      data: { ...e.data, editMode, onDeleteEdge: editMode ? onDeleteEdge : undefined },
+    })))
+  }, [editMode, onDeleteEdge, setEdges])
 
   // Legend: only show types present in data
   const presentTypes = useMemo(() => {
@@ -660,6 +713,7 @@ export default function EntityGraphPanel({
           nodes={nodes}
           edges={edges}
           nodeTypes={NODE_TYPES}
+          edgeTypes={EDGE_TYPES}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeClick={onNodeClick}
