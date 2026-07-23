@@ -135,3 +135,39 @@ export interface CreateCasePayload {
   allegation_summary: string
   schema_fields: SchemaField[]
 }
+
+export interface OrgMember {
+  member_id: string
+  org_id: string
+  user_id: string
+  email: string
+  full_name?: string
+  role: 'org_admin' | 'supervisor' | 'member'
+  invited_by?: string
+  joined_at: string
+}
+
+export interface Organisation {
+  org_id: string
+  name: string
+  plan: string
+  created_at: string
+  member_count?: number
+  case_count?: number
+  members?: OrgMember[]
+}
+
+export interface OrgContext {
+  role: 'platform_admin' | 'org_admin' | 'supervisor' | 'member' | null
+  org_id?: string
+  org_name?: string
+  org_plan?: string
+}
+
+export interface InvitationPreview {
+  org_id: string
+  org_name: string
+  email: string
+  role: string
+  expires_at: string
+}

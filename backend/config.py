@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -46,6 +47,17 @@ class Settings(BaseSettings):
 
     # RAG
     rag_top_k: int = 8
+
+    # --- Multi-tenancy ---
+    # Comma-separated list of emails that have platform admin access (NextGen Spark team).
+    platform_admin_emails: list[str] = Field(default_factory=lambda: [e.strip() for e in os.getenv("PLATFORM_ADMIN_EMAILS", "nextgenspark2025@gmail.com,hello@nextgenspark.solutions").split(",")])
+
+    # --- Email (Resend) ---
+    # Leave empty to disable email sending (invitations will still work via copy-link).
+    resend_api_key: str = ""
+    # Sender address. Use onboarding@resend.dev for testing without a domain.
+    # Switch to noreply@yourdomain.com once a domain is verified in Resend dashboard.
+    resend_from_email: str = "onboarding@resend.dev"
 
 
 @lru_cache

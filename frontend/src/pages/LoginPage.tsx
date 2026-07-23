@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
@@ -10,6 +10,8 @@ type Mode = 'login' | 'forgot' | 'sent'
 export default function LoginPage() {
   const { signInWithPassword, signInWithGoogle } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const inviteToken = searchParams.get('invite')
 
   const [mode, setMode] = useState<Mode>('login')
 
@@ -32,7 +34,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await signInWithPassword(email, password)
-      navigate('/cases', { replace: true })
+      navigate(inviteToken ? `/invite/${inviteToken}` : '/cases', { replace: true })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Sign-in failed.')
     } finally {

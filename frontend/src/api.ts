@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocument, Extraction, ChatResponse, Finding, TimelineEvent, Entity, Relationship, DocumentChunk } from './types'
+import type { Case, CasesListResponse, CreateCasePayload, Document as CaseDocument, Extraction, ChatResponse, Finding, TimelineEvent, Entity, Relationship, DocumentChunk, OrgContext, OrgMember, Organisation, InvitationPreview } from './types'
 
 type CasePatch = Partial<Pick<Case, 'title' | 'case_type' | 'status' | 'lead_investigator' | 'allegation_summary' | 'schema_fields'>>
 import { supabase } from './lib/supabaseClient'
@@ -182,6 +182,48 @@ export async function fetchGraphState(caseId: string): Promise<GraphState | null
 
 export async function saveGraphState(caseId: string, state: GraphState): Promise<void> {
   await client.put(`/cases/${caseId}/graph-state`, state)
+}
+
+// ── Org / multi-tenancy ────────────────────────────────────────────────────
+
+export async function fetchMyOrg(): Promise<OrgContext> {
+  const res = await client.get<OrgContext>('/orgs/me')
+  return res.data
+}
+
+export async function fetchOrgMembers(orgId: string): Promise<{ members: OrgMember[] }> {
+  const res = await client.get<{ members: OrgMember[] }>(`/orgs/${orgId}/members`)
+  return res.data
+}
+
+export async function inviteMember(orgId: string, email: string, role: string, name?: string): Promise<{ invite_link: string; invite_token: string; email: string; role: string; email_sent: boolean }> {
+  const res = await client.post(`/orgs/${orgId}/invite`, { email, role, name })
+  return res.data
+}
+
+export async function removeMember(orgId: string, userId: string): Promise<void> {
+  await client.delete(`/orgs/${orgId}/members/${userId}`)
+}
+
+export async function fetchInvitation(token: string): Promise<InvitationPreview> {
+  const res = await client.get<InvitationPreview>(`/invitations/${token}`)
+  return res.data
+}
+
+export async function acceptInvitation(token: string): Promise<{ org_id: string; org_name: string; role: string }> {
+  const res = await client.post(`/invitations/${token}/accept`)
+  return res.data
+}
+
+// Platform admin
+export async function platformListOrgs(): Promise<{ orgs: Organisation[] }> {
+  const res = await client.get<{ orgs: Organisation[] }>('/platform/orgs')
+  return res.data
+}
+
+export async function platformCreateOrg(name: string, plan: string, adminEmail: string, adminName?: string): Promise<{ org: Organisation; invite_link: string; invite_token: string }> {
+  const res = await client.post('/platform/orgs', { name, plan, admin_email: adminEmail, admin_name: adminName })
+  return res.data
 }
 
 export async function uploadDocumentWithProgress(

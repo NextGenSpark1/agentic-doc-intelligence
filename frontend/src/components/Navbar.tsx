@@ -1,12 +1,15 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { LogOut, Settings } from 'lucide-react'
+import { LogOut, Settings, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { getInitialsFromUser } from '../pages/AccountPage'
 
+const PLATFORM_ADMIN_EMAILS = ['nextgenspark2025@gmail.com', 'hello@nextgenspark.solutions']
+
 export default function Navbar() {
-  const { user, signOut } = useAuth()
+  const { user, signOut, orgCtx } = useAuth()
   const navigate = useNavigate()
+  const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(user?.email ?? '')
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -91,7 +94,20 @@ export default function Navbar() {
                   {fullName && (
                     <p className="text-xs text-text-mute truncate mt-0.5">{email}</p>
                   )}
+                  {orgCtx?.org_name && (
+                    <p className="text-[10px] text-text-mute mt-1 truncate">{orgCtx.org_name}</p>
+                  )}
                 </div>
+                {/* Platform admin link */}
+                {isPlatformAdmin && (
+                  <button
+                    onClick={() => { setMenuOpen(false); navigate('/admin') }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-text-mid hover:bg-panel-2 hover:text-text transition-colors"
+                  >
+                    <ShieldCheck size={14} className="text-text-mute" />
+                    Platform Admin
+                  </button>
+                )}
                 {/* Account Settings */}
                 <button
                   onClick={() => { setMenuOpen(false); navigate('/account') }}
