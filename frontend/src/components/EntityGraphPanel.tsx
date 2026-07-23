@@ -204,14 +204,15 @@ async function buildGraph(
     id, width: NODE_WIDTH, height: NODE_HEIGHT,
   }))
 
-  // Deduplicate ELK edges so layout doesn't double-count parallel relationships
+  // Deduplicate ELK edges bidirectionally so layout doesn't double-count
   const seenElkPairs = new Set<string>()
   const elkEdges: { id: string; sources: string[]; targets: string[] }[] = []
   for (const r of relationships) {
     const src = resolveToNodeId(r.source_name)
     const tgt = resolveToNodeId(r.target_name)
     if (src === tgt) continue
-    const key = `${src}||${tgt}`
+    const [a, b] = src < tgt ? [src, tgt] : [tgt, src]
+    const key = `${a}||${b}`
     if (!seenElkPairs.has(key)) {
       seenElkPairs.add(key)
       elkEdges.push({ id: key, sources: [src], targets: [tgt] })
@@ -247,19 +248,24 @@ async function buildGraph(
   const COLOR_PRIORITY: Record<string, number> = {
     '#EF4444': 5, '#F97316': 4, '#D97706': 3, '#7C3AED': 2, '#0D9488': 1, '#64748B': 0,
   }
+  // Track canonical direction for each bidirectional group key
+  const edgeGroupDir = new Map<string, [string, string]>()
   const edgeGroups = new Map<string, Relationship[]>()
   for (const r of relationships) {
     const src = resolveToNodeId(r.source_name)
     const tgt = resolveToNodeId(r.target_name)
     if (src === tgt) continue
-    const key = `${src}||${tgt}`
+    // Normalize key so A→B and B→A land in the same group
+    const [a, b] = src < tgt ? [src, tgt] : [tgt, src]
+    const key = `${a}||${b}`
+    if (!edgeGroupDir.has(key)) edgeGroupDir.set(key, [src, tgt])
     const group = edgeGroups.get(key) ?? []
     group.push(r)
     edgeGroups.set(key, group)
   }
   const edges: Edge[] = []
   for (const [key, group] of edgeGroups) {
-    const [src, tgt] = key.split('||')
+    const [src, tgt] = edgeGroupDir.get(key)!
     const colors = group.map(r => edgeColor(r.relationship_type))
     const color = colors.reduce((best, c) => (COLOR_PRIORITY[c] ?? 0) > (COLOR_PRIORITY[best] ?? 0) ? c : best)
     const label = group.map(r => r.relationship_type.replace(/_/g, ' ')).join(' · ')
