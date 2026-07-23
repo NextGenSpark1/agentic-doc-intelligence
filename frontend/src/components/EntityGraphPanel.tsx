@@ -5,7 +5,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   useNodesState,
   useEdgesState,
   addEdge,
@@ -205,13 +204,19 @@ async function buildGraph(
     id, width: NODE_WIDTH, height: NODE_HEIGHT,
   }))
 
-  const elkEdges = relationships
-    .map((r, i) => ({
-      id: r.relationship_id || `e-${i}`,
-      sources: [resolveToNodeId(r.source_name)],
-      targets: [resolveToNodeId(r.target_name)],
-    }))
-    .filter(e => e.sources[0] !== e.targets[0])
+  // Deduplicate ELK edges so layout doesn't double-count parallel relationships
+  const seenElkPairs = new Set<string>()
+  const elkEdges: { id: string; sources: string[]; targets: string[] }[] = []
+  for (const r of relationships) {
+    const src = resolveToNodeId(r.source_name)
+    const tgt = resolveToNodeId(r.target_name)
+    if (src === tgt) continue
+    const key = `${src}||${tgt}`
+    if (!seenElkPairs.has(key)) {
+      seenElkPairs.add(key)
+      elkEdges.push({ id: key, sources: [src], targets: [tgt] })
+    }
+  }
 
   const graph = await elk.layout({
     id: 'root',
@@ -238,13 +243,31 @@ async function buildGraph(
     }
   })
 
-  const edges: Edge[] = relationships.map((r): Edge => {
-    const color = edgeColor(r.relationship_type)
-    return {
-      id: r.relationship_id,
-      source: resolveToNodeId(r.source_name),
-      target: resolveToNodeId(r.target_name),
-      label: r.relationship_type.replace(/_/g, ' '),
+  // Merge parallel edges (same source→target) into one edge showing all relationship labels
+  const COLOR_PRIORITY: Record<string, number> = {
+    '#EF4444': 5, '#F97316': 4, '#D97706': 3, '#7C3AED': 2, '#0D9488': 1, '#64748B': 0,
+  }
+  const edgeGroups = new Map<string, Relationship[]>()
+  for (const r of relationships) {
+    const src = resolveToNodeId(r.source_name)
+    const tgt = resolveToNodeId(r.target_name)
+    if (src === tgt) continue
+    const key = `${src}||${tgt}`
+    const group = edgeGroups.get(key) ?? []
+    group.push(r)
+    edgeGroups.set(key, group)
+  }
+  const edges: Edge[] = []
+  for (const [key, group] of edgeGroups) {
+    const [src, tgt] = key.split('||')
+    const colors = group.map(r => edgeColor(r.relationship_type))
+    const color = colors.reduce((best, c) => (COLOR_PRIORITY[c] ?? 0) > (COLOR_PRIORITY[best] ?? 0) ? c : best)
+    const label = group.map(r => r.relationship_type.replace(/_/g, ' ')).join(' · ')
+    edges.push({
+      id: group.map(r => r.relationship_id).join('||'),
+      source: src,
+      target: tgt,
+      label,
       type: 'bezier',
       style: { stroke: color, strokeWidth: 2 },
       labelStyle: { fontSize: 11, fill: '#0F172A', fontWeight: 700 },
@@ -252,8 +275,8 @@ async function buildGraph(
       labelBgPadding: [6, 4] as [number, number],
       labelBgBorderRadius: 6,
       markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
-    }
-  })
+    })
+  }
 
   return { nodes, edges }
 }
@@ -352,33 +375,23 @@ function EntityDetail({
 // ── Relationship detail side-panel ────────────────────────────────────────
 
 function RelationshipDetail({
-  relationship,
+  relationships,
   docMap,
   onClose,
 }: {
-  relationship: Relationship
+  relationships: Relationship[]
   docMap: Record<string, string>
   onClose: () => void
 }) {
-  const evidence = relationship.evidence ?? {}
-  const evidenceEntries = Object.entries(evidence).filter(
-    ([k]) => k !== 'source_type' && k !== 'target_type',
-  )
-  const docIds: string[] = Array.isArray(evidence.document_ids)
-    ? (evidence.document_ids as string[])
-    : evidence.document_id
-      ? [evidence.document_id as string]
-      : []
-
   return (
     <aside className="w-64 shrink-0 bg-panel border-l border-border flex flex-col overflow-hidden">
       <div className="px-4 py-3 border-b border-border flex items-start justify-between gap-2">
         <div className="flex flex-col gap-1 min-w-0">
           <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full self-start text-slate-500 bg-slate-100 border border-slate-200">
-            Relationship
+            {relationships.length === 1 ? 'Relationship' : `${relationships.length} Relationships`}
           </span>
           <p className="text-xs font-bold text-text leading-snug break-words">
-            {relationship.relationship_type.replace(/_/g, ' ')}
+            {relationships[0].source_name} → {relationships[0].target_name}
           </p>
         </div>
         <button onClick={onClose} className="shrink-0 text-text-mute hover:text-text mt-0.5 transition-colors" aria-label="Close">
@@ -388,45 +401,45 @@ function RelationshipDetail({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
-        {/* Entities */}
-        <div className="flex flex-col gap-1.5">
-          <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Entities</p>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="font-semibold text-text truncate">{relationship.source_name}</span>
-            <span className="text-teal shrink-0">→</span>
-            <span className="font-semibold text-text truncate">{relationship.target_name}</span>
-          </div>
-        </div>
-
-        {/* Supporting documents */}
-        {docIds.length > 0 && (
-          <div className="flex flex-col gap-1.5">
-            <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Evidence from</p>
-            <div className="flex flex-col gap-1">
-              {docIds.map(id => (
-                <span key={id} className="text-[10px] bg-panel-2 border border-border text-text-mid px-2 py-0.5 rounded-full truncate" title={docMap[id] ?? id}>
-                  {docMap[id] ?? id}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Other evidence fields */}
-        {evidenceEntries.filter(([k]) => k !== 'document_id' && k !== 'document_ids').length > 0 && (
-          <div className="flex flex-col gap-1.5">
-            <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Details</p>
-            {evidenceEntries
-              .filter(([k]) => k !== 'document_id' && k !== 'document_ids')
-              .map(([k, v]) => (
-                <div key={k} className="flex flex-col gap-0.5">
-                  <span className="text-[10px] font-medium text-text-mute capitalize">{k.replace(/_/g, ' ')}</span>
-                  <span className="text-xs text-text">{String(v)}</span>
+      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-5">
+        {relationships.map((rel, i) => {
+          const evidence = rel.evidence ?? {}
+          const docIds: string[] = Array.isArray(evidence.document_ids)
+            ? (evidence.document_ids as string[])
+            : evidence.document_id ? [evidence.document_id as string] : []
+          const extraEntries = Object.entries(evidence).filter(
+            ([k]) => !['source_type', 'target_type', 'document_id', 'document_ids'].includes(k)
+          )
+          const color = edgeColor(rel.relationship_type)
+          return (
+            <div key={rel.relationship_id} className={`flex flex-col gap-2 ${i > 0 ? 'pt-4 border-t border-border' : ''}`}>
+              <div className="flex items-center gap-2">
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                <span className="text-xs font-bold text-text">{rel.relationship_type.replace(/_/g, ' ')}</span>
+              </div>
+              {docIds.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  <p className="text-[10px] font-semibold text-text-mute uppercase tracking-wider">Evidence from</p>
+                  {docIds.map(id => (
+                    <span key={id} className="text-[10px] bg-panel-2 border border-border text-text-mid px-2 py-0.5 rounded-full truncate" title={docMap[id] ?? id}>
+                      {docMap[id] ?? id}
+                    </span>
+                  ))}
                 </div>
-              ))}
-          </div>
-        )}
+              )}
+              {extraEntries.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  {extraEntries.map(([k, v]) => (
+                    <div key={k} className="flex flex-col gap-0.5">
+                      <span className="text-[10px] font-medium text-text-mute capitalize">{k.replace(/_/g, ' ')}</span>
+                      <span className="text-xs text-text">{String(v)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </aside>
   )
@@ -448,7 +461,7 @@ export default function EntityGraphPanel({
   const [data, setData] = useState<{ entities: Entity[]; relationships: Relationship[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null)
-  const [selectedRelationship, setSelectedRelationship] = useState<Relationship | null>(null)
+  const [selectedRelationships, setSelectedRelationships] = useState<Relationship[] | null>(null)
   const [statsOpen, setStatsOpen] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null)
@@ -513,7 +526,7 @@ export default function EntityGraphPanel({
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      setSelectedRelationship(null)
+      setSelectedRelationships(null)
       setSelectedEntity((node.data.entity as Entity) ?? entityMap[node.id] ?? null)
     },
     [entityMap],
@@ -521,16 +534,16 @@ export default function EntityGraphPanel({
 
   const onEdgeClick = useCallback(
     (_: React.MouseEvent, edge: Edge) => {
-      const rel = relationshipMap[edge.id]
-      if (rel) {
+      const rels = edge.id.split('||').map(id => relationshipMap[id]).filter(Boolean) as Relationship[]
+      if (rels.length > 0) {
         setSelectedEntity(null)
-        setSelectedRelationship(rel)
+        setSelectedRelationships(rels)
       }
     },
     [relationshipMap],
   )
 
-  const onPaneClick = useCallback(() => { setSelectedEntity(null); setSelectedRelationship(null) }, [])
+  const onPaneClick = useCallback(() => { setSelectedEntity(null); setSelectedRelationships(null) }, [])
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -661,14 +674,6 @@ export default function EntityGraphPanel({
         >
           <Background color="#E2E8F0" gap={24} size={1.5} />
           <Controls showInteractive={false} style={{ bottom: 60, left: 16 }} />
-          <MiniMap
-            nodeColor={n => typeConfig(((n.data?.entity) as Entity | undefined)?.entity_type ?? 'unknown').color}
-            maskColor="rgba(241,245,249,0.85)"
-            style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 10, bottom: 16, right: 16 }}
-            pannable
-            zoomable
-          />
-
           {/* Legend */}
           {presentTypes.length > 0 && (
             <div
@@ -829,11 +834,11 @@ export default function EntityGraphPanel({
       )}
 
       {/* Relationship detail panel */}
-      {selectedRelationship && !selectedEntity && (
+      {selectedRelationships && !selectedEntity && (
         <RelationshipDetail
-          relationship={selectedRelationship}
+          relationships={selectedRelationships}
           docMap={docMap}
-          onClose={() => setSelectedRelationship(null)}
+          onClose={() => setSelectedRelationships(null)}
         />
       )}
 
