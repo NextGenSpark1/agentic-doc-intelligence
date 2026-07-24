@@ -207,6 +207,19 @@ def _assert_case_access(case: dict, user_id: str, membership: dict | None = None
         raise HTTPException(403, "access denied")
 
 
+async def _load_case_or_403(case_id: str, user: dict) -> dict:
+    """Fetch a case and enforce that `user` may access it. 404 if it doesn't exist, 403 if the
+    user's org/role/owner scope excludes it. EVERY case-scoped route must go through this — a
+    route that only checks `document.case_id == case_id` leaks other tenants' evidence to anyone
+    who knows a case_id."""
+    case = await asyncio.to_thread(db.get_case, case_id)
+    if not case:
+        raise HTTPException(404, "case not found")
+    membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    _assert_case_access(case, user["user_id"], membership)
+    return case
+
+
 @app.post("/cases", status_code=201)
 async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
     case_id = f"INV-{datetime.now().year}-{uuid.uuid4().hex[:4].upper()}"
@@ -265,21 +278,12 @@ async def list_cases(user: dict = Depends(get_current_user)):
 
 @app.get("/cases/{case_id}")
 async def get_case(case_id: str, user: dict = Depends(get_current_user)):
-    case = await asyncio.to_thread(db.get_case, case_id)
-    if not case:
-        raise HTTPException(404, "case not found")
-    membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
-    _assert_case_access(case, user["user_id"], membership)
-    return case
+    return await _load_case_or_403(case_id, user)
 
 
 @app.patch("/cases/{case_id}")
 async def update_case(case_id: str, body: CasePatch, user: dict = Depends(get_current_user)):
-    case = await asyncio.to_thread(db.get_case, case_id)
-    if not case:
-        raise HTTPException(404, "case not found")
-    membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
-    _assert_case_access(case, user["user_id"], membership)
+    await _load_case_or_403(case_id, user)
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
     if not patch:
         raise HTTPException(400, "no fields to update")
@@ -289,11 +293,7 @@ async def update_case(case_id: str, body: CasePatch, user: dict = Depends(get_cu
 
 @app.delete("/cases/{case_id}", status_code=204)
 async def delete_case(case_id: str, user: dict = Depends(get_current_user)):
-    case = await asyncio.to_thread(db.get_case, case_id)
-    if not case:
-        raise HTTPException(404, "case not found")
-    membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
-    _assert_case_access(case, user["user_id"], membership)
+    await _load_case_or_403(case_id, user)
     await asyncio.to_thread(db.delete_case, case_id)
 
 
@@ -309,30 +309,20 @@ class ReportRequest(BaseModel):
 
 @app.get("/cases/{case_id}/graph-state")
 async def get_graph_state(case_id: str, user: dict = Depends(get_current_user)):
-    case = await asyncio.to_thread(db.get_case, case_id)
-    if not case:
-        raise HTTPException(404, "case not found")
-    membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
-    _assert_case_access(case, user["user_id"], membership)
+    case = await _load_case_or_403(case_id, user)
     return case.get("graph_state") or {}
 
 
 @app.put("/cases/{case_id}/graph-state", status_code=204)
 async def save_graph_state(case_id: str, body: GraphStatePayload, user: dict = Depends(get_current_user)):
-    case = await asyncio.to_thread(db.get_case, case_id)
-    if not case:
-        raise HTTPException(404, "case not found")
-    membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
-    _assert_case_access(case, user["user_id"], membership)
+    await _load_case_or_403(case_id, user)
     await asyncio.to_thread(db.update_case, case_id, {"graph_state": body.model_dump()})
 
 
 # ---------------------------- documents ---------------------------
 @app.post("/cases/{case_id}/documents", status_code=201)
 async def upload_document(case_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    case = await asyncio.to_thread(db.get_case, case_id)
-    if not case:
-        raise HTTPException(404, "case not found")
+    case = await _load_case_or_403(case_id, user)
 
     content = await file.read()
     file_hash = hashlib.sha256(content).hexdigest()
@@ -366,6 +356,7 @@ async def upload_document(case_id: str, file: UploadFile = File(...), user: dict
 
 @app.post("/cases/{case_id}/documents/{document_id}/extract", status_code=202)
 async def trigger_extraction(case_id: str, document_id: str, background: BackgroundTasks, user: dict = Depends(get_current_user)):
+    await _load_case_or_403(case_id, user)
     doc = await asyncio.to_thread(db.get_document, document_id)
     if not doc or doc.get("case_id") != case_id:
         raise HTTPException(404, "document not found")
@@ -378,11 +369,13 @@ async def trigger_extraction(case_id: str, document_id: str, background: Backgro
 
 @app.get("/cases/{case_id}/documents")
 async def list_documents(case_id: str, user: dict = Depends(get_current_user)):
+    await _load_case_or_403(case_id, user)
     return {"documents": await asyncio.to_thread(db.list_documents, case_id)}
 
 
 @app.delete("/cases/{case_id}/documents/{document_id}", status_code=204)
 async def delete_document(case_id: str, document_id: str, user: dict = Depends(get_current_user)):
+    await _load_case_or_403(case_id, user)
     doc = await asyncio.to_thread(db.get_document, document_id)
     if not doc or doc.get("case_id") != case_id:
         raise HTTPException(404, "document not found")
@@ -391,6 +384,7 @@ async def delete_document(case_id: str, document_id: str, user: dict = Depends(g
 
 @app.get("/cases/{case_id}/documents/{document_id}/extraction")
 async def get_document_extraction(case_id: str, document_id: str, user: dict = Depends(get_current_user)):
+    await _load_case_or_403(case_id, user)
     doc = await asyncio.to_thread(db.get_document, document_id)
     if not doc or doc.get("case_id") != case_id:
         raise HTTPException(404, "document not found")
@@ -411,6 +405,7 @@ async def get_document_extraction(case_id: str, document_id: str, user: dict = D
 
 @app.get("/cases/{case_id}/documents/{document_id}/summary")
 async def get_document_summary(case_id: str, document_id: str, user: dict = Depends(get_current_user)):
+    await _load_case_or_403(case_id, user)
     doc = await asyncio.to_thread(db.get_document, document_id)
     if not doc or doc.get("case_id") != case_id:
         raise HTTPException(404, "document not found")
@@ -463,6 +458,7 @@ async def get_document_summary(case_id: str, document_id: str, user: dict = Depe
 
 @app.get("/cases/{case_id}/documents/{document_id}/file-url")
 async def get_document_file_url(case_id: str, document_id: str, user: dict = Depends(get_current_user)):
+    await _load_case_or_403(case_id, user)
     doc = await asyncio.to_thread(db.get_document, document_id)
     if not doc or doc.get("case_id") != case_id:
         raise HTTPException(404, "document not found")
@@ -477,6 +473,7 @@ async def get_document_file_url(case_id: str, document_id: str, user: dict = Dep
 
 @app.get("/cases/{case_id}/documents/{document_id}/chunks")
 async def get_document_chunks(case_id: str, document_id: str, user: dict = Depends(get_current_user)):
+    await _load_case_or_403(case_id, user)
     doc = await asyncio.to_thread(db.get_document, document_id)
     if not doc or doc.get("case_id") != case_id:
         raise HTTPException(404, "document not found")
@@ -488,9 +485,7 @@ async def get_document_chunks(case_id: str, document_id: str, user: dict = Depen
 @app.post("/cases/{case_id}/analysis", status_code=202)
 async def run_analysis(case_id: str, background: BackgroundTasks, user: dict = Depends(get_current_user)):
     """Trigger the agentic layer (Phase 4) across all extracted documents."""
-    case = await asyncio.to_thread(db.get_case, case_id)
-    if not case:
-        raise HTTPException(404, "case not found")
+    await _load_case_or_403(case_id, user)
     await asyncio.to_thread(db.update_case, case_id, {"updated_at": datetime.now(timezone.utc).isoformat()})
     background.add_task(pipeline.run_case_analysis, case_id)
     return {"status": "analysis_started", "case_id": case_id}
@@ -498,6 +493,7 @@ async def run_analysis(case_id: str, background: BackgroundTasks, user: dict = D
 
 @app.get("/cases/{case_id}/entities")
 async def get_entities(case_id: str, user: dict = Depends(get_current_user)):
+    await _load_case_or_403(case_id, user)
     return {
         "entities": await asyncio.to_thread(db.list_entities, case_id),
         "relationships": await asyncio.to_thread(db.list_relationships, case_id),
@@ -506,6 +502,7 @@ async def get_entities(case_id: str, user: dict = Depends(get_current_user)):
 
 @app.get("/cases/{case_id}/timeline")
 async def get_timeline(case_id: str, user: dict = Depends(get_current_user)):
+    await _load_case_or_403(case_id, user)
     rows = await asyncio.to_thread(
         lambda: db.get_client().table("timeline_events").select("*")
         .eq("case_id", case_id).order("event_date").execute().data
@@ -515,6 +512,7 @@ async def get_timeline(case_id: str, user: dict = Depends(get_current_user)):
 
 @app.get("/cases/{case_id}/findings")
 async def get_findings(case_id: str, user: dict = Depends(get_current_user)):
+    await _load_case_or_403(case_id, user)
     return {"findings": await asyncio.to_thread(db.list_findings, case_id)}
 
 
@@ -527,9 +525,7 @@ async def generate_report(
     """Generate a markdown investigation report from confirmed findings."""
     if body is None:
         body = ReportRequest()
-    case = await asyncio.to_thread(db.get_case, case_id)
-    if not case:
-        raise HTTPException(404, "case not found")
+    case = await _load_case_or_403(case_id, user)
 
     all_findings = await asyncio.to_thread(db.list_findings, case_id)
     confirmed = [f for f in all_findings if f.get("human_review_status") == "confirmed"]
@@ -597,6 +593,9 @@ async def review_finding(finding_id: str, body: FindingReview, user: dict = Depe
     existing = await asyncio.to_thread(db.get_finding, finding_id)
     if not existing:
         raise HTTPException(404, "finding not found")
+    # Enforce case access — this route isn't case-scoped in its path, so without this any user
+    # could review another org's findings by finding_id.
+    await _load_case_or_403(existing["case_id"], user)
     patch = {
         "human_review_status": body.status,
         "reviewed_by": body.reviewed_by,
@@ -621,6 +620,7 @@ async def review_finding(finding_id: str, body: FindingReview, user: dict = Depe
 async def chat(case_id: str, body: ChatRequest, user: dict = Depends(get_current_user)):
     """Grounded Q&A over a case's documents. Retrieved chunks become the citations,
     each carrying the page + bbox from ADE's visual grounding."""
+    await _load_case_or_403(case_id, user)
     settings = get_settings()
 
     # 1. Retrieve relevant chunks (vector search; keyword fallback)

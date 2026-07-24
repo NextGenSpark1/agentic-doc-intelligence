@@ -221,6 +221,14 @@ async def accept_invitation(token: str, user: dict = Depends(get_current_user)):
     if expires and datetime.fromisoformat(expires.replace("Z", "+00:00")) < datetime.now(timezone.utc):
         raise HTTPException(410, "Invitation has expired")
 
+    # Bind the invite to its intended recipient. Invite links are emailed and can be forwarded
+    # or leaked; without this, anyone holding a valid token could join the org with the invited
+    # role. The accepting user's authenticated email must match the address the invite was sent to.
+    invited_email = (invite.get("email") or "").strip().lower()
+    user_email = (user.get("email") or "").strip().lower()
+    if not user_email or user_email != invited_email:
+        raise HTTPException(403, "This invitation was issued to a different email address.")
+
     # Check not already a member
     existing = await asyncio.to_thread(db.get_org_member, invite["org_id"], user["user_id"])
     if existing:
