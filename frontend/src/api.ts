@@ -117,6 +117,20 @@ export async function fetchTimeline(caseId: string): Promise<TimelineEvent[]> {
   return response.data.events
 }
 
+export async function createTimelineEvent(caseId: string, data: { event_date: string; label: string; document_id?: string | null }): Promise<TimelineEvent> {
+  const response = await client.post<TimelineEvent>(`/cases/${caseId}/timeline`, data)
+  return response.data
+}
+
+export async function updateTimelineEvent(caseId: string, eventId: string, data: { event_date?: string; label?: string; document_id?: string | null }): Promise<TimelineEvent> {
+  const response = await client.patch<TimelineEvent>(`/cases/${caseId}/timeline/${eventId}`, data)
+  return response.data
+}
+
+export async function deleteTimelineEvent(caseId: string, eventId: string): Promise<void> {
+  await client.delete(`/cases/${caseId}/timeline/${eventId}`)
+}
+
 export interface ReportOptions {
   sections?: string[]
   instructions?: string

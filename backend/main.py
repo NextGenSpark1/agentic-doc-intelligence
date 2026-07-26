@@ -510,6 +510,48 @@ async def get_timeline(case_id: str, user: dict = Depends(get_current_user)):
     return {"events": rows}
 
 
+class TimelineEventCreate(BaseModel):
+    event_date: str
+    label: str
+    document_id: str | None = None
+
+
+class TimelineEventPatch(BaseModel):
+    event_date: str | None = None
+    label: str | None = None
+    document_id: str | None = None
+
+
+@app.post("/cases/{case_id}/timeline", status_code=201)
+async def create_timeline_event(case_id: str, body: TimelineEventCreate, user: dict = Depends(get_current_user)):
+    await _load_case_or_403(case_id, user)
+    record = {
+        "event_id": str(uuid.uuid4()),
+        "case_id": case_id,
+        "event_date": body.event_date,
+        "label": body.label,
+        "document_id": body.document_id,
+        "source": "manual",
+        "reasoning": None,
+    }
+    return await asyncio.to_thread(db.insert_timeline_event, record)
+
+
+@app.patch("/cases/{case_id}/timeline/{event_id}")
+async def update_timeline_event(case_id: str, event_id: str, body: TimelineEventPatch, user: dict = Depends(get_current_user)):
+    await _load_case_or_403(case_id, user)
+    patch = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not patch:
+        raise HTTPException(400, "no fields to update")
+    return await asyncio.to_thread(db.update_timeline_event, event_id, patch)
+
+
+@app.delete("/cases/{case_id}/timeline/{event_id}", status_code=204)
+async def delete_timeline_event(case_id: str, event_id: str, user: dict = Depends(get_current_user)):
+    await _load_case_or_403(case_id, user)
+    await asyncio.to_thread(db.delete_timeline_event, event_id)
+
+
 @app.get("/cases/{case_id}/findings")
 async def get_findings(case_id: str, user: dict = Depends(get_current_user)):
     await _load_case_or_403(case_id, user)

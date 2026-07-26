@@ -266,6 +266,19 @@ def insert_finding(data: dict) -> Optional[dict]:
         raise
 
 
+def insert_timeline_event(data: dict) -> dict:
+    """Insert a single manually-created timeline event (no content_hash dedup — user-created rows are always kept)."""
+    return get_client().table("timeline_events").insert(data).execute().data[0]
+
+
+def update_timeline_event(event_id: str, patch: dict) -> dict:
+    return get_client().table("timeline_events").update(patch).eq("event_id", event_id).execute().data[0]
+
+
+def delete_timeline_event(event_id: str) -> None:
+    get_client().table("timeline_events").delete().eq("event_id", event_id).execute()
+
+
 def insert_timeline_events(events: list[dict]) -> None:
     """Bulk-insert timeline events, skipping any (case + date + label + document) already present.
     Mirrors the finding/relationship dedup for the raw timeline insert. Normally the caller has
