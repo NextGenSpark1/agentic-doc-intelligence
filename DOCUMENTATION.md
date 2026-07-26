@@ -585,7 +585,7 @@ The embedding model (`LLM_EMBEDDING_MODEL`) is independent — Gemini embeddings
 
 ## 14. Service Accounts
 
-All external service accounts (Railway, Vercel, Supabase, Groq, LandingAI, Resend, Google AI Studio, GitHub) are registered under the company email. Contact the team lead for access credentials. API keys and secrets are **never stored in this repository** — they live in Railway environment variables, Vercel project settings, and the local `.env` file (git-ignored).
+All external service accounts are registered under the company email. API keys and secrets are **never stored in this repository** — they live in Railway environment variables, Vercel project settings, and the local `.env` file (git-ignored).
 
 ---
 
