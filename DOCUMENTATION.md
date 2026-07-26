@@ -18,6 +18,8 @@
 10. [Deployment Guide](#10-deployment-guide)
 11. [SQL Migrations](#11-sql-migrations)
 12. [Testing](#12-testing)
+13. [LLM Provider Reference](#13-llm-provider-reference)
+14. [Service Accounts](#14-service-accounts)
 
 ---
 
@@ -38,8 +40,9 @@
 
 | Model | Description | Who controls orgs | Monetisation |
 |---|---|---|---|
-| **SaaS** | Hosted by NextGen Spark on Vercel + Railway | NextGen Spark (platform admin) | Monthly/annual subscription per org |
-| **On-Prem** | Client installs on their own infrastructure | Client's IT admin | One-time or annual licence fee |
+| **SaaS (hosted)** | Hosted by NextGen Spark on Vercel + Railway | NextGen Spark (platform admin) | Monthly/annual subscription per org |
+| **On-Prem / Private Cloud** | Client installs on their own infrastructure (Docker) | Client's IT admin | One-time or annual licence fee |
+| **Managed Private Cloud** | NextGen Spark deploys on client's AWS/GCP account | Shared (client owns infra, NGS manages app) | Managed service contract |
 
 For on-prem, set `PLATFORM_ADMIN_EMAILS` to the client's IT admin email. They get full control. NextGen Spark has zero visibility into their data.
 
@@ -49,13 +52,14 @@ For on-prem, set `PLATFORM_ADMIN_EMAILS` to the client's IT admin email. They ge
 
 | Layer | Technology | Hosting |
 |---|---|---|
-| Frontend | React 18 + Vite + TypeScript + Tailwind CSS | Vercel |
-| Backend API | FastAPI (Python 3.11+) | Railway |
-| Database | Supabase (Postgres 15 + pgvector) | Supabase |
-| File Storage | Supabase Storage (S3-compatible) | Supabase |
+| Frontend | React 18 + Vite + TypeScript + Tailwind CSS | Vercel (SaaS) or Docker/Nginx (on-prem) |
+| Backend API | FastAPI (Python 3.12) | Railway via Docker image (SaaS) or any Docker host (on-prem) |
+| Containerisation | Docker — `backend/Dockerfile.api`, `frontend/Dockerfile.frontend`, `docker-compose.yml` | — |
+| Database | Supabase (Postgres 15 + pgvector) | Supabase cloud or self-hosted |
+| File Storage | Supabase Storage (S3-compatible) | Supabase cloud or self-hosted |
 | Auth | Supabase Auth (email/password + Google OAuth) | Supabase |
 | Document Extraction | LandingAI ADE (Agentic Document Extraction) | LandingAI cloud |
-| LLM Routing | LiteLLM (provider-agnostic) | — |
+| LLM Routing | LiteLLM (provider-agnostic — swap models via env vars) | — |
 | LLM — Reasoning | Groq `llama-3.3-70b-versatile` (default) | Groq |
 | LLM — Fast | Groq `llama-3.1-8b-instant` (default) | Groq |
 | LLM — Embeddings | Google Gemini `gemini-embedding-001` @ 1536 dims | Google AI Studio |
@@ -66,18 +70,27 @@ For on-prem, set `PLATFORM_ADMIN_EMAILS` to the client's IT admin email. They ge
 ```
 Browser → Vercel (React SPA)
              ↓ HTTPS API calls (Bearer token)
-          Railway (FastAPI)
+          Railway (FastAPI — Docker image)
              ↓
           Supabase (Postgres + Storage)
              ↓ (pipeline stages)
-          LandingAI ADE  ←→  LiteLLM → Groq / Gemini
+          LandingAI ADE  ←→  LiteLLM → Groq / Gemini / OpenAI / Kimi
+```
+
+### Local Development (Docker Compose)
+
+```
+docker-compose up --build
+# Backend  → http://localhost:8000
+# Frontend → http://localhost:80
+# Supabase → external (cloud), pointed to via .env
 ```
 
 ---
 
 ## 3. Environment Variables
 
-### Backend (Railway)
+### Backend (Railway / Docker)
 
 #### Supabase
 | Variable | Description | Where to get |
@@ -99,11 +112,14 @@ Browser → Vercel (React SPA)
 |---|---|---|
 | `GROQ_API_KEY` | Groq API key for Llama models | groq.com |
 | `GEMINI_API_KEY` | Google AI Studio key for embeddings | aistudio.google.com |
-| `OPENAI_API_KEY` | OpenAI key (if switching to GPT-4o models) | platform.openai.com |
+| `OPENAI_API_KEY` | OpenAI key (if switching to GPT-4o) | platform.openai.com |
+| `MOONSHOT_API_KEY` | Kimi (Moonshot) API key | platform.moonshot.cn |
 | `LLM_REASONING_MODEL` | Model for summaries, chat, anomaly reasoning | `groq/llama-3.3-70b-versatile` |
 | `LLM_FAST_MODEL` | Model for classification, cheap calls | `groq/llama-3.1-8b-instant` |
 | `LLM_CASE_REASONING_MODEL` | Model for cross-document case reasoning | `groq/llama-3.3-70b-versatile` |
 | `LLM_EMBEDDING_MODEL` | Model for RAG embeddings | `gemini/gemini-embedding-001` |
+
+See [Section 13](#13-llm-provider-reference) for how to swap to OpenAI, Kimi, or other providers.
 
 #### Multi-tenancy
 | Variable | Description | Example |
@@ -121,13 +137,15 @@ Browser → Vercel (React SPA)
 |---|---|---|
 | `CORS_ALLOW_ORIGINS` | Comma-separated allowed origins | `https://investigate.nextgenspark.solutions` |
 
-### Frontend (Vercel)
+### Frontend (Vercel / Docker build args)
 
 | Variable | Description |
 |---|---|
 | `VITE_API_URL` | Backend Railway URL, e.g. `https://your-app.railway.app` |
 | `VITE_SUPABASE_URL` | Same as `SUPABASE_URL` |
 | `VITE_SUPABASE_ANON_KEY` | Same as `SUPABASE_ANON_KEY` |
+
+> When building the frontend Docker image, these are passed as build args (see `frontend/Dockerfile.frontend`). They are baked into the static bundle at build time — not runtime env vars.
 
 ---
 
@@ -169,19 +187,30 @@ Browser → Vercel (React SPA)
 3. **Testing without a domain:** use `RESEND_FROM_EMAIL=onboarding@resend.dev` — can only send to your Resend account email
 4. **Production:** verify your domain in Resend dashboard → set `RESEND_FROM_EMAIL=noreply@yourdomain.com` → can send to any address
 
-### Vercel (Frontend)
+### Vercel (Frontend — SaaS)
 1. Import the GitHub repo into Vercel
 2. Set root directory to `frontend`
 3. Framework preset: Vite
 4. Add environment variables: `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 5. Deploy — Vercel auto-deploys on every push to `main`
 
-### Railway (Backend)
-1. Create a new project → deploy from GitHub repo
-2. Set start command: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
-3. Set root directory: `/` (repo root)
-4. Add all backend environment variables listed in Section 3
-5. Railway auto-deploys on every push to `main`
+### Railway (Backend — SaaS)
+
+The backend is fully containerised (`backend/Dockerfile.api`). Railway builds and deploys the Docker image automatically.
+
+**Primary method: Docker image deploy (used in production)**
+1. New project → Deploy from GitHub → select repo
+2. Railway detects `backend/Dockerfile.api` and builds the Docker image automatically
+3. No start command needed — the Dockerfile `CMD` runs `uvicorn backend.main:app`
+4. Add all backend environment variables (Section 3)
+5. Railway auto-deploys and rebuilds the Docker image on every push to `main`
+
+**Alternative: Source deploy (no Docker)**
+If running without Docker (e.g. local testing or a plain VPS):
+1. New project → Deploy from GitHub → select repo
+2. Set root directory: `/` (repo root)
+3. Set start command: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+4. Add all backend environment variables (Section 3)
 
 ---
 
@@ -236,7 +265,7 @@ When `RESEND_API_KEY` is set and a domain is verified, invitation emails are sen
 | `entities` | Named entities resolved across all documents (person, company, amount, etc.) |
 | `relationships` | Directed edges between entities with relationship type and confidence |
 | `findings` | Flagged anomalies/red flags — pending human review (confirm/dismiss) |
-| `timeline_events` | Chronological events extracted from documents |
+| `timeline_events` | Chronological events extracted from documents, plus manually added events |
 | `audit_log` | Immutable log of all actions (case created, finding reviewed, etc.) |
 | `organisations` | Org records — name, plan, created_by |
 | `org_members` | User ↔ org membership with role and invited_by (supervisor reference) |
@@ -285,7 +314,10 @@ All authenticated endpoints require `Authorization: Bearer <supabase_jwt>`.
 |---|---|---|---|
 | POST | `/cases/{id}/analysis` | Required | Run full case analysis pipeline |
 | GET | `/cases/{id}/entities` | Required | Get entities and relationships |
-| GET | `/cases/{id}/timeline` | Required | Get timeline events |
+| GET | `/cases/{id}/timeline` | Required | Get timeline events (AI-extracted + manual) |
+| POST | `/cases/{id}/timeline` | Required | Add a manual timeline event |
+| PATCH | `/cases/{id}/timeline/{event_id}` | Required | Edit a timeline event |
+| DELETE | `/cases/{id}/timeline/{event_id}` | Required | Delete a timeline event |
 | GET | `/cases/{id}/findings` | Required | Get all findings |
 | POST | `/cases/{id}/report` | Required | Generate markdown investigation report |
 | POST | `/cases/{id}/chat` | Required | RAG-grounded Q&A over case documents |
@@ -353,10 +385,10 @@ All authenticated endpoints require `Authorization: Bearer <supabase_jwt>`.
 | Tab | Description |
 |---|---|
 | **Documents** | Upload files, trigger extraction, view PDF with chunk overlays and bounding boxes |
-| **Entity Graph** | Interactive force-directed graph of entities and relationships. Edit mode: add/remove nodes and edges. |
-| **Timeline** | Chronological events extracted from all documents. LLM-flagged anomalies highlighted. |
-| **Findings** | AI-detected red flags pending human review. Confirm or dismiss each finding. |
-| **Report** | Generate a branded PDF-ready investigation report from confirmed findings. Custom sections and instructions. |
+| **Entity Graph** | Interactive force-directed graph of entities and relationships. Edit mode: add/remove nodes and edges manually. |
+| **Timeline** | Chronological events extracted from all documents. Add, edit, and delete events manually. Manually-added events shown with a "manual" badge. AI-extracted events linked to their source document. |
+| **Findings** | AI-detected red flags pending human review. Confirm or dismiss each finding with optional dismissal reason. |
+| **Report** | Generate a branded investigation report from confirmed findings. Custom sections and freeform instructions. |
 | **Chat** | RAG-grounded Q&A — ask questions, get answers with document citations and page references. |
 
 ### Case Settings Tabs
@@ -371,32 +403,91 @@ All authenticated endpoints require `Authorization: Bearer <supabase_jwt>`.
 
 ## 10. Deployment Guide
 
-### SaaS Deployment
+### Local Development
+
+```bash
+# Copy and fill in your environment variables
+cp .env.example .env
+
+# One-command local run (Docker required)
+docker-compose up --build
+
+# Or run services separately without Docker:
+# Backend
+pip install -r backend/requirements.txt
+uvicorn backend.main:app --reload
+
+# Frontend
+cd frontend && npm install && npm run dev
+```
+
+### SaaS Deployment (Vercel + Railway)
 
 **Prerequisites:** GitHub repo, Supabase project, Railway account, Vercel account.
 
 1. **Database:** Run `backend/schema.sql` in Supabase SQL Editor (full file, top to bottom)
 2. **Storage:** Create `evidence` bucket in Supabase Storage → set to private
-3. **Backend (Railway):**
+3. **Backend (Railway — Docker):**
    - New project → Deploy from GitHub → select repo
-   - Start command: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+   - Railway detects `backend/Dockerfile.api` and builds the image automatically
    - Add all backend env vars (Section 3)
    - Note the Railway URL (e.g. `https://app-production-xxxx.up.railway.app`)
 4. **Frontend (Vercel):**
    - Import repo → set root directory to `frontend`
    - Add env vars: `VITE_API_URL=<railway-url>`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
-   - Deploy
+   - Deploy — Vercel auto-deploys on every push to `main`
 5. **CORS:** Set `CORS_ALLOW_ORIGINS=<vercel-url>` in Railway env vars
-6. **Domain (optional):** Add subdomain CNAME in DNS → point to Vercel → configure in Vercel project settings
+6. **Domain (optional):** Add CNAME in DNS pointing to Vercel → configure in Vercel project settings
 
-### On-Prem Deployment
+### On-Prem / Private Deployment
 
-1. Clone the repo onto the client's server
-2. Set `PLATFORM_ADMIN_EMAILS` to the client's IT admin email
-3. Client runs their own Supabase (self-hosted) or uses Supabase cloud with their own account
-4. Deploy backend with Docker or directly with uvicorn
-5. Deploy frontend with any static host (Nginx, Caddy, etc.)
-6. NextGen Spark has **zero access** to client data in this model
+The platform is fully containerised and can be self-hosted on any infrastructure.
+
+**Option A: Docker Compose (simplest — own server or VPS)**
+```bash
+git clone <repo>
+cp .env.example .env   # fill in all variables
+docker-compose up -d --build
+# Backend on :8000, Frontend on :80
+# Add a reverse proxy (Nginx/Caddy) for TLS and a custom domain
+```
+
+**Option B: AWS**
+| Component | Recommended service |
+|---|---|
+| Backend | AWS App Runner (reads Dockerfile from ECR or GitHub directly) or ECS Fargate |
+| Frontend | AWS Amplify (static hosting with CI/CD) or CloudFront + S3 |
+| Database | Continue on Supabase cloud, or use RDS Postgres with pgvector extension |
+| Storage | S3 (Supabase Storage is S3-compatible — can swap the bucket URL) |
+
+**Option C: Google Cloud (GCP)**
+| Component | Recommended service |
+|---|---|
+| Backend | Cloud Run (serverless containers, scales to zero, no idle cost) |
+| Frontend | Firebase Hosting or Cloud Storage + Cloud CDN |
+| Database | Cloud SQL Postgres + pgvector extension, or continue Supabase |
+
+**Option D: Azure**
+| Component | Recommended service |
+|---|---|
+| Backend | Azure Container Apps or App Service (Docker) |
+| Frontend | Azure Static Web Apps |
+| Database | Azure Database for PostgreSQL + pgvector |
+
+**Platform Admin for On-Prem Clients**
+- Set `PLATFORM_ADMIN_EMAILS` to the **client's** IT admin email
+- The client admin creates their own orgs, invites their own users — full autonomy
+- NextGen Spark has **zero access** to client data
+- For a licencing gate: a `LICENCE_KEY` check can be added to `backend/config.py` if needed
+
+### Future SaaS / Subscription Scale-up
+
+If the platform moves to a subscription model (per-org billing):
+- The `plan` field already exists on the `organisations` table — gate premium features on it
+- **Stripe integration:** webhook updates `organisations.plan` on payment events
+- **Railway** — supports auto-scaling and usage-based plans; no migration needed from the current setup
+- **GCP Cloud Run / AWS App Runner** — both scale to zero, so inactive orgs have no idle cost; better unit economics at scale
+- **Multi-region:** deploy the FastAPI container to multiple regions; Supabase supports read replicas for low-latency global access
 
 ---
 
@@ -438,6 +529,7 @@ pytest tests/ -v
 | `tests/test_relationships.py` | Relationship extraction — rule + LLM combined pass |
 | `tests/test_schemas.py` | Extraction schema validation |
 | `tests/test_summarise.py` | Case summarisation — active vs dismissed findings, risk score |
+| `tests/test_llm_reasoning_guardrails.py` | Anti-hallucination guardrails — LLM output citing unknown document IDs is dropped |
 
 ### Design Principles
 
@@ -447,4 +539,54 @@ pytest tests/ -v
 
 ---
 
-*Last updated: July 2026 — ADI v0.1 (multi-tenancy release)*
+## 13. LLM Provider Reference
+
+The platform uses **LiteLLM** as a provider-agnostic router. Switching models requires only environment variable changes — no code changes. The provider prefix (e.g. `groq/`, `openai/`, `moonshot/`) tells LiteLLM which API to call.
+
+### Supported Providers
+
+| Provider | Env var needed | Example model string |
+|---|---|---|
+| **Groq** (default) | `GROQ_API_KEY` | `groq/llama-3.3-70b-versatile` |
+| **OpenAI** | `OPENAI_API_KEY` | `openai/gpt-4o`, `openai/gpt-4o-mini` |
+| **Kimi (Moonshot)** | `MOONSHOT_API_KEY` | `moonshot/moonshot-v1-8k`, `moonshot/moonshot-v1-32k` |
+| **Anthropic (Claude)** | `ANTHROPIC_API_KEY` | `anthropic/claude-3-5-sonnet-20241022` |
+| **Google Gemini** | `GEMINI_API_KEY` | `gemini/gemini-1.5-pro` (reasoning), `gemini/gemini-embedding-001` (embeddings) |
+| **Azure OpenAI** | `AZURE_API_KEY` + `AZURE_API_BASE` | `azure/<your-deployment-name>` |
+
+### Switching Providers
+
+To switch the reasoning model to OpenAI GPT-4o:
+```env
+OPENAI_API_KEY=sk-...
+LLM_REASONING_MODEL=openai/gpt-4o
+LLM_FAST_MODEL=openai/gpt-4o-mini
+LLM_CASE_REASONING_MODEL=openai/gpt-4o
+```
+
+To switch to Kimi (Moonshot):
+```env
+MOONSHOT_API_KEY=sk-...
+LLM_REASONING_MODEL=moonshot/moonshot-v1-32k
+LLM_FAST_MODEL=moonshot/moonshot-v1-8k
+LLM_CASE_REASONING_MODEL=moonshot/moonshot-v1-32k
+```
+
+The embedding model (`LLM_EMBEDDING_MODEL`) is independent — Gemini embeddings work alongside any reasoning provider and should be changed separately only if migrating to a different vector dimensionality (which would require re-embedding all chunks).
+
+### Notes
+
+- Groq free tier is generous and fast — recommended for development
+- OpenAI GPT-4o gives the best reasoning quality for production deployments
+- Kimi (Moonshot) is a strong option for deployments where data sovereignty in specific regions matters
+- If a reasoning LLM call fails (bad key, rate limit, etc.), the pipeline falls back to rule-based results automatically and logs the failure to `audit_log`
+
+---
+
+## 14. Service Accounts
+
+All external service accounts (Railway, Vercel, Supabase, Groq, LandingAI, Resend, Google AI Studio, GitHub) are registered under the company email. Contact the team lead for access credentials. API keys and secrets are **never stored in this repository** — they live in Railway environment variables, Vercel project settings, and the local `.env` file (git-ignored).
+
+---
+
+*Last updated: July 2026 — ADI v0.1 (multi-tenancy + Docker release)*
