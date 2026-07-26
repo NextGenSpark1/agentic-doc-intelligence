@@ -403,7 +403,7 @@ All authenticated endpoints require `Authorization: Bearer <supabase_jwt>`.
 
 ## 10. Deployment Guide
 
-### Local Development
+### 10.1 Local Development
 
 ```bash
 # Copy and fill in your environment variables
@@ -421,7 +421,7 @@ uvicorn backend.main:app --reload
 cd frontend && npm install && npm run dev
 ```
 
-### SaaS Deployment (Vercel + Railway)
+### 10.2 Current Deployment (SaaS — Vercel + Railway)
 
 **Prerequisites:** GitHub repo, Supabase project, Railway account, Vercel account.
 
@@ -439,7 +439,7 @@ cd frontend && npm install && npm run dev
 5. **CORS:** Set `CORS_ALLOW_ORIGINS=<vercel-url>` in Railway env vars
 6. **Domain (optional):** Add CNAME in DNS pointing to Vercel → configure in Vercel project settings
 
-### On-Prem / Private Deployment
+### 10.3 On-Prem / Private Deployment
 
 The platform is fully containerised and can be self-hosted on any infrastructure.
 
@@ -480,7 +480,7 @@ docker-compose up -d --build
 - NextGen Spark has **zero access** to client data
 - For a licencing gate: a `LICENCE_KEY` check can be added to `backend/config.py` if needed
 
-### Current Hosting Stack vs. Future Scale
+### 10.4 Future Hosting — Scaling to AWS / GCP
 
 **Current stack (Railway + Vercel)** is well-suited for the current stage — fast deploys, managed infra, zero DevOps overhead. This remains the right choice through early growth.
 
