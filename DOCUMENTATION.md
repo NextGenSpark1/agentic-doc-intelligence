@@ -480,14 +480,30 @@ docker-compose up -d --build
 - NextGen Spark has **zero access** to client data
 - For a licencing gate: a `LICENCE_KEY` check can be added to `backend/config.py` if needed
 
-### Future SaaS / Subscription Scale-up
+### Current Hosting Stack vs. Future Scale
 
-If the platform moves to a subscription model (per-org billing):
-- The `plan` field already exists on the `organisations` table — gate premium features on it
-- **Stripe integration:** webhook updates `organisations.plan` on payment events
-- **Railway** — supports auto-scaling and usage-based plans; no migration needed from the current setup
-- **GCP Cloud Run / AWS App Runner** — both scale to zero, so inactive orgs have no idle cost; better unit economics at scale
-- **Multi-region:** deploy the FastAPI container to multiple regions; Supabase supports read replicas for low-latency global access
+**Current stack (Railway + Vercel)** is well-suited for the current stage — fast deploys, managed infra, zero DevOps overhead. This remains the right choice through early growth.
+
+**When to consider moving to AWS or GCP:**
+- When the platform is offered as a true multi-tenant SaaS product with paying subscribers at scale
+- When enterprise clients require specific compliance certifications (SOC 2, ISO 27001) that require infrastructure we control directly
+- When usage volume makes managed platforms (Railway/Vercel) more expensive than running on raw cloud
+
+**AWS (recommended for enterprise SaaS scale):**
+- Backend: ECS Fargate or App Runner — managed containers, auto-scaling, no server management
+- Frontend: CloudFront + S3 or Amplify — global CDN, low latency
+- Database: RDS Postgres + pgvector, or keep Supabase cloud (it's just Postgres)
+- Best for: high-volume deployments, multi-region, strict compliance requirements
+
+**GCP (good alternative):**
+- Backend: Cloud Run — serverless containers, scales to zero (no idle cost for inactive orgs)
+- Frontend: Firebase Hosting or Cloud Storage + CDN
+- Best for: cost efficiency with variable/unpredictable load
+
+**Government / sensitive clients** → always on-prem or their own private cloud (see On-Prem section above). They own and control their own infrastructure entirely.
+
+**Subscription logic and pricing tiers:**
+The `plan` field already exists on the `organisations` table. When the business model is defined, feature gates and limits (number of cases, documents, users, API calls) are added against that field. Pricing tier names, limits, and billing integration (e.g. Stripe) are business decisions to be made when the SaaS model is formalised.
 
 ---
 
@@ -585,7 +601,7 @@ The embedding model (`LLM_EMBEDDING_MODEL`) is independent — Gemini embeddings
 
 ## 14. Service Accounts
 
-All external service accounts are registered under the company email. API keys and secrets are **never stored in this repository** — they live in Railway environment variables, Vercel project settings, and the local `.env` file (git-ignored).
+All external service accounts (Railway, Vercel, Supabase, Groq, LandingAI, Resend, Google AI Studio, GitHub) are created and managed under the company account. API keys and secrets are **never stored in this repository** — they live in Railway environment variables, Vercel project settings, and the local `.env` file (git-ignored).
 
 ---
 
