@@ -263,7 +263,7 @@ When `RESEND_API_KEY` is set and a domain is verified, invitation emails are sen
 | `extractions` | Structured JSON output from LandingAI ADE per document |
 | `chunks` | Text chunks with 1536-dim vector embeddings for RAG search |
 | `entities` | Named entities resolved across all documents (person, company, amount, etc.) |
-| `relationships` | Directed edges between entities with relationship type and confidence |
+| `relationships` | Directed edges between entities (source, target, relationship type). LLM-derived edges carry a confidence score and evidence quote inside the `evidence` JSON; rule-derived edges do not. |
 | `findings` | Flagged anomalies/red flags — pending human review (confirm/dismiss) |
 | `timeline_events` | Chronological events extracted from documents, plus manually added events |
 | `audit_log` | Immutable log of all actions (case created, finding reviewed, etc.) |
@@ -362,9 +362,33 @@ All authenticated endpoints require `Authorization: Bearer <supabase_jwt>`.
 | **Detect Anomalies** | `pipeline/detect_anomalies.py` | Rule pass + LLM pass: red flags generated as findings pending human review |
 | **Summarise** | `pipeline/summarise.py` | LLM generates case-level AI summary and risk score from active findings |
 
-**Resilience:** Every LLM pass is a non-blocking second pass on top of deterministic rules. If the LLM fails, the rule-based results are kept. All failures are logged to `audit_log` with `action=case_reasoning_failed`.
+**Rules + LLM run together (not either/or).** Each case-level stage runs its deterministic rule pass **and** an LLM pass, then merges them: the provable rule rows are always kept, LLM rows are added on top, and an LLM row that duplicates a rule row is dropped in favour of the rule row (content-hash dedup). If the LLM pass returns nothing (bad key, rate limit, provider down) the rule rows still stand; if the rules find nothing the LLM rows still stand.
+
+**Anti-hallucination guardrail.** Every LLM pass is grounding-validated: any output citing a `document_id`, entity, or event that was not actually sent to the model is dropped before it is persisted (`backend/pipeline/llm_reasoning.py`). LLM failures are swallowed for the caller and logged to `audit_log` with `action=case_reasoning_failed`, so a failing tier is diagnosable instead of silently looking like "nothing found."
 
 **Deduplication:** Findings, relationships, and timeline events use content hashes to prevent duplicate rows on re-analysis.
+
+### 8.1 RAG Pipeline (Retrieval & Chat)
+
+The case Chat tab answers questions grounded in the case's own documents. The retrieval stack is deliberately simple and lives entirely inside Postgres (no separate vector DB).
+
+**Chunking — layout-based, no fixed size, no overlap.**
+Chunk boundaries are decided by **LandingAI ADE**, not a text splitter. Each chunk is one layout element ADE detects (paragraph, table, heading, list item), carrying its page number and bounding box. There is **no configurable chunk size and no sliding-window overlap** — a trade-off: chunks follow the document's natural structure, but context that spans a boundary is not duplicated across chunks.
+
+**Embedding — Gemini 1536-dim, batched, fault-tolerant.**
+Chunk text is embedded with `gemini-embedding-001` at 1536 dimensions (`backend/pipeline/extract.py`). Embedding runs in **batches of 100** (the provider's per-request cap) with retry-and-backoff on rate limits (3 retries, 20s backoff). If a batch still fails, those chunks are stored **text-only** (embedding `NULL`) rather than dropped, and the failure is logged to `audit_log` as `chunk_embedding_failed`. So a document is never silently lost to an embedding outage.
+
+**Retrieval — pure dense semantic search.**
+On a chat question, the question is embedded and matched against the case's chunks via the `match_chunks` Postgres function (cosine distance, `<=>`), returning the top `rag_top_k` (default **8**) chunks. The index is **HNSW** (approximate nearest-neighbour) over pgvector. There is **no reranking, no hybrid (BM25) retrieval, and no similarity threshold** — the top 8 by vector distance are used as-is. If embedding is unavailable, chat falls back to a **keyword search** (matches salient words from the question against chunk text).
+
+**Grounding & citations.**
+The retrieved chunks are the only document context handed to the LLM, alongside case-level structured intelligence (entities, confirmed findings, relationships). The answer cites sources inline as `[n]`, and each citation carries the **page number and bounding box** from ADE's visual grounding, so the UI can jump to the exact spot in the source PDF. Across the analysis pipeline, LLM output that cites a `document_id`/entity/event not actually sent to the model is **dropped before persisting** (anti-hallucination guardrail, `backend/pipeline/llm_reasoning.py`).
+
+**Known limitations / roadmap (RAG).**
+- No sliding-window overlap between chunks.
+- No reranking (cross-encoder) or hybrid retrieval — dense search only.
+- No minimum-similarity cutoff; weak matches can still enter the top-8 context.
+- No formal retrieval/faithfulness evaluation harness (no golden set, recall@k, or RAGAS) yet — the highest-priority next step for measuring RAG quality.
 
 ---
 
@@ -546,12 +570,15 @@ pytest tests/ -v
 | `tests/test_schemas.py` | Extraction schema validation |
 | `tests/test_summarise.py` | Case summarisation — active vs dismissed findings, risk score |
 | `tests/test_llm_reasoning_guardrails.py` | Anti-hallucination guardrails — LLM output citing unknown document IDs is dropped |
+| `tests/test_timeline_and_classify.py` | Timeline event extraction/date parsing and document classification |
 
 ### Design Principles
 
 - LLM calls are mocked in tests — no real API calls, no cost, no flakiness
-- Tests cover both the happy path and edge cases (empty data, duplicate inserts, expired invitations)
+- Tests cover both the happy path and edge cases (empty/clean corpus, duplicate inserts, ungrounded LLM output)
 - Access control tests cover every role combination explicitly
+
+> Coverage is on the deterministic pipeline logic and access control (pure, DB-free functions). API endpoints, the org/invitation flow, and the RAG retrieval path are not yet covered by automated tests.
 
 ---
 
@@ -605,4 +632,4 @@ All external service accounts (Railway, Vercel, Supabase, Groq, LandingAI, Resen
 
 ---
 
-*Last updated: July 2026 — ADI v0.1 (multi-tenancy + Docker release)*
+*Last updated: July 2026 — ADI v0.1 (multi-tenancy + Docker release). Added §8.1 RAG Pipeline; corrected relationship-schema, rule+LLM merge, and testing-coverage notes.*
