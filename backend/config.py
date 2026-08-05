@@ -60,7 +60,16 @@ class Settings(BaseSettings):
 
     # --- Multi-tenancy ---
     # Comma-separated list of emails that have platform admin access (NextGen Spark team).
-    platform_admin_emails: list[str] = Field(default_factory=lambda: [e.strip() for e in os.getenv("PLATFORM_ADMIN_EMAILS", "nextgenspark2025@gmail.com,hello@nextgenspark.solutions").split(",")])
+    # Stored as str (same pattern as cors_allow_origins) so pydantic_settings never tries to
+    # JSON-parse it — avoids a crash when the env var is empty or missing.
+    platform_admin_emails_raw: str = Field(
+        default="nextgenspark2025@gmail.com,hello@nextgenspark.solutions",
+        alias="PLATFORM_ADMIN_EMAILS",
+    )
+
+    @property
+    def platform_admin_emails(self) -> list[str]:
+        return [e.strip() for e in self.platform_admin_emails_raw.split(",") if e.strip()]
 
     # --- Email (Resend) ---
     # Leave empty to disable email sending (invitations will still work via copy-link).
