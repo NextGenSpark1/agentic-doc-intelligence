@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime
 
 from .. import db
-from . import llm_reasoning
+from backend.core import llm_reasoning
 
 _TIMELINE_ANOMALY_PROMPT = (
     "You are reviewing a chronologically-sorted timeline of events extracted from a forensic "

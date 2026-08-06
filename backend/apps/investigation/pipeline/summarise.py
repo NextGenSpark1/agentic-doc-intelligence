@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import json
 
-from .. import db, llm
+from .. import db
+from backend.core import llm
 
 _SEVERITY_WEIGHT = {"high": 30, "medium": 15, "low": 5}
 

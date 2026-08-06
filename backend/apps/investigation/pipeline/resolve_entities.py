@@ -18,7 +18,7 @@ import re
 import uuid
 
 from .. import db
-from . import llm_reasoning
+from backend.core import llm_reasoning
 
 _ALIAS_MERGE_PROMPT = (
     "You are helping resolve entities for a forensic investigation case. Below is a JSON list "

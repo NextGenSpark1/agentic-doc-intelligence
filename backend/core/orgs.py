@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from . import db, email as mail
+from . import db_core as db, email as mail
 from .auth import get_current_user
 from .config import get_settings
 

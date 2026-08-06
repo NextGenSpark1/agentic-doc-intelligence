@@ -1,5 +1,5 @@
 """Relationship discovery."""
-from backend.pipeline.build_relationships import _dedupe_llm_edges, compute_relationships
+from backend.apps.investigation.pipeline.build_relationships import _dedupe_llm_edges, compute_relationships
 
 
 def test_finds_shared_bank_account_and_principal(sample_extractions):

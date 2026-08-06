@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .. import llm
+from . import llm
 
 
 def ask(system_prompt: str, payload: dict, case_id: str) -> Any | None:

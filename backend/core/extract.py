@@ -1,13 +1,18 @@
-"""Stage 2+3 — run ADE on a document, persist the extraction, and index chunks for RAG."""
+"""Stage 2+3 — run ADE on a document, persist the extraction, and index chunks for RAG.
+
+Core (app-agnostic). The per-case-type extraction schema is not known here — each product
+injects a `schema_resolver(case_type) -> pydantic model` so core never depends on an app's
+schemas. Investigation passes its fraud registry; Tendering will pass its tender registry.
+"""
 from __future__ import annotations
 
 import time
 import traceback
 import uuid
 from datetime import datetime, timezone
+from typing import Callable
 
-from .. import ade_client, db, llm
-from ..schemas import schema_for_case_type
+from . import ade_client, db_core as db, llm
 
 # Gemini's batch embedding API rejects requests with more than 100 inputs, AND the free tier
 # caps embed requests at 100/minute — so long documents (hundreds of chunks) must be embedded
@@ -17,11 +22,12 @@ _EMBED_RATE_LIMIT_RETRIES = 3
 _EMBED_RATE_LIMIT_BACKOFF_SECONDS = 20
 
 
-def run_extraction(document: dict, case: dict) -> dict:
+def run_extraction(document: dict, case: dict, schema_resolver: Callable[[str], type]) -> dict:
     """Parse + schema-extract one document. Returns the parsed markdown (for classify).
 
     If the case has schema_fields stored (custom or preset), builds a raw JSON Schema
-    dict and uses parse_and_extract_raw(). Otherwise falls back to the Pydantic path.
+    dict and uses parse_and_extract_raw(). Otherwise falls back to the Pydantic path, using
+    `schema_resolver(case_type)` — injected by the app so core stays schema-agnostic.
     Persists an `extractions` row and indexes `chunks` (with embeddings) for case chat.
     """
     # Pull the file from Supabase Storage and hand the bytes to ADE.
@@ -52,7 +58,7 @@ def run_extraction(document: dict, case: dict) -> dict:
         parsed = ade_client.parse_and_extract_raw(content, schema_dict)
         schema_name = "custom"
     else:
-        schema = schema_for_case_type(case.get("case_type", ""))
+        schema = schema_resolver(case.get("case_type", ""))
         parsed = ade_client.parse_and_extract(content, schema)
         schema_name = schema.__name__
 
