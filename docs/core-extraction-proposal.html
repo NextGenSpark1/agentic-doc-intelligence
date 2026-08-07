@@ -1,0 +1,475 @@
+<title>Shared Core Extraction — Architecture Proposal</title>
+<style>
+  :root {
+    --bg: #F7F8FA;
+    --surface: #FFFFFF;
+    --surface-2: #F0F2F5;
+    --ink: #171B21;
+    --ink-2: #4A525E;
+    --ink-3: #79828F;
+    --line: #E2E6EB;
+    --line-strong: #CBD2DB;
+
+    --core: #2563EB;      --core-bg: #EAF1FE;      --core-line: #B9D0FB;
+    --inv:  #0D9488;      --inv-bg:  #E5F5F3;      --inv-line:  #9BDDD5;
+    --split:#D97706;      --split-bg:#FBF0DE;      --split-line:#F0CE96;
+
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+    --measure: 60rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0E1217;
+      --surface: #161B22;
+      --surface-2: #1C232C;
+      --ink: #E7ECF2;
+      --ink-2: #A9B4C0;
+      --ink-3: #6E7986;
+      --line: #262E38;
+      --line-strong: #333D49;
+
+      --core: #6BA3FF;      --core-bg: #15223B;      --core-line: #2E4670;
+      --inv:  #46C7B8;      --inv-bg:  #113029;      --inv-line:  #1E4E44;
+      --split:#EAA23D;      --split-bg:#33260F;      --split-line:#5A4318;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0E1217; --surface: #161B22; --surface-2: #1C232C;
+    --ink: #E7ECF2; --ink-2: #A9B4C0; --ink-3: #6E7986;
+    --line: #262E38; --line-strong: #333D49;
+    --core: #6BA3FF; --core-bg: #15223B; --core-line: #2E4670;
+    --inv: #46C7B8; --inv-bg: #113029; --inv-line: #1E4E44;
+    --split: #EAA23D; --split-bg: #33260F; --split-line: #5A4318;
+  }
+  :root[data-theme="light"] {
+    --bg: #F7F8FA; --surface: #FFFFFF; --surface-2: #F0F2F5;
+    --ink: #171B21; --ink-2: #4A525E; --ink-3: #79828F;
+    --line: #E2E6EB; --line-strong: #CBD2DB;
+    --core: #2563EB; --core-bg: #EAF1FE; --core-line: #B9D0FB;
+    --inv: #0D9488; --inv-bg: #E5F5F3; --inv-line: #9BDDD5;
+    --split: #D97706; --split-bg: #FBF0DE; --split-line: #F0CE96;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .wrap {
+    max-width: var(--measure);
+    margin: 0 auto;
+    padding: clamp(1.5rem, 4vw, 4rem) clamp(1.1rem, 4vw, 2.5rem) 5rem;
+  }
+
+  /* ---- Masthead ---- */
+  .masthead {
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 1.6rem;
+    margin-bottom: 2.6rem;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 1.1rem;
+  }
+  .eyebrow .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--core); }
+  h1 {
+    font-size: clamp(1.9rem, 5vw, 2.9rem);
+    line-height: 1.08;
+    letter-spacing: -0.022em;
+    font-weight: 700;
+    margin: 0 0 0.7rem;
+    text-wrap: balance;
+  }
+  .lede {
+    font-size: clamp(1.02rem, 2.2vw, 1.18rem);
+    color: var(--ink-2);
+    max-width: 46ch;
+    margin: 0 0 1.4rem;
+    text-wrap: pretty;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.6rem;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--ink-3);
+  }
+  .meta b { color: var(--ink-2); font-weight: 600; }
+
+  /* ---- Sections ---- */
+  section { margin-top: 3rem; }
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.8rem;
+    margin-bottom: 1.1rem;
+    padding-bottom: 0.55rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .sec-num {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--core);
+    letter-spacing: 0.02em;
+  }
+  h2 {
+    font-size: clamp(1.25rem, 3vw, 1.6rem);
+    letter-spacing: -0.014em;
+    font-weight: 680;
+    margin: 0;
+    line-height: 1.2;
+    text-wrap: balance;
+  }
+  h3 {
+    font-size: 1.02rem;
+    font-weight: 640;
+    margin: 1.8rem 0 0.5rem;
+    letter-spacing: -0.006em;
+  }
+  p { margin: 0 0 1rem; color: var(--ink-2); max-width: 68ch; }
+  p strong, li strong { color: var(--ink); font-weight: 640; }
+  .callout-em { color: var(--ink); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    background: var(--surface-2);
+    padding: 0.1em 0.38em;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+    color: var(--ink);
+  }
+
+  /* ---- Legend chips ---- */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin: 1.4rem 0 0.4rem;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--mono);
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 0.32rem 0.7rem 0.32rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid;
+  }
+  .chip::before { content: ""; width: 8px; height: 8px; border-radius: 2px; }
+  .chip.core  { color: var(--core);  background: var(--core-bg);  border-color: var(--core-line); }
+  .chip.inv   { color: var(--inv);   background: var(--inv-bg);   border-color: var(--inv-line); }
+  .chip.split { color: var(--split); background: var(--split-bg); border-color: var(--split-line); }
+  .chip.core::before  { background: var(--core); }
+  .chip.inv::before   { background: var(--inv); }
+  .chip.split::before { background: var(--split); }
+
+  /* ---- File map table ---- */
+  .table-scroll { overflow-x: auto; margin: 1.3rem 0; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; min-width: 34rem; }
+  thead th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 600;
+    padding: 0.7rem 0.9rem;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  tbody td { padding: 0.62rem 0.9rem; border-bottom: 1px solid var(--line); vertical-align: middle; color: var(--ink-2); }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr { background: var(--surface); }
+  td.file { font-family: var(--mono); font-size: 0.82rem; color: var(--ink); white-space: nowrap; }
+  td.lines { font-family: var(--mono); text-align: right; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  td.bucket { white-space: nowrap; }
+  .tag {
+    font-family: var(--mono); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em;
+    padding: 0.15rem 0.5rem; border-radius: 5px; border: 1px solid;
+  }
+  .tag.core  { color: var(--core);  background: var(--core-bg);  border-color: var(--core-line); }
+  .tag.inv   { color: var(--inv);   background: var(--inv-bg);   border-color: var(--inv-line); }
+  .tag.split { color: var(--split); background: var(--split-bg); border-color: var(--split-line); }
+  tr.b-core  td.file { box-shadow: inset 3px 0 0 var(--core); }
+  tr.b-inv   td.file { box-shadow: inset 3px 0 0 var(--inv); }
+  tr.b-split td.file { box-shadow: inset 3px 0 0 var(--split); }
+
+  .tally {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; margin: 1.2rem 0 0.5rem;
+  }
+  .tally .cell {
+    border: 1px solid var(--line); border-radius: 10px; padding: 0.9rem 1rem; background: var(--surface);
+  }
+  .tally .n { font-family: var(--mono); font-size: 1.6rem; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+  .tally .core .n { color: var(--core); } .tally .inv .n { color: var(--inv); } .tally .split .n { color: var(--split); }
+  .tally .lbl { font-size: 0.8rem; color: var(--ink-3); margin-top: 0.4rem; }
+
+  /* ---- File tree ---- */
+  .tree {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.75;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1.2rem 1.3rem;
+    overflow-x: auto;
+    margin: 1.3rem 0;
+    white-space: pre;
+    color: var(--ink-2);
+  }
+  .tree .dir { color: var(--ink); font-weight: 600; }
+  .tree .c { color: var(--core); }
+  .tree .i { color: var(--inv); }
+  .tree .s { color: var(--split); }
+  .tree .cm { color: var(--ink-3); }
+
+  /* ---- Split cards ---- */
+  .split-card {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    padding: 1.3rem 1.4rem;
+    margin: 1.1rem 0;
+    border-left: 3px solid var(--split);
+  }
+  .split-card h3 { margin-top: 0; display: flex; align-items: center; gap: 0.6rem; }
+  .split-card h3 code { font-size: 0.9rem; }
+  .flow {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0.7rem;
+    align-items: stretch;
+    margin: 0.9rem 0 0.4rem;
+  }
+  .flow .box {
+    border: 1px solid var(--line); border-radius: 9px; padding: 0.7rem 0.8rem; font-size: 0.84rem;
+    background: var(--surface-2);
+  }
+  .flow .box .k {
+    font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.06em; text-transform: uppercase;
+    display: block; margin-bottom: 0.3rem; font-weight: 700;
+  }
+  .flow .box.to-core { border-color: var(--core-line); } .flow .box.to-core .k { color: var(--core); }
+  .flow .box.to-app  { border-color: var(--inv-line); }  .flow .box.to-app .k { color: var(--inv); }
+  .flow .arrow { align-self: center; color: var(--ink-3); font-size: 1.1rem; }
+
+  /* ---- Callout ---- */
+  .callout {
+    border: 1px solid var(--core-line);
+    background: var(--core-bg);
+    border-radius: 12px;
+    padding: 1.2rem 1.4rem;
+    margin: 1.4rem 0;
+  }
+  .callout .tagline {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--core); font-weight: 700; margin-bottom: 0.5rem;
+  }
+  .callout p { color: var(--ink); margin: 0; }
+
+  /* ---- Ordered process ---- */
+  ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 1.1rem 0; display: flex; flex-direction: column; gap: 0.7rem; }
+  ol.steps li {
+    counter-increment: s; position: relative; padding: 0.75rem 1rem 0.75rem 3.1rem;
+    border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink-2); font-size: 0.94rem;
+  }
+  ol.steps li::before {
+    content: counter(s); position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%);
+    width: 1.5rem; height: 1.5rem; border-radius: 6px; background: var(--core); color: #fff;
+    font-family: var(--mono); font-size: 0.82rem; font-weight: 700; display: grid; place-items: center;
+  }
+  ol.steps li b { color: var(--ink); }
+
+  /* ---- Risk list ---- */
+  ul.risks { list-style: none; padding: 0; margin: 1.1rem 0; display: flex; flex-direction: column; gap: 0.6rem; }
+  ul.risks li {
+    padding: 0.7rem 1rem 0.7rem 1rem; border: 1px solid var(--line); border-left: 3px solid var(--split);
+    border-radius: 8px; background: var(--surface); font-size: 0.92rem; color: var(--ink-2);
+  }
+  ul.risks li b { color: var(--ink); display: block; margin-bottom: 0.1rem; }
+
+  ul.plain { padding-left: 1.1rem; margin: 0.6rem 0 1rem; }
+  ul.plain li { margin-bottom: 0.4rem; color: var(--ink-2); }
+
+  .reuse-bar {
+    display: flex; align-items: center; gap: 1rem; margin: 1.2rem 0;
+    border: 1px solid var(--line); border-radius: 12px; padding: 1.1rem 1.3rem; background: var(--surface);
+  }
+  .reuse-bar .big { font-family: var(--mono); font-size: 2.1rem; font-weight: 700; color: var(--core); line-height: 1; letter-spacing: -0.03em; }
+  .reuse-bar .txt { font-size: 0.92rem; color: var(--ink-2); }
+  .reuse-bar .txt b { color: var(--ink); }
+
+  footer {
+    margin-top: 3.5rem; padding-top: 1.3rem; border-top: 1px solid var(--line);
+    font-family: var(--mono); font-size: 0.76rem; color: var(--ink-3);
+  }
+
+  @media (max-width: 620px) {
+    .tally { grid-template-columns: 1fr; }
+    .flow { grid-template-columns: 1fr; }
+    .flow .arrow { transform: rotate(90deg); }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">
+      <span class="dot"></span> NextGen Document Intelligence Suite
+      <span aria-hidden="true">·</span> Architecture Proposal
+    </div>
+    <h1>Shared Core Extraction</h1>
+    <p class="lede">How we make the Investigation Intelligence backend reusable for Tendering Intelligence (and future products).</p>
+  </header>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><h2>The core idea</h2></div>
+    <p>We <strong>don't</strong> copy the repo into a new folder for tenders (a "fork"). A fork means two copies of the same document pipeline that slowly drift apart — every bug fix has to be done twice.</p>
+    <p>Instead, reorganise the <strong>one existing backend</strong> into two parts — a shared engine, and the product-specific logic built on top of it.</p>
+    <div class="legend">
+      <span class="chip core">CORE — shared engine</span>
+      <span class="chip inv">INVESTIGATION — today's product</span>
+      <span class="chip split">SPLIT — has both, must be divided</span>
+    </div>
+    <p style="margin-top:1.1rem"><strong>"Drops in" simply means reuse almost unchanged</strong> — like a LEGO piece that already fits. Most of the backend drops into <code>core/</code> as-is. A new product mainly adds its own schemas, prompts, and a few new stages, and borrows everything else.</p>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span><h2>Where each file goes</h2></div>
+    <p>Every backend file, sorted. Eight drop into <code>core/</code> almost untouched, three need splitting, six stay with Investigation.</p>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>File</th><th>Lines</th><th>Bucket</th><th>Reason</th></tr>
+        </thead>
+        <tbody>
+          <tr class="b-core"><td class="file">ade_client.py</td><td class="lines">323</td><td class="bucket"><span class="tag core">CORE</span></td><td>Document parsing / OCR</td></tr>
+          <tr class="b-core"><td class="file">llm.py</td><td class="lines">33</td><td class="bucket"><span class="tag core">CORE</span></td><td>LLM router</td></tr>
+          <tr class="b-core"><td class="file">pipeline/llm_reasoning.py</td><td class="lines">53</td><td class="bucket"><span class="tag core">CORE</span></td><td>Grounding / anti-hallucination guardrail</td></tr>
+          <tr class="b-core"><td class="file">auth.py</td><td class="lines">79</td><td class="bucket"><span class="tag core">CORE</span></td><td>Login / JWT verification</td></tr>
+          <tr class="b-core"><td class="file">orgs.py</td><td class="lines">250</td><td class="bucket"><span class="tag core">CORE</span></td><td>Orgs, roles, invites, tenant isolation</td></tr>
+          <tr class="b-core"><td class="file">email.py</td><td class="lines">93</td><td class="bucket"><span class="tag core">CORE</span></td><td>Invitation emails</td></tr>
+          <tr class="b-core"><td class="file">config.py</td><td class="lines">86</td><td class="bucket"><span class="tag core">CORE</span></td><td>Settings</td></tr>
+          <tr class="b-core"><td class="file">pipeline/extract.py</td><td class="lines">138</td><td class="bucket"><span class="tag core">CORE</span></td><td>Chunk + embed</td></tr>
+          <tr class="b-split"><td class="file">pipeline/classify.py</td><td class="lines">54</td><td class="bucket"><span class="tag split">SPLIT</span></td><td>Classify <em>engine</em> → core; fraud doc-type <em>labels</em> → app</td></tr>
+          <tr class="b-split"><td class="file">db.py</td><td class="lines">437</td><td class="bucket"><span class="tag split">SPLIT</span></td><td>Cases/documents/chunks queries → core; findings/relationships/entities → app</td></tr>
+          <tr class="b-split"><td class="file">main.py</td><td class="lines">755</td><td class="bucket"><span class="tag split">SPLIT</span></td><td>Upload/chat/auth routes → core; findings/entities/timeline routes → app</td></tr>
+          <tr class="b-inv"><td class="file">schemas/investigation.py</td><td class="lines">101</td><td class="bucket"><span class="tag inv">INVEST</span></td><td>Fraud extraction schemas</td></tr>
+          <tr class="b-inv"><td class="file">pipeline/detect_anomalies.py</td><td class="lines">416</td><td class="bucket"><span class="tag inv">INVEST</span></td><td>Fraud detection rules</td></tr>
+          <tr class="b-inv"><td class="file">pipeline/build_relationships.py</td><td class="lines">282</td><td class="bucket"><span class="tag inv">INVEST</span></td><td>Entity relationship graph</td></tr>
+          <tr class="b-inv"><td class="file">pipeline/resolve_entities.py</td><td class="lines">168</td><td class="bucket"><span class="tag inv">INVEST</span></td><td>Entity resolution</td></tr>
+          <tr class="b-inv"><td class="file">pipeline/reconstruct_timeline.py</td><td class="lines">274</td><td class="bucket"><span class="tag inv">INVEST</span></td><td>Timeline reconstruction</td></tr>
+          <tr class="b-inv"><td class="file">pipeline/summarise.py</td><td class="lines">65</td><td class="bucket"><span class="tag inv">INVEST</span></td><td>Case risk summary</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tally">
+      <div class="cell core"><div class="n">8</div><div class="lbl">files drop into <code>core/</code> almost untouched</div></div>
+      <div class="cell split"><div class="n">3</div><div class="lbl">files need splitting (the real work)</div></div>
+      <div class="cell inv"><div class="n">6</div><div class="lbl">files stay in the Investigation app</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><h2>Target structure</h2></div>
+    <p>One repo, reorganised. Colour marks each file's origin bucket.</p>
+    <div class="tree"><span class="dir">backend/</span>
+├── <span class="dir">core/</span>                        <span class="cm"># shared by every product</span>
+│   ├── <span class="c">ade_client.py</span>
+│   ├── <span class="c">llm.py</span>   ├── <span class="c">llm_reasoning.py</span>
+│   ├── <span class="c">auth.py</span>  ├── <span class="c">orgs.py</span>  ├── <span class="c">email.py</span>
+│   ├── <span class="c">config.py</span>
+│   ├── <span class="s">db_core.py</span>               <span class="cm"># generic queries: cases, docs, chunks</span>
+│   ├── <span class="c">extract.py</span>               <span class="cm"># chunk + embed</span>
+│   └── <span class="s">classify.py</span>              <span class="cm"># engine; labels passed in as an argument</span>
+│
+├── <span class="dir">apps/</span>
+│   ├── <span class="dir">investigation/</span>           <span class="cm"># existing product</span>
+│   │   ├── <span class="s">main.py</span>              <span class="cm"># findings / entities / timeline routes</span>
+│   │   ├── <span class="i">schemas.py</span>           <span class="cm"># fraud schemas</span>
+│   │   ├── <span class="s">db.py</span>                <span class="cm"># findings / relationships queries</span>
+│   │   └── <span class="dir">pipeline/</span>  <span class="cm"># detect_anomalies, build_relationships, …</span>
+│   │
+│   └── <span class="dir">tendering/</span>               <span class="cm"># NEW — built on core</span>
+│       ├── main.py              <span class="cm"># requirement / compliance / readiness routes</span>
+│       ├── schemas.py           <span class="cm"># tender schemas</span>
+│       ├── db.py                <span class="cm"># requirements / evidence queries</span>
+│       └── <span class="dir">pipeline/</span>
+│           ├── extract_requirements.py   <span class="cm"># NEW</span>
+│           ├── compliance_matrix.py      <span class="cm"># NEW</span>
+│           ├── evidence_matching.py      <span class="cm"># NEW</span>
+│           └── readiness_review.py       <span class="cm"># NEW</span></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">04</span><h2>How the 3 split files divide</h2></div>
+    <p><strong>The golden rule:</strong> the <em>engine</em> (the HOW) goes to <code>core/</code>; the <em>content</em> (the WHAT — labels, rules, schemas) stays in the app and is passed in as an argument.</p>
+
+    <div class="split-card">
+      <h3><code>classify.py</code> <span style="font-weight:400;color:var(--ink-3);font-size:0.86rem">— pass the type list in</span></h3>
+      <p style="margin-bottom:0.4rem">The classify logic (ask the LLM, fall back to keywords) is generic. Only the <em>list of document types</em> is domain-specific.</p>
+      <div class="flow">
+        <div class="box to-core"><span class="k">→ core</span><code>classify(md, known_types, heuristics)</code> — the engine</div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="box to-app"><span class="k">→ each app</span>passes its own list: Investigation → <code>invoice, bank_statement…</code>; Tendering → <code>tender_notice, BOQ…</code></div>
+      </div>
+    </div>
+
+    <div class="split-card">
+      <h3><code>db.py</code> <span style="font-weight:400;color:var(--ink-3);font-size:0.86rem">— split by table</span></h3>
+      <div class="flow">
+        <div class="box to-core"><span class="k">→ core/db_core.py</span><code>get_client</code>, <code>_content_hash</code>, and all cases / documents / chunks / <code>match_chunks</code> queries</div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="box to-app"><span class="k">→ app/db.py</span>findings / relationships / entities queries — <em>imports</em> <code>get_client</code> from core</div>
+      </div>
+    </div>
+
+    <div class="split-card">
+      <h3><code>main.py</code> <span style="font-weight:400;color:var(--ink-3);font-size:0.86rem">— split by route (FastAPI routers)</span></h3>
+      <p style="margin-bottom:0.4rem">We already do this once — <code>orgs.py</code> uses <code>app.include_router()</code>. Apply it more widely.</p>
+      <div class="flow">
+        <div class="box to-core"><span class="k">→ core/main.py</span>the app + shared routes: health, auth, <code>/cases</code>, <code>/documents</code>, <code>/chat</code></div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="box to-app"><span class="k">→ app routers</span><code>/findings</code>, <code>/entities</code>, <code>/timeline</code> — wired in via <code>include_router()</code></div>
+      </div>
+    </div>
+
+    <div class="callout" style="border-color:var(--inv-line);background:var(--inv-bg)">
+      <div class="tagline" style="color:var(--inv)">No behaviour change</div>
+      <p>Investigation runs exactly the same afterwards. Code is <em>moved</em>, and content is <em>passed as arguments</em> instead of hardcoded.</p>
+    </div>
+  </section>
+
+  <footer>
+    Prepared by Nawran — Backend / Architecture Lead · NextGen Spark.
+  </footer>
+
+</div>
