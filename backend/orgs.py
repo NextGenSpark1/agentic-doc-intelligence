@@ -77,6 +77,7 @@ async def platform_list_orgs(user: dict = Depends(_require_platform_admin)):
             "org_id": org["org_id"],
             "name": org["name"],
             "plan": org["plan"],
+            "status": org.get("status", "active"),
             "created_at": org["created_at"],
             "member_count": len(members),
             "case_count": case_count,
