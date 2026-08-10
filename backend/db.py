@@ -427,6 +427,9 @@ def remove_org_member(org_id: str, user_id: str) -> None:
 
 
 def create_invitation(org_id: str, email: str, role: str, invited_by: str) -> dict:
+    # Remove any prior invitation for this email in this org (accepted or expired)
+    # so that re-inviting someone who previously left is always possible.
+    get_client().table("invitations").delete().eq("org_id", org_id).eq("email", email).execute()
     return get_client().table("invitations").insert({
         "org_id": org_id, "email": email, "role": role, "invited_by": invited_by,
     }).execute().data[0]

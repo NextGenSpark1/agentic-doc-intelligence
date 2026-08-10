@@ -71,8 +71,13 @@ export default function CasesPage() {
     try {
       const result = await fetchCases()
       setData(result)
-    } catch {
-      setError('Failed to load cases. Is the backend running on localhost:8000?')
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 403) {
+        setError('Your organisation has been suspended. Contact your platform administrator.')
+      } else {
+        setError('Failed to load cases. The backend may be unavailable — try refreshing.')
+      }
     } finally {
       setLoading(false)
     }
