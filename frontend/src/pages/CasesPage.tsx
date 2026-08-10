@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { FolderOpen, Activity, Clock, Archive, Plus } from 'lucide-react'
 import type { Case, CasesListResponse } from '../types'
 import { fetchCases, deleteCase } from '../api'
+import { useAuth } from '../context/AuthContext'
 import StatCard from '../components/StatCard'
 import FilterPills from '../components/FilterPills'
 import CaseTable from '../components/CaseTable'
@@ -50,6 +51,8 @@ function CasesTableSkeleton() {
 }
 
 export default function CasesPage() {
+  const { orgCtx } = useAuth()
+  const isSuspended = orgCtx?.org_status === 'suspended'
   const [data, setData] = useState<CasesListResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -71,13 +74,8 @@ export default function CasesPage() {
     try {
       const result = await fetchCases()
       setData(result)
-    } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status
-      if (status === 403) {
-        setError('Your organisation has been suspended. Contact your platform administrator.')
-      } else {
-        setError('Failed to load cases. The backend may be unavailable — try refreshing.')
-      }
+    } catch {
+      setError('Failed to load cases. The backend may be unavailable — try refreshing.')
     } finally {
       setLoading(false)
     }
@@ -140,6 +138,12 @@ export default function CasesPage() {
   return (
     <div className="max-w-screen-xl mx-auto px-6 py-8 flex flex-col gap-6">
       {/* Banners */}
+      {isSuspended && (
+        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-sm px-4 py-3 rounded-lg flex items-center gap-2">
+          <span className="font-semibold">Organisation suspended.</span>
+          <span>Your data is read-only. Contact your platform administrator to restore access.</span>
+        </div>
+      )}
       {error && (
         <div className="bg-red-bg border border-red/20 text-red text-sm px-4 py-3 rounded-lg">
           {error}
@@ -158,8 +162,10 @@ export default function CasesPage() {
           <p className="text-sm text-text-mute mt-0.5">Manage and track all active investigations</p>
         </div>
         <button
-          onClick={() => setModalOpen(true)}
-          className="bg-teal hover:bg-teal-soft text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all duration-150 flex items-center gap-2 shadow-sm hover:shadow-md hover:-translate-y-0.5"
+          onClick={() => !isSuspended && setModalOpen(true)}
+          disabled={isSuspended}
+          title={isSuspended ? 'Organisation suspended — read-only mode' : undefined}
+          className="bg-teal hover:bg-teal-soft text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all duration-150 flex items-center gap-2 shadow-sm hover:shadow-md hover:-translate-y-0.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-sm disabled:hover:translate-y-0"
         >
           <Plus size={15} strokeWidth={2.5} /> New Case
         </button>
@@ -210,8 +216,10 @@ export default function CasesPage() {
             Create your first case to start an investigation.
           </p>
           <button
-            onClick={() => setModalOpen(true)}
-            className="mt-6 bg-teal hover:bg-teal-soft text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all duration-150 flex items-center gap-2 shadow-sm hover:shadow-md hover:-translate-y-0.5"
+            onClick={() => !isSuspended && setModalOpen(true)}
+            disabled={isSuspended}
+            title={isSuspended ? 'Organisation suspended — read-only mode' : undefined}
+            className="mt-6 bg-teal hover:bg-teal-soft text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all duration-150 flex items-center gap-2 shadow-sm hover:shadow-md hover:-translate-y-0.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-sm disabled:hover:translate-y-0"
           >
             <Plus size={15} strokeWidth={2.5} /> New Case
           </button>

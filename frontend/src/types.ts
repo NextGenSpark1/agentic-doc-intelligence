@@ -163,6 +163,7 @@ export interface OrgContext {
   org_id?: string
   org_name?: string
   org_plan?: string
+  org_status?: string
 }
 
 export interface PendingInvitation {
