@@ -77,6 +77,8 @@ class Settings(BaseSettings):
     # Sender address. Use onboarding@resend.dev for testing without a domain.
     # Switch to noreply@yourdomain.com once a domain is verified in Resend dashboard.
     resend_from_email: str = "onboarding@resend.dev"
+    # Frontend base URL — used to build absolute invite links in emails.
+    frontend_url: str = "https://agentic-doc-intelligence-psi.vercel.app"
 
 
 @lru_cache

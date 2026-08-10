@@ -87,7 +87,7 @@ async def platform_create_org(body: CreateOrgBody, user: dict = Depends(_require
     org_id = str(uuid.uuid4())[:8].upper()
     org = await asyncio.to_thread(db.create_org, org_id, body.name, body.plan, user["user_id"])
     invite = await asyncio.to_thread(db.create_invitation, org_id, body.admin_email, "org_admin", user["user_id"])
-    invite_link = f"/invite/{invite['token']}"
+    invite_link = f"{get_settings().frontend_url}/invite/{invite['token']}"
     email_sent = await asyncio.to_thread(
         mail.send_invitation_email,
         body.admin_email, body.name, "org_admin", invite_link,
@@ -157,7 +157,7 @@ async def invite_member(org_id: str, body: InviteBody, user: dict = Depends(get_
     except Exception:
         raise HTTPException(409, "An invitation for this email already exists in this org")
 
-    invite_link = f"/invite/{invite['token']}"
+    invite_link = f"{get_settings().frontend_url}/invite/{invite['token']}"
     org = await asyncio.to_thread(db.get_org, org_id)
     org_name = org["name"] if org else org_id
     inviter_name = user.get("full_name") or user.get("email", "Your team")
