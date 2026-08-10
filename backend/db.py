@@ -396,8 +396,9 @@ def delete_org(org_id: str) -> None:
 
 def update_org(org_id: str, **fields) -> dict:
     allowed = {k: v for k, v in fields.items() if k in ("plan", "status")}
-    row = get_client().table("organisations").update(allowed).eq("org_id", org_id).execute().data
-    return row[0] if row else {}
+    get_client().table("organisations").update(allowed).eq("org_id", org_id).execute()
+    # Fetch the updated row so caller always gets current state
+    return get_org(org_id) or {}
 
 
 def get_org_member(org_id: str, user_id: str) -> dict | None:

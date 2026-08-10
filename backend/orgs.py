@@ -157,6 +157,7 @@ async def get_my_org(user: dict = Depends(get_current_user)):
         "org_id": m["org_id"],
         "org_name": org.get("name") if isinstance(org, dict) else None,
         "org_plan": org.get("plan") if isinstance(org, dict) else None,
+        "org_status": org.get("status", "active") if isinstance(org, dict) else "active",
     }
 
 
