@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { fetchInvitation, acceptInvitation } from '../api'
 import type { InvitationPreview } from '../types'
 import { useAuth } from '../context/AuthContext'
@@ -14,6 +14,8 @@ export default function InviteAcceptPage() {
   const { token } = useParams<{ token: string }>()
   const { user } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const autoAccept = searchParams.get('auto') === '1'
   const [invite, setInvite] = useState<InvitationPreview | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'accepting' | 'accepted' | 'error'>('loading')
   const [errorMsg, setErrorMsg] = useState('')
@@ -28,6 +30,14 @@ export default function InviteAcceptPage() {
         setStatus('error')
       })
   }, [token])
+
+  // Auto-accept when coming back from login redirect (?auto=1) and email matches
+  useEffect(() => {
+    if (!autoAccept || status !== 'ready' || !user || !invite) return
+    if (user.email?.toLowerCase() !== invite.email?.toLowerCase()) return
+    handleAccept()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoAccept, status, user, invite])
 
   async function handleAccept() {
     if (!token) return

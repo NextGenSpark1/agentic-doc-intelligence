@@ -34,7 +34,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await signInWithPassword(email, password)
-      navigate(inviteToken ? `/invite/${inviteToken}` : '/cases', { replace: true })
+      navigate(inviteToken ? `/invite/${inviteToken}?auto=1` : '/cases', { replace: true })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Sign-in failed.')
     } finally {
