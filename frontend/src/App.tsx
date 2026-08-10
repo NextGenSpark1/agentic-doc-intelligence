@@ -10,6 +10,7 @@ import RegisterPage from './pages/RegisterPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import InviteAcceptPage from './pages/InviteAcceptPage'
 import PlatformAdminPage from './pages/PlatformAdminPage'
+import OrgSettingsPage from './pages/OrgSettingsPage'
 
 function AuthLayout() {
   const { user, loading } = useAuth()
@@ -57,6 +58,7 @@ export default function App() {
             <Route path="/cases" element={<CasesPage />} />
             <Route path="/cases/:caseId" element={<CaseWorkspacePage />} />
             <Route path="/account" element={<AccountPage />} />
+            <Route path="/org-settings" element={<OrgSettingsPage />} />
             <Route path="/admin" element={<PlatformAdminPage />} />
           </Route>
         </Routes>

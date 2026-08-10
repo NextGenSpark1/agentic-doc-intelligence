@@ -1,10 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabaseClient'
-import { fetchOrgMembers, inviteMember, removeMember } from '../api'
-import type { OrgMember } from '../types'
 import type { User } from '@supabase/supabase-js'
 
 // ── shared style tokens ──────────────────────────────────────────────────────
@@ -97,68 +95,10 @@ function PasswordField({
   )
 }
 
-const ROLE_LABELS: Record<string, string> = { org_admin: 'Org Admin', supervisor: 'Supervisor', member: 'Member' }
-const ROLE_COLORS: Record<string, string> = { org_admin: 'text-teal bg-teal/10 border-teal/30', supervisor: 'text-navy bg-navy/10 border-navy/30', member: 'text-text-mid bg-panel-2 border-border' }
-
 // ── page ─────────────────────────────────────────────────────────────────────
 export default function AccountPage() {
-  const { user, orgCtx } = useAuth()
+  const { user } = useAuth()
   const navigate = useNavigate()
-
-  // org members
-  const [members, setMembers] = useState<OrgMember[]>([])
-  const [membersLoading, setMembersLoading] = useState(false)
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState('member')
-  const [inviteName, setInviteName] = useState('')
-  const [inviting, setInviting] = useState(false)
-  const [inviteResult, setInviteResult] = useState<{ link: string } | null>(null)
-  const [inviteError, setInviteError] = useState<string | null>(null)
-  const [removingId, setRemovingId] = useState<string | null>(null)
-
-  const canManageOrg = orgCtx?.role === 'org_admin' || orgCtx?.role === 'supervisor'
-  const isOrgAdmin = orgCtx?.role === 'org_admin'
-
-  useEffect(() => {
-    if (orgCtx?.org_id && canManageOrg) {
-      setMembersLoading(true)
-      fetchOrgMembers(orgCtx.org_id)
-        .then(d => setMembers(d.members))
-        .catch(() => {})
-        .finally(() => setMembersLoading(false))
-    }
-  }, [orgCtx?.org_id, canManageOrg])
-
-  async function handleInvite() {
-    if (!inviteEmail || !orgCtx?.org_id) return
-    setInviting(true)
-    setInviteError(null)
-    setInviteResult(null)
-    try {
-      const res = await inviteMember(orgCtx.org_id, inviteEmail, inviteRole, inviteName || undefined)
-      setInviteResult({ link: res.invite_link })
-      setInviteEmail(''); setInviteName('')
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Failed to send invite'
-      setInviteError(msg)
-    } finally {
-      setInviting(false)
-    }
-  }
-
-  async function handleRemove(member: OrgMember) {
-    if (!orgCtx?.org_id) return
-    if (!window.confirm(`Remove ${member.full_name || member.email} from the organisation?`)) return
-    setRemovingId(member.user_id)
-    try {
-      await removeMember(orgCtx.org_id, member.user_id)
-      setMembers(prev => prev.filter(m => m.user_id !== member.user_id))
-    } catch {
-      alert('Failed to remove member')
-    } finally {
-      setRemovingId(null)
-    }
-  }
 
   // profile
   const [displayName, setDisplayName] = useState<string>(user?.user_metadata?.full_name ?? '')
@@ -358,100 +298,7 @@ export default function AccountPage() {
         </div>
       </Card>
 
-      {/* ── Section 4: Organisation (org_admin / supervisor only) ──────────── */}
-      {canManageOrg && orgCtx?.org_id && (
-        <Card title={`Organisation · ${orgCtx.org_name ?? orgCtx.org_id}`}>
-          {/* Org meta */}
-          <div className="-mt-2">
-            <InfoRow label="Plan" value={(orgCtx.org_plan ?? 'trial').toUpperCase()} />
-            <InfoRow label="Your role" value={ROLE_LABELS[orgCtx.role ?? ''] ?? orgCtx.role ?? '—'} />
-          </div>
-
-          {/* Members list */}
-          <div>
-            <p className={LABEL + ' mb-2'}>Members</p>
-            {membersLoading ? (
-              <p className="text-xs text-text-mute">Loading…</p>
-            ) : members.length === 0 ? (
-              <p className="text-xs text-text-mute">No members yet.</p>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                {members.map(m => (
-                  <div key={m.user_id} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
-                    <div className="w-7 h-7 rounded-full bg-navy/10 flex items-center justify-center text-[10px] font-bold text-navy shrink-0 select-none">
-                      {(m.full_name || m.email).slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-text truncate">{m.full_name || m.email}</p>
-                      {m.full_name && <p className="text-[11px] text-text-mute truncate">{m.email}</p>}
-                    </div>
-                    <span className={`text-[10px] font-semibold border rounded-full px-2 py-0.5 shrink-0 ${ROLE_COLORS[m.role] ?? ''}`}>
-                      {ROLE_LABELS[m.role] ?? m.role}
-                    </span>
-                    {isOrgAdmin && m.user_id !== user?.id && (
-                      <button
-                        onClick={() => handleRemove(m)}
-                        disabled={removingId === m.user_id}
-                        className="text-[11px] text-red/70 hover:text-red border border-red/20 hover:border-red/40 rounded px-2 py-0.5 transition-colors shrink-0 disabled:opacity-40"
-                      >
-                        {removingId === m.user_id ? '…' : 'Remove'}
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Invite form */}
-          <div className="pt-1">
-            <p className={LABEL + ' mb-3'}>Invite member</p>
-            <div className="flex flex-col gap-2">
-              <div className="flex gap-2">
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={e => setInviteEmail(e.target.value)}
-                  placeholder="Email address"
-                  className={INPUT + ' flex-1'}
-                />
-                <select
-                  value={inviteRole}
-                  onChange={e => setInviteRole(e.target.value)}
-                  className="border border-border-strong rounded-lg px-2 py-2 text-sm text-text bg-panel focus:outline-none focus:ring-2 focus:ring-teal/30"
-                >
-                  {isOrgAdmin && <option value="org_admin">Org Admin</option>}
-                  {isOrgAdmin && <option value="supervisor">Supervisor</option>}
-                  <option value="member">Member</option>
-                </select>
-              </div>
-              <input
-                type="text"
-                value={inviteName}
-                onChange={e => setInviteName(e.target.value)}
-                placeholder="Name (optional)"
-                className={INPUT}
-              />
-              {inviteError && <p className="text-xs text-red">{inviteError}</p>}
-              {inviteResult && (
-                <div className="bg-panel-2 border border-border rounded-lg p-3 flex flex-col gap-1">
-                  <p className="text-xs font-semibold text-teal">Invite sent</p>
-                  <p className="text-[11px] text-text-mute break-all font-mono">{inviteResult.link}</p>
-                </div>
-              )}
-              <button
-                onClick={handleInvite}
-                disabled={inviting || !inviteEmail}
-                className="w-fit text-sm font-semibold text-white bg-teal hover:bg-teal-soft px-5 py-2 rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {inviting ? 'Sending…' : 'Send invite'}
-              </button>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* ── Section 5: Danger Zone ──────────────────────────────────────────── */}
+      {/* ── Section 4: Danger Zone ──────────────────────────────────────────── */}
       <Card title="Danger Zone" danger>
         {confirmSignOutAll ? (
           <div className="flex flex-col gap-3">
