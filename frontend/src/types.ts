@@ -165,6 +165,14 @@ export interface OrgContext {
   org_plan?: string
 }
 
+export interface PendingInvitation {
+  token: string
+  email: string
+  role: string
+  created_at: string
+  expires_at: string
+}
+
 export interface InvitationPreview {
   org_id: string
   org_name: string

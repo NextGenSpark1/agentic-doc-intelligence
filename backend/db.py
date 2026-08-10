@@ -442,6 +442,15 @@ def accept_invitation(token: str) -> None:
     get_client().table("invitations").update({"accepted_at": datetime.now(timezone.utc).isoformat()}).eq("token", token).execute()
 
 
+def list_pending_invitations(org_id: str) -> list[dict]:
+    return get_client().table("invitations").select("*") \
+        .eq("org_id", org_id).is_("accepted_at", "null").execute().data
+
+
+def cancel_invitation(token: str) -> None:
+    get_client().table("invitations").delete().eq("token", token).execute()
+
+
 def list_org_cases_count(org_id: str) -> int:
     result = get_client().table("cases").select("case_id", count="exact").eq("org_id", org_id).execute()
     return result.count or 0

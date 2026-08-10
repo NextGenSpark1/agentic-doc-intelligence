@@ -210,6 +210,47 @@ async def invite_member(org_id: str, body: InviteBody, user: dict = Depends(get_
     }
 
 
+@router.get("/orgs/{org_id}/invitations")
+async def list_invitations(org_id: str, user: dict = Depends(get_current_user)):
+    m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    if not m or m["org_id"] != org_id or m["role"] not in ("org_admin", "supervisor"):
+        raise HTTPException(403, "access denied")
+    invites = await asyncio.to_thread(db.list_pending_invitations, org_id)
+    return {"invitations": invites}
+
+
+@router.delete("/orgs/{org_id}/invitations/{token}", status_code=204)
+async def cancel_invitation(org_id: str, token: str, user: dict = Depends(get_current_user)):
+    m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    if not m or m["org_id"] != org_id or m["role"] != "org_admin":
+        raise HTTPException(403, "Only org admin can cancel invitations")
+    invite = await asyncio.to_thread(db.get_invitation_by_token, token)
+    if not invite or invite["org_id"] != org_id:
+        raise HTTPException(404, "Invitation not found")
+    await asyncio.to_thread(db.cancel_invitation, token)
+
+
+@router.post("/orgs/{org_id}/invitations/{token}/resend", status_code=200)
+async def resend_invitation(org_id: str, token: str, user: dict = Depends(get_current_user)):
+    m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    if not m or m["org_id"] != org_id or m["role"] not in ("org_admin", "supervisor"):
+        raise HTTPException(403, "access denied")
+    invite = await asyncio.to_thread(db.get_invitation_by_token, token)
+    if not invite or invite["org_id"] != org_id:
+        raise HTTPException(404, "Invitation not found")
+    if invite.get("accepted_at"):
+        raise HTTPException(410, "Invitation already accepted")
+    org = await asyncio.to_thread(db.get_org, org_id)
+    org_name = org["name"] if org else org_id
+    invite_link = f"{get_settings().frontend_url}/invite/{token}"
+    inviter_name = user.get("full_name") or user.get("email") or "NextGen Spark"
+    email_sent = await asyncio.to_thread(
+        mail.send_invitation_email,
+        invite["email"], org_name, invite["role"], invite_link, inviter_name,
+    )
+    return {"email_sent": email_sent, "invite_link": invite_link}
+
+
 @router.delete("/orgs/{org_id}/members/{member_user_id}", status_code=204)
 async def remove_member(org_id: str, member_user_id: str, user: dict = Depends(get_current_user)):
     m = await asyncio.to_thread(db.get_user_membership, user["user_id"])

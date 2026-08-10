@@ -219,6 +219,28 @@ export async function removeMember(orgId: string, userId: string): Promise<void>
   await client.delete(`/orgs/${orgId}/members/${userId}`)
 }
 
+export interface PendingInvitation {
+  token: string
+  email: string
+  role: string
+  created_at: string
+  expires_at: string
+}
+
+export async function fetchPendingInvitations(orgId: string): Promise<PendingInvitation[]> {
+  const res = await client.get<{ invitations: PendingInvitation[] }>(`/orgs/${orgId}/invitations`)
+  return res.data.invitations
+}
+
+export async function cancelInvitation(orgId: string, token: string): Promise<void> {
+  await client.delete(`/orgs/${orgId}/invitations/${token}`)
+}
+
+export async function resendInvitation(orgId: string, token: string): Promise<{ email_sent: boolean; invite_link: string }> {
+  const res = await client.post(`/orgs/${orgId}/invitations/${token}/resend`)
+  return res.data
+}
+
 export async function fetchInvitation(token: string): Promise<InvitationPreview> {
   const res = await client.get<InvitationPreview>(`/invitations/${token}`)
   return res.data

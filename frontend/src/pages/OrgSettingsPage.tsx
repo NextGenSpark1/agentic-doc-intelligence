@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Users, Mail, Building2, Shield, User } from 'lucide-react'
+import { ArrowLeft, Users, Mail, Building2, Shield, User, Clock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { fetchOrgMembers, inviteMember, removeMember } from '../api'
-import type { OrgMember } from '../types'
+import { fetchOrgMembers, inviteMember, removeMember, fetchPendingInvitations, cancelInvitation, resendInvitation } from '../api'
+import type { OrgMember, PendingInvitation } from '../types'
 
 const LABEL = 'text-[10px] font-semibold text-text-mute uppercase tracking-wider'
 const INPUT = 'w-full border border-border-strong rounded-lg px-3 py-2 text-sm text-text bg-panel placeholder:text-text-mute focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal transition-colors duration-150'
@@ -63,6 +63,11 @@ export default function OrgSettingsPage() {
   const [membersLoading, setMembersLoading] = useState(true)
   const [removingId, setRemovingId] = useState<string | null>(null)
 
+  const [pendingInvites, setPendingInvites] = useState<PendingInvitation[]>([])
+  const [cancellingToken, setCancellingToken] = useState<string | null>(null)
+  const [resendingToken, setResendingToken] = useState<string | null>(null)
+  const [resendResult, setResendResult] = useState<Record<string, boolean>>({})
+
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('member')
   const [inviteName, setInviteName] = useState('')
@@ -79,7 +84,12 @@ export default function OrgSettingsPage() {
       .then(d => setMembers(d.members))
       .catch(() => {})
       .finally(() => setMembersLoading(false))
-  }, [orgCtx?.org_id])
+    if (canInvite) {
+      fetchPendingInvitations(orgCtx.org_id)
+        .then(setPendingInvites)
+        .catch(() => {})
+    }
+  }, [orgCtx?.org_id, canInvite])
 
   async function handleInvite() {
     if (!inviteEmail || !orgCtx?.org_id) return
@@ -91,12 +101,34 @@ export default function OrgSettingsPage() {
       setInviteLink(res.invite_link)
       setInviteEmail('')
       setInviteName('')
+      if (orgCtx?.org_id) fetchPendingInvitations(orgCtx.org_id).then(setPendingInvites).catch(() => {})
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Failed to send invite'
       setInviteError(msg)
     } finally {
       setInviting(false)
     }
+  }
+
+  async function handleCancelInvite(token: string) {
+    if (!orgCtx?.org_id || !window.confirm('Cancel this invitation?')) return
+    setCancellingToken(token)
+    try {
+      await cancelInvitation(orgCtx.org_id, token)
+      setPendingInvites(prev => prev.filter(i => i.token !== token))
+    } catch { alert('Failed to cancel invitation') }
+    finally { setCancellingToken(null) }
+  }
+
+  async function handleResendInvite(token: string) {
+    if (!orgCtx?.org_id) return
+    setResendingToken(token)
+    try {
+      await resendInvitation(orgCtx.org_id, token)
+      setResendResult(prev => ({ ...prev, [token]: true }))
+      setTimeout(() => setResendResult(prev => { const n = { ...prev }; delete n[token]; return n }), 3000)
+    } catch { alert('Failed to resend invitation') }
+    finally { setResendingToken(null) }
   }
 
   async function handleRemove(m: OrgMember) {
@@ -194,6 +226,43 @@ export default function OrgSettingsPage() {
           </div>
         )}
       </Card>
+
+      {/* Pending Invitations — org_admin + supervisor */}
+      {canInvite && pendingInvites.length > 0 && (
+        <Card title={`Pending Invitations · ${pendingInvites.length}`} icon={<Clock size={13} className="text-text-mute" />}>
+          <div className="flex flex-col -mt-2">
+            {pendingInvites.map(inv => (
+              <div key={inv.token} className="flex items-center gap-3 py-2.5 border-b border-border last:border-0">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-text truncate">{inv.email}</p>
+                  <p className="text-xs text-text-mute">
+                    {ROLE_LABELS[inv.role] ?? inv.role} · Expires {new Date(inv.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                  </p>
+                </div>
+                <span className={`text-[10px] font-semibold border rounded-full px-2 py-0.5 shrink-0 ${ROLE_COLORS[inv.role] ?? ''}`}>
+                  {ROLE_LABELS[inv.role] ?? inv.role}
+                </span>
+                <button
+                  onClick={() => handleResendInvite(inv.token)}
+                  disabled={resendingToken === inv.token}
+                  className="text-xs font-medium text-teal border border-teal/30 rounded-lg px-2.5 py-1 hover:bg-teal/10 transition-colors shrink-0 disabled:opacity-40"
+                >
+                  {resendResult[inv.token] ? 'Sent!' : resendingToken === inv.token ? '…' : 'Resend'}
+                </button>
+                {isOrgAdmin && (
+                  <button
+                    onClick={() => handleCancelInvite(inv.token)}
+                    disabled={cancellingToken === inv.token}
+                    className="text-xs text-red/60 hover:text-red border border-red/20 hover:border-red/40 rounded-lg px-2.5 py-1 transition-colors shrink-0 disabled:opacity-40"
+                  >
+                    {cancellingToken === inv.token ? '…' : 'Cancel'}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Invite — org_admin + supervisor */}
       {canInvite && (
