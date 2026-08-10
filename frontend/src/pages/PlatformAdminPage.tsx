@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { platformListOrgs, platformCreateOrg } from '../api'
+import { platformListOrgs, platformCreateOrg, platformDeleteOrg } from '../api'
 import type { Organisation } from '../types'
 import { useAuth } from '../context/AuthContext'
 
@@ -16,6 +16,7 @@ export default function PlatformAdminPage() {
   const [creating, setCreating] = useState(false)
   const [lastInviteLink, setLastInviteLink] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [deletingOrg, setDeletingOrg] = useState<string | null>(null)
 
   useEffect(() => {
     if (!user || !PLATFORM_ADMIN_EMAILS.includes(user.email ?? '')) {
@@ -38,6 +39,19 @@ export default function PlatformAdminPage() {
       alert('Failed to create org')
     } finally {
       setCreating(false)
+    }
+  }
+
+  async function handleDelete(org: Organisation) {
+    if (!window.confirm(`Delete "${org.name}"? This is permanent and cannot be undone.`)) return
+    setDeletingOrg(org.org_id)
+    try {
+      await platformDeleteOrg(org.org_id)
+      setOrgs(prev => prev.filter(o => o.org_id !== org.org_id))
+    } catch {
+      alert('Failed to delete organisation')
+    } finally {
+      setDeletingOrg(null)
     }
   }
 
@@ -119,7 +133,7 @@ export default function PlatformAdminPage() {
                     Created {new Date(org.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </p>
                 </div>
-                <div style={{ display: 'flex', gap: 32, textAlign: 'center' }}>
+                <div style={{ display: 'flex', gap: 32, textAlign: 'center', alignItems: 'center' }}>
                   <div>
                     <p style={{ fontSize: 20, fontWeight: 800, color: '#0F172A', margin: 0 }}>{org.member_count ?? 0}</p>
                     <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>members</p>
@@ -128,6 +142,13 @@ export default function PlatformAdminPage() {
                     <p style={{ fontSize: 20, fontWeight: 800, color: '#0F172A', margin: 0 }}>{org.case_count ?? 0}</p>
                     <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>cases</p>
                   </div>
+                  <button
+                    onClick={() => handleDelete(org)}
+                    disabled={deletingOrg === org.org_id}
+                    style={{ background: 'none', border: '1px solid #FCA5A5', borderRadius: 8, padding: '7px 14px', color: '#DC2626', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: deletingOrg === org.org_id ? 0.5 : 1, whiteSpace: 'nowrap' }}
+                  >
+                    {deletingOrg === org.org_id ? 'Deleting…' : 'Delete'}
+                  </button>
                 </div>
               </div>
             ))}
