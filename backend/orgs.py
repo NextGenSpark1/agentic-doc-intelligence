@@ -265,6 +265,19 @@ async def change_member_role(org_id: str, member_user_id: str, body: dict, user:
     return {"user_id": member_user_id, "role": new_role}
 
 
+@router.delete("/orgs/{org_id}/members/me", status_code=204)
+async def leave_org(org_id: str, user: dict = Depends(get_current_user)):
+    m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    if not m or m["org_id"] != org_id:
+        raise HTTPException(403, "You are not a member of this organisation")
+    if m["role"] == "org_admin":
+        all_members = await asyncio.to_thread(db.list_org_members, org_id)
+        admins = [x for x in all_members if x["role"] == "org_admin"]
+        if len(admins) <= 1:
+            raise HTTPException(400, "You are the only admin. Transfer admin to another member before leaving.")
+    await asyncio.to_thread(db.remove_org_member, org_id, user["user_id"])
+
+
 @router.delete("/orgs/{org_id}/members/{member_user_id}", status_code=204)
 async def remove_member(org_id: str, member_user_id: str, user: dict = Depends(get_current_user)):
     m = await asyncio.to_thread(db.get_user_membership, user["user_id"])

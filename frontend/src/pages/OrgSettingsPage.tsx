@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, Users, Mail, Building2, Shield, User, Clock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { fetchOrgMembers, inviteMember, removeMember, fetchPendingInvitations, cancelInvitation, resendInvitation, changeMemberRole } from '../api'
+import { fetchOrgMembers, inviteMember, removeMember, fetchPendingInvitations, cancelInvitation, resendInvitation, changeMemberRole, leaveOrg } from '../api'
 import type { OrgMember, PendingInvitation } from '../types'
 
 const LABEL = 'text-[10px] font-semibold text-text-mute uppercase tracking-wider'
@@ -64,6 +64,7 @@ export default function OrgSettingsPage() {
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [editingRole, setEditingRole] = useState<Record<string, string>>({})
   const [savingRole, setSavingRole] = useState<string | null>(null)
+  const [leaving, setLeaving] = useState(false)
 
   const [pendingInvites, setPendingInvites] = useState<PendingInvitation[]>([])
   const [cancellingToken, setCancellingToken] = useState<string | null>(null)
@@ -109,6 +110,20 @@ export default function OrgSettingsPage() {
       setInviteError(msg)
     } finally {
       setInviting(false)
+    }
+  }
+
+  async function handleLeaveOrg() {
+    if (!orgCtx?.org_id) return
+    if (!window.confirm(`Leave ${orgCtx.org_name}? You will lose access immediately.`)) return
+    setLeaving(true)
+    try {
+      await leaveOrg(orgCtx.org_id)
+      window.location.href = '/cases'
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Failed to leave organisation'
+      alert(msg)
+      setLeaving(false)
     }
   }
 
@@ -369,6 +384,23 @@ export default function OrgSettingsPage() {
           </div>
         </Card>
       )}
+
+      {/* Leave org */}
+      <div className="bg-panel rounded-xl border border-red/20 p-5 flex flex-col gap-2">
+        <p className="text-[10px] font-semibold text-red/60 uppercase tracking-wider">Leave Organisation</p>
+        <p className="text-xs text-text-mute">
+          {isOrgAdmin
+            ? `You are an Org Admin. Promote another member to Org Admin before leaving.`
+            : `You will immediately lose access to ${orgCtx.org_name} and all its cases.`}
+        </p>
+        <button
+          onClick={handleLeaveOrg}
+          disabled={leaving || isOrgAdmin}
+          className="w-fit text-sm font-semibold text-red border border-red/30 hover:bg-red/5 px-4 py-2 rounded-lg transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed mt-1"
+        >
+          {leaving ? 'Leaving…' : 'Leave organisation'}
+        </button>
+      </div>
     </div>
   )
 }
