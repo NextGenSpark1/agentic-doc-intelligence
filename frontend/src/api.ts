@@ -240,6 +240,10 @@ export async function platformCreateOrg(name: string, plan: string, adminEmail: 
   return res.data
 }
 
+export async function platformDeleteOrg(orgId: string): Promise<void> {
+  await client.delete(`/platform/orgs/${orgId}`)
+}
+
 export async function uploadDocumentWithProgress(
   caseId: string,
   file: File,

@@ -390,6 +390,10 @@ def list_orgs() -> list[dict]:
     return get_client().table("organisations").select("*").order("created_at", desc=True).execute().data
 
 
+def delete_org(org_id: str) -> None:
+    get_client().table("organisations").delete().eq("org_id", org_id).execute()
+
+
 def get_org_member(org_id: str, user_id: str) -> dict | None:
     rows = get_client().table("org_members").select("*").eq("org_id", org_id).eq("user_id", user_id).execute().data
     return rows[0] if rows else None

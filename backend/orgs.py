@@ -81,6 +81,15 @@ async def platform_list_orgs(user: dict = Depends(_require_platform_admin)):
     return {"orgs": result}
 
 
+@router.delete("/platform/orgs/{org_id}", status_code=204)
+async def platform_delete_org(org_id: str, user: dict = Depends(_require_platform_admin)):
+    """Permanently delete an organisation and all its data — platform admin only."""
+    org = await asyncio.to_thread(db.get_org, org_id)
+    if not org:
+        raise HTTPException(404, "Organisation not found")
+    await asyncio.to_thread(db.delete_org, org_id)
+
+
 @router.post("/platform/orgs", status_code=201)
 async def platform_create_org(body: CreateOrgBody, user: dict = Depends(_require_platform_admin)):
     """Create a new organisation and send first invite to org admin — platform admin only."""
