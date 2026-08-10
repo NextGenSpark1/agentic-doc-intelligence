@@ -151,6 +151,7 @@ export interface Organisation {
   org_id: string
   name: string
   plan: string
+  status?: string  // "active" | "suspended"
   created_at: string
   member_count?: number
   case_count?: number

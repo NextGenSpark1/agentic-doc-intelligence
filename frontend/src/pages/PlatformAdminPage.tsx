@@ -1,21 +1,40 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { platformListOrgs, platformCreateOrg, platformDeleteOrg } from '../api'
+import { platformListOrgs, platformCreateOrg, platformDeleteOrg, platformUpdateOrg } from '../api'
 import type { Organisation } from '../types'
 import { useAuth } from '../context/AuthContext'
 
 const PLATFORM_ADMIN_EMAILS = ['nextgenspark2025@gmail.com', 'hello@nextgenspark.solutions']
+
+const PLAN_COLORS: Record<string, { text: string; bg: string; border: string }> = {
+  trial:      { text: '#B45309', bg: '#FFFBEB', border: '#FDE68A' },
+  pro:        { text: '#0D9488', bg: '#F0FDFA', border: '#99F6E4' },
+  enterprise: { text: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },
+}
+
+function planStyle(plan: string) {
+  const c = PLAN_COLORS[plan] ?? { text: '#64748B', bg: '#F8FAFC', border: '#E2E8F0' }
+  return { color: c.text, background: c.bg, border: `1px solid ${c.border}` }
+}
 
 export default function PlatformAdminPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [orgs, setOrgs] = useState<Organisation[]>([])
   const [loading, setLoading] = useState(true)
+
+  // create
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({ name: '', plan: 'trial', adminEmail: '', adminName: '' })
   const [creating, setCreating] = useState(false)
   const [lastInviteLink, setLastInviteLink] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+
+  // per-org actions
+  const [expandedOrg, setExpandedOrg] = useState<string | null>(null)
+  const [editingPlan, setEditingPlan] = useState<Record<string, string>>({})
+  const [savingPlan, setSavingPlan] = useState<string | null>(null)
+  const [togglingStatus, setTogglingStatus] = useState<string | null>(null)
   const [deletingOrg, setDeletingOrg] = useState<string | null>(null)
 
   useEffect(() => {
@@ -32,7 +51,7 @@ export default function PlatformAdminPage() {
     try {
       const result = await platformCreateOrg(form.name, form.plan, form.adminEmail, form.adminName || undefined)
       setOrgs(prev => [{ ...result.org, member_count: 0, case_count: 0 }, ...prev])
-      setLastInviteLink(window.location.origin + result.invite_link)
+      setLastInviteLink(result.invite_link)
       setShowCreate(false)
       setForm({ name: '', plan: 'trial', adminEmail: '', adminName: '' })
     } catch {
@@ -42,8 +61,38 @@ export default function PlatformAdminPage() {
     }
   }
 
+  async function handlePlanSave(org: Organisation) {
+    const newPlan = editingPlan[org.org_id]
+    if (!newPlan || newPlan === org.plan) return
+    setSavingPlan(org.org_id)
+    try {
+      const updated = await platformUpdateOrg(org.org_id, { plan: newPlan })
+      setOrgs(prev => prev.map(o => o.org_id === org.org_id ? { ...o, plan: updated.plan ?? newPlan } : o))
+      setEditingPlan(prev => { const n = { ...prev }; delete n[org.org_id]; return n })
+    } catch {
+      alert('Failed to update plan')
+    } finally {
+      setSavingPlan(null)
+    }
+  }
+
+  async function handleToggleStatus(org: Organisation) {
+    const newStatus = (org.status ?? 'active') === 'active' ? 'suspended' : 'active'
+    const label = newStatus === 'suspended' ? 'Suspend' : 'Reactivate'
+    if (!window.confirm(`${label} "${org.name}"?`)) return
+    setTogglingStatus(org.org_id)
+    try {
+      const updated = await platformUpdateOrg(org.org_id, { status: newStatus })
+      setOrgs(prev => prev.map(o => o.org_id === org.org_id ? { ...o, status: updated.status ?? newStatus } : o))
+    } catch {
+      alert('Failed to update status')
+    } finally {
+      setTogglingStatus(null)
+    }
+  }
+
   async function handleDelete(org: Organisation) {
-    if (!window.confirm(`Delete "${org.name}"? This is permanent and cannot be undone.`)) return
+    if (!window.confirm(`Permanently delete "${org.name}"? This cannot be undone.`)) return
     setDeletingOrg(org.org_id)
     try {
       await platformDeleteOrg(org.org_id)
@@ -55,15 +104,7 @@ export default function PlatformAdminPage() {
     }
   }
 
-  function copyLink() {
-    if (lastInviteLink) {
-      navigator.clipboard.writeText(lastInviteLink)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }
-
-  const PLAN_COLORS: Record<string, string> = { trial: '#F59E0B', pro: '#0D9488', enterprise: '#7C3AED' }
+  const isSuspended = (org: Organisation) => (org.status ?? 'active') === 'suspended'
 
   return (
     <div style={{ minHeight: '100vh', background: '#F8FAFC' }}>
@@ -79,8 +120,9 @@ export default function PlatformAdminPage() {
         </button>
       </div>
 
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '40px 24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
+      <div style={{ maxWidth: 960, margin: '0 auto', padding: '40px 24px' }}>
+        {/* Page title row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0F172A', margin: 0 }}>Organisations</h1>
             <p style={{ fontSize: 13, color: '#64748B', margin: '4px 0 0' }}>{orgs.length} organisation{orgs.length !== 1 ? 's' : ''} on the platform</p>
@@ -93,15 +135,15 @@ export default function PlatformAdminPage() {
           </button>
         </div>
 
-        {/* Invite link banner */}
+        {/* New org invite link banner */}
         {lastInviteLink && (
-          <div style={{ background: '#F0FDFA', border: '1px solid #5EEAD4', borderRadius: 12, padding: '16px 20px', marginBottom: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ background: '#F0FDFA', border: '1px solid #5EEAD4', borderRadius: 12, padding: '14px 20px', marginBottom: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ flex: 1 }}>
-              <p style={{ fontSize: 12, fontWeight: 700, color: '#0E7C86', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Org admin invite link</p>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#0E7C86', margin: '0 0 3px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Org admin invite link</p>
               <p style={{ fontSize: 12, color: '#0F172A', margin: 0, wordBreak: 'break-all', fontFamily: 'monospace' }}>{lastInviteLink}</p>
             </div>
             <button
-              onClick={copyLink}
+              onClick={() => { navigator.clipboard.writeText(lastInviteLink); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
               style={{ background: '#0E7C86', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
             >
               {copied ? 'Copied!' : 'Copy link'}
@@ -109,49 +151,147 @@ export default function PlatformAdminPage() {
           </div>
         )}
 
+        {/* Org list */}
         {loading ? (
           <div style={{ textAlign: 'center', padding: '60px 0', color: '#94A3B8', fontSize: 14 }}>Loading…</div>
         ) : orgs.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 0', color: '#94A3B8', fontSize: 14 }}>No organisations yet.</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {orgs.map(org => (
-              <div key={org.org_id} style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 24 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                    <p style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', margin: 0 }}>{org.name}</p>
-                    <span style={{
-                      fontSize: 10, fontWeight: 700,
-                      color: PLAN_COLORS[org.plan] ?? '#64748B',
-                      background: `${PLAN_COLORS[org.plan] ?? '#64748B'}15`,
-                      border: `1px solid ${PLAN_COLORS[org.plan] ?? '#64748B'}40`,
-                      borderRadius: 20, padding: '2px 8px',
-                      textTransform: 'uppercase', letterSpacing: '0.06em',
-                    }}>{org.plan}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {orgs.map(org => {
+              const suspended = isSuspended(org)
+              const isExpanded = expandedOrg === org.org_id
+              const pendingPlan = editingPlan[org.org_id] ?? org.plan
+
+              return (
+                <div
+                  key={org.org_id}
+                  style={{
+                    background: '#fff',
+                    border: suspended ? '1px solid #FCA5A5' : '1px solid #E2E8F0',
+                    borderRadius: 14,
+                    overflow: 'hidden',
+                    opacity: suspended ? 0.85 : 1,
+                  }}
+                >
+                  {/* Main row */}
+                  <div style={{ padding: '18px 24px', display: 'flex', alignItems: 'center', gap: 20 }}>
+                    {/* Org info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                        <p style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', margin: 0 }}>{org.name}</p>
+                        {suspended && (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: '#DC2626', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 20, padding: '1px 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                            Suspended
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>
+                        {org.org_id} · Created {new Date(org.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </p>
+                    </div>
+
+                    {/* Stats */}
+                    <div style={{ display: 'flex', gap: 28, textAlign: 'center' }}>
+                      <div>
+                        <p style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', margin: 0 }}>{org.member_count ?? 0}</p>
+                        <p style={{ fontSize: 10, color: '#94A3B8', margin: 0 }}>members</p>
+                      </div>
+                      <div>
+                        <p style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', margin: 0 }}>{org.case_count ?? 0}</p>
+                        <p style={{ fontSize: 10, color: '#94A3B8', margin: 0 }}>cases</p>
+                      </div>
+                    </div>
+
+                    {/* Plan selector */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <select
+                        value={pendingPlan}
+                        onChange={e => setEditingPlan(prev => ({ ...prev, [org.org_id]: e.target.value }))}
+                        style={{ ...planStyle(pendingPlan), borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', cursor: 'pointer', outline: 'none' }}
+                      >
+                        <option value="trial">Trial</option>
+                        <option value="pro">Pro</option>
+                        <option value="enterprise">Enterprise</option>
+                      </select>
+                      {pendingPlan !== org.plan && (
+                        <button
+                          onClick={() => handlePlanSave(org)}
+                          disabled={savingPlan === org.org_id}
+                          style={{ background: '#0F172A', color: '#fff', border: 'none', borderRadius: 8, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', opacity: savingPlan === org.org_id ? 0.5 : 1 }}
+                        >
+                          {savingPlan === org.org_id ? '…' : 'Save'}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Action buttons */}
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {/* Expand members */}
+                      <button
+                        onClick={() => setExpandedOrg(isExpanded ? null : org.org_id)}
+                        style={{ background: 'none', border: '1px solid #E2E8F0', borderRadius: 8, padding: '6px 12px', color: '#64748B', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        {isExpanded ? 'Hide' : 'Members'}
+                      </button>
+                      {/* Suspend / Activate */}
+                      <button
+                        onClick={() => handleToggleStatus(org)}
+                        disabled={togglingStatus === org.org_id}
+                        style={{
+                          background: 'none',
+                          border: suspended ? '1px solid #86EFAC' : '1px solid #FCD34D',
+                          borderRadius: 8, padding: '6px 12px',
+                          color: suspended ? '#16A34A' : '#B45309',
+                          fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                          opacity: togglingStatus === org.org_id ? 0.5 : 1,
+                        }}
+                      >
+                        {togglingStatus === org.org_id ? '…' : suspended ? 'Activate' : 'Suspend'}
+                      </button>
+                      {/* Delete */}
+                      <button
+                        onClick={() => handleDelete(org)}
+                        disabled={deletingOrg === org.org_id}
+                        style={{ background: 'none', border: '1px solid #FCA5A5', borderRadius: 8, padding: '6px 12px', color: '#DC2626', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: deletingOrg === org.org_id ? 0.5 : 1 }}
+                      >
+                        {deletingOrg === org.org_id ? '…' : 'Delete'}
+                      </button>
+                    </div>
                   </div>
-                  <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>
-                    Created {new Date(org.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  </p>
+
+                  {/* Expanded members panel */}
+                  {isExpanded && (
+                    <div style={{ borderTop: '1px solid #F1F5F9', background: '#F8FAFC', padding: '16px 24px' }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>Members</p>
+                      {!org.members || org.members.length === 0 ? (
+                        <p style={{ fontSize: 13, color: '#94A3B8' }}>No members yet.</p>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {org.members.map(m => (
+                            <div key={m.user_id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#475569', flexShrink: 0 }}>
+                                {(m.full_name || m.email).slice(0, 2).toUpperCase()}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: 13, fontWeight: 600, color: '#0F172A', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.full_name || m.email}</p>
+                                {m.full_name && <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>{m.email}</p>}
+                              </div>
+                              <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '2px 8px', border: '1px solid', ...({ org_admin: { color: '#0D9488', background: '#F0FDFA', borderColor: '#99F6E4' }, supervisor: { color: '#4F46E5', background: '#EEF2FF', borderColor: '#C7D2FE' }, member: { color: '#64748B', background: '#F8FAFC', borderColor: '#E2E8F0' } }[m.role] ?? {}) }}>
+                                {m.role === 'org_admin' ? 'Org Admin' : m.role === 'supervisor' ? 'Supervisor' : 'Member'}
+                              </span>
+                              <p style={{ fontSize: 11, color: '#94A3B8', margin: 0, flexShrink: 0 }}>
+                                Joined {new Date(m.joined_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div style={{ display: 'flex', gap: 32, textAlign: 'center', alignItems: 'center' }}>
-                  <div>
-                    <p style={{ fontSize: 20, fontWeight: 800, color: '#0F172A', margin: 0 }}>{org.member_count ?? 0}</p>
-                    <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>members</p>
-                  </div>
-                  <div>
-                    <p style={{ fontSize: 20, fontWeight: 800, color: '#0F172A', margin: 0 }}>{org.case_count ?? 0}</p>
-                    <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>cases</p>
-                  </div>
-                  <button
-                    onClick={() => handleDelete(org)}
-                    disabled={deletingOrg === org.org_id}
-                    style={{ background: 'none', border: '1px solid #FCA5A5', borderRadius: 8, padding: '7px 14px', color: '#DC2626', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: deletingOrg === org.org_id ? 0.5 : 1, whiteSpace: 'nowrap' }}
-                  >
-                    {deletingOrg === org.org_id ? 'Deleting…' : 'Delete'}
-                  </button>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

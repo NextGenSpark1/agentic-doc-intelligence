@@ -394,6 +394,12 @@ def delete_org(org_id: str) -> None:
     get_client().table("organisations").delete().eq("org_id", org_id).execute()
 
 
+def update_org(org_id: str, **fields) -> dict:
+    allowed = {k: v for k, v in fields.items() if k in ("plan", "status")}
+    row = get_client().table("organisations").update(allowed).eq("org_id", org_id).execute().data
+    return row[0] if row else {}
+
+
 def get_org_member(org_id: str, user_id: str) -> dict | None:
     rows = get_client().table("org_members").select("*").eq("org_id", org_id).eq("user_id", user_id).execute().data
     return rows[0] if rows else None

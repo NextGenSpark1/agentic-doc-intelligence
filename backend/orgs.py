@@ -41,6 +41,11 @@ class CreateOrgBody(BaseModel):
     admin_name: str | None = None
 
 
+class UpdateOrgBody(BaseModel):
+    plan: str | None = None
+    status: str | None = None  # "active" | "suspended"
+
+
 class InviteBody(BaseModel):
     email: str
     role: str
@@ -79,6 +84,19 @@ async def platform_list_orgs(user: dict = Depends(_require_platform_admin)):
             ],
         })
     return {"orgs": result}
+
+
+@router.patch("/platform/orgs/{org_id}")
+async def platform_update_org(org_id: str, body: UpdateOrgBody, user: dict = Depends(_require_platform_admin)):
+    """Update org plan or status — platform admin only."""
+    org = await asyncio.to_thread(db.get_org, org_id)
+    if not org:
+        raise HTTPException(404, "Organisation not found")
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(400, "No fields to update")
+    updated = await asyncio.to_thread(db.update_org, org_id, **updates)
+    return updated
 
 
 @router.delete("/platform/orgs/{org_id}", status_code=204)

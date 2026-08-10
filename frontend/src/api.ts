@@ -244,6 +244,11 @@ export async function platformDeleteOrg(orgId: string): Promise<void> {
   await client.delete(`/platform/orgs/${orgId}`)
 }
 
+export async function platformUpdateOrg(orgId: string, fields: { plan?: string; status?: string }): Promise<Organisation> {
+  const res = await client.patch<Organisation>(`/platform/orgs/${orgId}`, fields)
+  return res.data
+}
+
 export async function uploadDocumentWithProgress(
   caseId: string,
   file: File,
