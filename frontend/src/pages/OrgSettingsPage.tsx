@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, Users, Mail, Building2, Shield, User, Clock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { fetchOrgMembers, inviteMember, removeMember, fetchPendingInvitations, cancelInvitation, resendInvitation } from '../api'
+import { fetchOrgMembers, inviteMember, removeMember, fetchPendingInvitations, cancelInvitation, resendInvitation, changeMemberRole } from '../api'
 import type { OrgMember, PendingInvitation } from '../types'
 
 const LABEL = 'text-[10px] font-semibold text-text-mute uppercase tracking-wider'
@@ -62,6 +62,8 @@ export default function OrgSettingsPage() {
   const [members, setMembers] = useState<OrgMember[]>([])
   const [membersLoading, setMembersLoading] = useState(true)
   const [removingId, setRemovingId] = useState<string | null>(null)
+  const [editingRole, setEditingRole] = useState<Record<string, string>>({})
+  const [savingRole, setSavingRole] = useState<string | null>(null)
 
   const [pendingInvites, setPendingInvites] = useState<PendingInvitation[]>([])
   const [cancellingToken, setCancellingToken] = useState<string | null>(null)
@@ -108,6 +110,18 @@ export default function OrgSettingsPage() {
     } finally {
       setInviting(false)
     }
+  }
+
+  async function handleRoleSave(m: OrgMember) {
+    const newRole = editingRole[m.user_id]
+    if (!newRole || !orgCtx?.org_id) return
+    setSavingRole(m.user_id)
+    try {
+      await changeMemberRole(orgCtx.org_id, m.user_id, newRole)
+      setMembers(prev => prev.map(x => x.user_id === m.user_id ? { ...x, role: newRole as OrgMember['role'] } : x))
+      setEditingRole(prev => { const n = { ...prev }; delete n[m.user_id]; return n })
+    } catch { alert('Failed to update role') }
+    finally { setSavingRole(null) }
   }
 
   async function handleCancelInvite(token: string) {
@@ -204,12 +218,34 @@ export default function OrgSettingsPage() {
                     </p>
                     {m.full_name && <p className="text-xs text-text-mute truncate">{m.email}</p>}
                   </div>
-                  {/* Role badge */}
-                  <span className={`text-[10px] font-semibold border rounded-full px-2 py-0.5 shrink-0 ${ROLE_COLORS[m.role] ?? ''}`}>
-                    {ROLE_LABELS[m.role] ?? m.role}
-                  </span>
-                  {/* Role icon hint for members */}
-                  {m.role === 'org_admin' && <Shield size={12} className="text-teal shrink-0" />}
+                  {/* Role — editable for org_admin on other members */}
+                  {isOrgAdmin && !isYou ? (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <select
+                        value={editingRole[m.user_id] ?? m.role}
+                        onChange={e => setEditingRole(prev => ({ ...prev, [m.user_id]: e.target.value }))}
+                        className={`text-[10px] font-semibold border rounded-full px-2 py-0.5 cursor-pointer focus:outline-none ${ROLE_COLORS[editingRole[m.user_id] ?? m.role] ?? ''}`}
+                      >
+                        <option value="org_admin">Org Admin</option>
+                        <option value="supervisor">Supervisor</option>
+                        <option value="member">Member</option>
+                      </select>
+                      {editingRole[m.user_id] && editingRole[m.user_id] !== m.role && (
+                        <button
+                          onClick={() => handleRoleSave(m)}
+                          disabled={savingRole === m.user_id}
+                          className="text-[10px] font-semibold text-teal border border-teal/30 rounded px-1.5 py-0.5 hover:bg-teal/10 transition-colors disabled:opacity-40"
+                        >
+                          {savingRole === m.user_id ? '…' : 'Save'}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <span className={`text-[10px] font-semibold border rounded-full px-2 py-0.5 shrink-0 ${ROLE_COLORS[m.role] ?? ''}`}>
+                      {ROLE_LABELS[m.role] ?? m.role}
+                    </span>
+                  )}
+                  {m.role === 'org_admin' && isYou && <Shield size={12} className="text-teal shrink-0" />}
                   {/* Remove — org_admin only, not yourself */}
                   {isOrgAdmin && !isYou && (
                     <button

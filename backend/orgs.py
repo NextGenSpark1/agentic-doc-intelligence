@@ -251,6 +251,20 @@ async def resend_invitation(org_id: str, token: str, user: dict = Depends(get_cu
     return {"email_sent": email_sent, "invite_link": invite_link}
 
 
+@router.patch("/orgs/{org_id}/members/{member_user_id}")
+async def change_member_role(org_id: str, member_user_id: str, body: dict, user: dict = Depends(get_current_user)):
+    m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    if not m or m["org_id"] != org_id or m["role"] != "org_admin":
+        raise HTTPException(403, "Only org admin can change roles")
+    if member_user_id == user["user_id"]:
+        raise HTTPException(400, "Cannot change your own role")
+    new_role = body.get("role")
+    if new_role not in ("org_admin", "supervisor", "member"):
+        raise HTTPException(400, "Invalid role")
+    await asyncio.to_thread(db.update_member_role, org_id, member_user_id, new_role)
+    return {"user_id": member_user_id, "role": new_role}
+
+
 @router.delete("/orgs/{org_id}/members/{member_user_id}", status_code=204)
 async def remove_member(org_id: str, member_user_id: str, user: dict = Depends(get_current_user)):
     m = await asyncio.to_thread(db.get_user_membership, user["user_id"])

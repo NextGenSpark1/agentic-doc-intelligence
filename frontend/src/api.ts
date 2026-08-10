@@ -219,6 +219,10 @@ export async function removeMember(orgId: string, userId: string): Promise<void>
   await client.delete(`/orgs/${orgId}/members/${userId}`)
 }
 
+export async function changeMemberRole(orgId: string, userId: string, role: string): Promise<void> {
+  await client.patch(`/orgs/${orgId}/members/${userId}`, { role })
+}
+
 export interface PendingInvitation {
   token: string
   email: string

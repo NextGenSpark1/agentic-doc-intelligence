@@ -451,6 +451,10 @@ def cancel_invitation(token: str) -> None:
     get_client().table("invitations").delete().eq("token", token).execute()
 
 
+def update_member_role(org_id: str, user_id: str, new_role: str) -> None:
+    get_client().table("org_members").update({"role": new_role}).eq("org_id", org_id).eq("user_id", user_id).execute()
+
+
 def list_org_cases_count(org_id: str) -> int:
     result = get_client().table("cases").select("case_id", count="exact").eq("org_id", org_id).execute()
     return result.count or 0
