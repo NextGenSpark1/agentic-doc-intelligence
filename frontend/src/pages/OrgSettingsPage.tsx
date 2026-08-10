@@ -184,6 +184,14 @@ export default function OrgSettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-6 py-8 flex flex-col gap-4">
+      {/* Suspended banner */}
+      {orgCtx?.org_status === 'suspended' && (
+        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-600 text-sm px-4 py-3 rounded-lg flex items-center gap-2">
+          <span className="font-semibold">Organisation suspended.</span>
+          <span>Your data is read-only. Contact your platform administrator to restore access.</span>
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <Link to="/cases" className="inline-flex items-center gap-1.5 text-xs text-text-mute hover:text-text transition-colors mb-3">
