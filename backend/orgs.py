@@ -100,7 +100,7 @@ async def platform_create_org(body: CreateOrgBody, user: dict = Depends(_require
     email_sent = await asyncio.to_thread(
         mail.send_invitation_email,
         body.admin_email, body.name, "org_admin", invite_link,
-        body.admin_name or "NextGen Spark",
+        user.get("full_name") or user.get("email") or "NextGen Spark",
     )
     return {
         "org": org,
