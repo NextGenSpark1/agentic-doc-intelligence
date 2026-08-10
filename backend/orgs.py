@@ -32,6 +32,13 @@ def _get_membership(user: dict) -> dict:
     return m
 
 
+def check_org_not_suspended(membership: dict) -> None:
+    """Raise 403 if the user's organisation is suspended."""
+    org = membership.get("organisations") or {}
+    if isinstance(org, dict) and org.get("status") == "suspended":
+        raise HTTPException(403, "Your organisation has been suspended. Please contact support.")
+
+
 # ── Pydantic models ────────────────────────────────────────────────────────
 
 class CreateOrgBody(BaseModel):

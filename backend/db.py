@@ -407,7 +407,7 @@ def get_org_member(org_id: str, user_id: str) -> dict | None:
 
 def get_user_membership(user_id: str) -> dict | None:
     """Return the user's org membership (first org found — users belong to one org)."""
-    rows = get_client().table("org_members").select("*, organisations(name, plan)").eq("user_id", user_id).execute().data
+    rows = get_client().table("org_members").select("*, organisations(name, plan, status)").eq("user_id", user_id).execute().data
     return rows[0] if rows else None
 
 

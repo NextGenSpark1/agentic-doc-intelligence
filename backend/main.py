@@ -216,6 +216,8 @@ async def _load_case_or_403(case_id: str, user: dict) -> dict:
     if not case:
         raise HTTPException(404, "case not found")
     membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    if membership:
+        orgs_module.check_org_not_suspended(membership)
     _assert_case_access(case, user["user_id"], membership)
     return case
 
@@ -224,6 +226,8 @@ async def _load_case_or_403(case_id: str, user: dict) -> dict:
 async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
     case_id = f"INV-{datetime.now().year}-{uuid.uuid4().hex[:4].upper()}"
     membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    if membership:
+        orgs_module.check_org_not_suspended(membership)
     org_id = membership["org_id"] if membership else None
     record = {
         "case_id": case_id,
@@ -247,6 +251,8 @@ async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
 @app.get("/cases")
 async def list_cases(user: dict = Depends(get_current_user)):
     membership = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    if membership:
+        orgs_module.check_org_not_suspended(membership)
     if not membership:
         cases = await asyncio.to_thread(db.list_cases, owner_id=user["user_id"])
     else:
