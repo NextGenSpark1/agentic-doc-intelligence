@@ -1,7 +1,13 @@
 # Tendering Intelligence — Backend Specification
 
-> **Purpose:** Product spec for `apps/tendering/` — what to build, what each endpoint does, what each pipeline stage produces.  
-> This complements the shared-core architecture in `CORE_EXTRACTION_PROPOSAL.md`, which covers how to structure the code. This document covers what the tendering product actually needs.
+| | |
+|---|---|
+| **Author** | Habiba Hassan |
+| **Role** | AI Analytics & Development |
+| **Date** | 2026-08-11 |
+| **Complements** | `CORE_EXTRACTION_PROPOSAL.md` (shared-core architecture by Nawran) |
+
+> **Purpose:** Product spec for `apps/tendering/` — what to build, what each endpoint does, what each pipeline stage produces. This document defines the tendering product requirements: database schema, API contracts, and pipeline stage behaviour.
 
 ---
 
