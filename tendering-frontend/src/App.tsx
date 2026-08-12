@@ -4,8 +4,7 @@ import { Navbar } from './components/Navbar';
 import { DashboardPage } from './pages/DashboardPage';
 import { TenderListPage } from './pages/TenderListPage';
 import { TenderDetailPage } from './pages/TenderDetailPage';
-import { CompliancePage } from './pages/CompliancePage';
-import { ReferenceLibraryPage } from './pages/ReferenceLibraryPage';
+import { DocumentLibraryPage } from './pages/DocumentLibraryPage';
 
 export default function App() {
   return (
@@ -16,8 +15,7 @@ export default function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/tenders" element={<TenderListPage />} />
           <Route path="/tenders/:id" element={<TenderDetailPage />} />
-          <Route path="/compliance" element={<CompliancePage />} />
-          <Route path="/reference-library" element={<ReferenceLibraryPage />} />
+          <Route path="/documents" element={<DocumentLibraryPage />} />
         </Routes>
       </main>
       <Toaster position="bottom-right" toastOptions={{ style: { fontFamily: 'IBM Plex Sans', fontSize: 13 } }} />
