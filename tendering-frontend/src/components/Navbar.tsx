@@ -1,5 +1,6 @@
-import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, FolderOpen, Library } from 'lucide-react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, FolderOpen, Library, LogOut, UserCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const NAV_LINKS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -8,6 +9,10 @@ const NAV_LINKS = [
 ];
 
 export function Navbar() {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  const displayName = (user?.user_metadata?.full_name as string) || user?.email || '';
+
   return (
     <header className="fixed top-0 inset-x-0 z-50">
       <div className="bg-navy-deep h-13 flex items-center px-6 justify-between">
@@ -19,7 +24,25 @@ export function Navbar() {
           />
           <span className="text-white font-semibold text-sm tracking-wide">Tendering Intelligence</span>
         </div>
-        <span className="text-white/40 text-xs font-mono">NextGen Spark</span>
+        <div className="flex items-center gap-3">
+          {user && (
+            <button
+              onClick={() => navigate('/account')}
+              className="flex items-center gap-2 text-white/60 hover:text-white text-xs transition-colors"
+            >
+              <UserCircle size={16} />
+              <span className="hidden sm:block truncate max-w-[160px]">{displayName}</span>
+            </button>
+          )}
+          <div className="w-px h-4 bg-white/20" />
+          <button
+            onClick={signOut}
+            className="flex items-center gap-1.5 text-white/60 hover:text-white text-xs transition-colors"
+          >
+            <LogOut size={13} />
+            Sign out
+          </button>
+        </div>
       </div>
 
       <nav className="bg-navy flex items-center px-6 gap-1 border-b border-white/10">
