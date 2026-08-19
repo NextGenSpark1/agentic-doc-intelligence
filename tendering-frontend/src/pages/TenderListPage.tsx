@@ -317,7 +317,7 @@ export function TenderListPage() {
           className="flex items-center gap-2 px-4 py-2.5 bg-navy hover:bg-navy-soft text-white text-sm font-semibold rounded-lg transition-colors self-start"
         >
           <Plus size={15} />
-          New Workspace
+          New Tender
         </button>
       </div>
 

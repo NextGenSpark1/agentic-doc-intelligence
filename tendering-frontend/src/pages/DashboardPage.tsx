@@ -149,7 +149,7 @@ export function DashboardPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <StatCard
-          label="Active Workspaces"
+          label="Active Tenders"
           value={loading ? '—' : stats?.active_workspaces ?? 0}
           icon={FolderOpen}
           accent="teal"
