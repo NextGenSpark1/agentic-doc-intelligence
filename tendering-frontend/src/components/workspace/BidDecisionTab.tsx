@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Loader2, Sparkles, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Loader2, Sparkles, ThumbsUp, ThumbsDown, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { BidDecisionBadge } from '../Badge';
-import { formatDate } from '../../lib/utils';
+import { formatDate, formatCurrency } from '../../lib/utils';
 import type { BidDecisionReport, TenderWorkspace } from '../../types';
 
 export function BidDecisionTab({
@@ -14,6 +14,53 @@ export function BidDecisionTab({
 }) {
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState<'bid' | 'no_bid' | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    if (!report) return;
+    setExporting(true);
+    await new Promise((r) => setTimeout(r, 800));
+
+    const lines = [
+      `BID DECISION REPORT`,
+      `===================`,
+      ``,
+      `Tender:       ${workspace.title}`,
+      `Reference:    ${workspace.reference}`,
+      `Buyer:        ${workspace.buyer}`,
+      `Value:        ${formatCurrency(workspace.contract_value, workspace.currency)}`,
+      `Closing:      ${workspace.closing_date}`,
+      `Generated:    ${formatDate(report.generated_at, { day: 'numeric', month: 'long', year: 'numeric' })}`,
+      ``,
+      `AI SCORE: ${report.score}/100`,
+      `RECOMMENDATION: ${report.recommendation.toUpperCase()}`,
+      ``,
+      `RATIONALE`,
+      `---------`,
+      report.rationale,
+      ``,
+      `STRENGTHS`,
+      `---------`,
+      ...report.strengths.map((s) => `  ✓ ${s}`),
+      ``,
+      `RISKS`,
+      `-----`,
+      ...report.risks.map((r) => `  ! ${r}`),
+      ``,
+      `TEAM DECISION: ${(confirmed ?? workspace.bid_decision).toUpperCase()}`,
+    ];
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bid-report-${workspace.reference || workspace.id}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    setExporting(false);
+    toast.success('Report downloaded');
+  }
 
   async function handleConfirm(decision: 'bid' | 'no_bid') {
     setConfirming(true);
@@ -33,11 +80,21 @@ export function BidDecisionTab({
           <BidDecisionBadge decision={confirmed ?? workspace.bid_decision} />
         </div>
         {report && (
-          <div className="text-right">
-            <p className="text-xs text-text-mute mb-1">AI Analysis</p>
-            <p className="text-[11px] text-text-mute">
-              {formatDate(report.generated_at, { day: 'numeric', month: 'short', year: 'numeric' })}
-            </p>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <p className="text-xs text-text-mute mb-1">AI Analysis</p>
+              <p className="text-[11px] text-text-mute">
+                {formatDate(report.generated_at, { day: 'numeric', month: 'short', year: 'numeric' })}
+              </p>
+            </div>
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="flex items-center gap-1.5 px-4 py-2 bg-panel-2 border border-border text-text-mid hover:text-text hover:bg-panel-3 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+            >
+              {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              Export Report
+            </button>
           </div>
         )}
       </div>
