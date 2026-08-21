@@ -7,6 +7,8 @@ interface AuthContextValue {
   user: User | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  signInWithPassword: (email: string, password: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -21,11 +23,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-      // Keep JWT in localStorage so axios interceptor can read it
-      if (s) {
-        localStorage.setItem('sb-session', JSON.stringify(s));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, updatedSession) => {
+      setSession(updatedSession);
+      if (updatedSession) {
+        localStorage.setItem('sb-session', JSON.stringify(updatedSession));
       } else {
         localStorage.removeItem('sb-session');
       }
@@ -38,8 +39,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   }
 
+  async function signInWithPassword(email: string, password: string) {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  }
+
+  async function signInWithGoogle() {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/` },
+    });
+    if (error) throw error;
+  }
+
   return (
-    <AuthContext.Provider value={{ session, user: session?.user ?? null, loading, signOut }}>
+    <AuthContext.Provider value={{ session, user: session?.user ?? null, loading, signOut, signInWithPassword, signInWithGoogle }}>
       {children}
     </AuthContext.Provider>
   );
