@@ -219,6 +219,36 @@ export async function removeMember(orgId: string, userId: string): Promise<void>
   await client.delete(`/orgs/${orgId}/members/${userId}`)
 }
 
+export async function changeMemberRole(orgId: string, userId: string, role: string): Promise<void> {
+  await client.patch(`/orgs/${orgId}/members/${userId}`, { role })
+}
+
+export async function leaveOrg(orgId: string): Promise<void> {
+  await client.delete(`/orgs/${orgId}/members/me`)
+}
+
+export interface PendingInvitation {
+  token: string
+  email: string
+  role: string
+  created_at: string
+  expires_at: string
+}
+
+export async function fetchPendingInvitations(orgId: string): Promise<PendingInvitation[]> {
+  const res = await client.get<{ invitations: PendingInvitation[] }>(`/orgs/${orgId}/invitations`)
+  return res.data.invitations
+}
+
+export async function cancelInvitation(orgId: string, token: string): Promise<void> {
+  await client.delete(`/orgs/${orgId}/invitations/${token}`)
+}
+
+export async function resendInvitation(orgId: string, token: string): Promise<{ email_sent: boolean; invite_link: string }> {
+  const res = await client.post(`/orgs/${orgId}/invitations/${token}/resend`)
+  return res.data
+}
+
 export async function fetchInvitation(token: string): Promise<InvitationPreview> {
   const res = await client.get<InvitationPreview>(`/invitations/${token}`)
   return res.data
@@ -237,6 +267,15 @@ export async function platformListOrgs(): Promise<{ orgs: Organisation[] }> {
 
 export async function platformCreateOrg(name: string, plan: string, adminEmail: string, adminName?: string): Promise<{ org: Organisation; invite_link: string; invite_token: string }> {
   const res = await client.post('/platform/orgs', { name, plan, admin_email: adminEmail, admin_name: adminName })
+  return res.data
+}
+
+export async function platformDeleteOrg(orgId: string): Promise<void> {
+  await client.delete(`/platform/orgs/${orgId}`)
+}
+
+export async function platformUpdateOrg(orgId: string, fields: { plan?: string; status?: string }): Promise<Organisation> {
+  const res = await client.patch<Organisation>(`/platform/orgs/${orgId}`, fields)
   return res.data
 }
 

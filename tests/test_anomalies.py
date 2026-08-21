@@ -1,5 +1,5 @@
 """Anomaly-detection rules — the legally-sensitive logic, tested in isolation (no DB)."""
-from backend.pipeline.detect_anomalies import _dedupe_llm_findings, compute_findings
+from backend.apps.investigation.pipeline.detect_anomalies import _dedupe_llm_findings, compute_findings
 
 
 def test_detects_all_three_anomaly_types(sample_extractions):

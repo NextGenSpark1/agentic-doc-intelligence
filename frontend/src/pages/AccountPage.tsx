@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Eye, EyeOff } from 'lucide-react'
+import { useNavigate, Link } from 'react-router-dom'
+import { Eye, EyeOff, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabaseClient'
 import type { User } from '@supabase/supabase-js'
@@ -185,6 +185,9 @@ export default function AccountPage() {
   return (
     <div className="max-w-2xl mx-auto px-6 py-8 flex flex-col gap-4">
       <div>
+        <Link to="/cases" className="inline-flex items-center gap-1.5 text-xs text-text-mute hover:text-text transition-colors mb-3">
+          <ArrowLeft size={13} /> Back to Cases
+        </Link>
         <h1 className="text-2xl font-bold text-text">Account</h1>
         <p className="text-sm text-text-mute mt-0.5">Manage your profile and security settings</p>
       </div>

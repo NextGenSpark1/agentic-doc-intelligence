@@ -1,5 +1,5 @@
 """Investigation schema routing + shape."""
-from backend.schemas.investigation import (
+from backend.apps.investigation.schemas import (
     ConflictOfInterest,
     FinancialTransaction,
     GeneralDocument,

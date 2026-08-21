@@ -123,8 +123,13 @@ export default function NewCaseModal({ open, onClose, onSuccess }: NewCaseModalP
       await createCase({ ...form, schema_fields: computedSchemaFields() })
       handleClose()
       onSuccess()
-    } catch {
-      setSubmitError('Failed to create case. Please try again.')
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 403) {
+        setSubmitError('Your organisation is suspended. Contact your platform administrator to restore access.')
+      } else {
+        setSubmitError('Failed to create case. Please try again.')
+      }
     } finally {
       setLoading(false)
     }

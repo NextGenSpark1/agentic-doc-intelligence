@@ -1,6 +1,6 @@
 """Timeline date handling + document classifier heuristic."""
-from backend.pipeline.classify import heuristic
-from backend.pipeline.reconstruct_timeline import compute_events, parse_date
+from backend.apps.investigation.classify import heuristic
+from backend.apps.investigation.pipeline.reconstruct_timeline import compute_events, parse_date
 
 
 def test_events_are_sorted_chronologically(sample_extractions):

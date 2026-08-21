@@ -7,9 +7,9 @@ these tests need no network access or API key.
 """
 from unittest.mock import patch
 
-from backend.pipeline import build_relationships, detect_anomalies, reconstruct_timeline, resolve_entities
+from backend.apps.investigation.pipeline import build_relationships, detect_anomalies, reconstruct_timeline, resolve_entities
 
-_ASK = "backend.pipeline.llm_reasoning.ask"
+_ASK = "backend.core.llm_reasoning.ask"
 
 
 def test_relationship_citing_unknown_document_is_dropped(sample_extractions):
@@ -100,9 +100,9 @@ def test_finding_citing_unknown_document_is_dropped(sample_extractions):
          "statement": "made up finding", "supporting_document_ids": ["not-a-real-doc"]},
     ]}
     with patch(_ASK, return_value=fake), \
-         patch("backend.db.list_entities", return_value=[]), \
-         patch("backend.db.list_relationships", return_value=[]), \
-         patch("backend.db.get_client") as mock_client:
+         patch("backend.apps.investigation.db.list_entities", return_value=[]), \
+         patch("backend.apps.investigation.db.list_relationships", return_value=[]), \
+         patch("backend.apps.investigation.db.get_client") as mock_client:
         mock_client.return_value.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
         findings = detect_anomalies._llm_findings("case-1", sample_extractions)
     assert findings == []
@@ -114,9 +114,9 @@ def test_finding_grounded_in_real_document_is_kept(sample_extractions):
          "statement": "real finding", "supporting_document_ids": ["d1", "not-a-real-doc"]},
     ]}
     with patch(_ASK, return_value=fake), \
-         patch("backend.db.list_entities", return_value=[]), \
-         patch("backend.db.list_relationships", return_value=[]), \
-         patch("backend.db.get_client") as mock_client:
+         patch("backend.apps.investigation.db.list_entities", return_value=[]), \
+         patch("backend.apps.investigation.db.list_relationships", return_value=[]), \
+         patch("backend.apps.investigation.db.get_client") as mock_client:
         mock_client.return_value.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
         findings = detect_anomalies._llm_findings("case-1", sample_extractions)
     assert len(findings) == 1

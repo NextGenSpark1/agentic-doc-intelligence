@@ -151,6 +151,7 @@ export interface Organisation {
   org_id: string
   name: string
   plan: string
+  status?: string  // "active" | "suspended"
   created_at: string
   member_count?: number
   case_count?: number
@@ -162,6 +163,15 @@ export interface OrgContext {
   org_id?: string
   org_name?: string
   org_plan?: string
+  org_status?: string
+}
+
+export interface PendingInvitation {
+  token: string
+  email: string
+  role: string
+  created_at: string
+  expires_at: string
 }
 
 export interface InvitationPreview {

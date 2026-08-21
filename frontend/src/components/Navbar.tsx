@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { LogOut, Settings, ShieldCheck } from 'lucide-react'
+import { LogOut, Settings, ShieldCheck, Building2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { getInitialsFromUser } from '../pages/AccountPage'
 
@@ -10,6 +10,7 @@ export default function Navbar() {
   const { user, signOut, orgCtx } = useAuth()
   const navigate = useNavigate()
   const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(user?.email ?? '')
+  const hasOrg = !!orgCtx?.org_id
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -106,6 +107,16 @@ export default function Navbar() {
                   >
                     <ShieldCheck size={14} className="text-text-mute" />
                     Platform Admin
+                  </button>
+                )}
+                {/* Org / Team link — label adapts to role */}
+                {hasOrg && (
+                  <button
+                    onClick={() => { setMenuOpen(false); navigate('/org-settings') }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-text-mid hover:bg-panel-2 hover:text-text transition-colors"
+                  >
+                    <Building2 size={14} className="text-text-mute" />
+                    {orgCtx?.role === 'org_admin' ? 'Org Settings' : 'My Team'}
                   </button>
                 )}
                 {/* Account Settings */}
