@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactElement } from 'react';
 import { CheckCircle2, XCircle, AlertCircle, Circle, BarChart3 } from 'lucide-react';
 import { RequirementCategoryBadge } from '../Badge';
 import type { Requirement, RequirementStatus } from '../../types';
@@ -16,7 +16,7 @@ const LIBRARY_DOC_NAMES: Record<string, string> = {
   'd-cvs': 'Key Personnel CVs',
 };
 
-const STATUS_CONFIG: Record<RequirementStatus, { icon: JSX.Element; label: string; bar: string }> = {
+const STATUS_CONFIG: Record<RequirementStatus, { icon: ReactElement; label: string; bar: string }> = {
   met: {
     icon: <CheckCircle2 size={14} className="text-green" />,
     label: 'Met',
@@ -43,7 +43,7 @@ const SUMMARY_CARDS: {
   key: RequirementStatus;
   label: string;
   colour: string;
-  icon: JSX.Element;
+  icon: ReactElement;
   countKey: 'met' | 'partial' | 'gap' | 'unchecked';
 }[] = [
   {
