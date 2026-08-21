@@ -1,5 +1,5 @@
 """Case summary/risk scoring — the part that decides which findings 'count'."""
-from backend.pipeline.summarise import _risk_score, active_findings
+from backend.apps.investigation.pipeline.summarise import _risk_score, active_findings
 
 
 def _f(status, severity="high"):

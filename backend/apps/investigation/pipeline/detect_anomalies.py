@@ -31,7 +31,7 @@ def _clean_chunk_text(text: str) -> str:
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from . import llm_reasoning
+from backend.core import llm_reasoning
 
 _SPLIT_PAYMENT_WINDOW_DAYS = 3
 _NON_NUMERIC_RE = re.compile(r"[^\d.]")
@@ -330,7 +330,8 @@ def _attach_supporting_chunks(case_id: str, persisted: list[dict]) -> None:
     """Best-effort: for each finding, search within each cited document individually to find
     the most relevant passage. Per-document scoping avoids one broad chunk dominating all findings.
     Failures are silently skipped — the finding is already persisted regardless."""
-    from .. import db, llm
+    from .. import db
+    from backend.core import llm
 
     if not persisted:
         return

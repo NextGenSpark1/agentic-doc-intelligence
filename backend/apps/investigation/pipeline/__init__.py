@@ -1,4 +1,4 @@
-"""Pipeline orchestrator.
+"""Investigation pipeline orchestrator.
 
 External dependencies (db, the stage modules) are imported lazily INSIDE the functions, so
 importing this package is cheap and side-effect-free — that keeps the pure stage logic
@@ -9,8 +9,8 @@ Two entry points, both designed to run inside a FastAPI BackgroundTask:
   * run_case_analysis(case_id)    — case-wide: resolve entities -> build relationships ->
         reconstruct timeline -> detect anomalies -> summarise.
 
-Upgrade triggers: lift run_case_analysis into LangGraph when reasoning needs to branch/loop;
-put it behind Temporal when a run must survive process restarts. Neither is needed yet.
+The per-document extraction schema is investigation-specific, so this orchestrator injects the
+investigation schema resolver into core's app-agnostic `run_extraction`.
 """
 from __future__ import annotations
 
@@ -19,8 +19,9 @@ from datetime import datetime, timezone
 
 
 def process_document(document_id: str) -> None:
-    from .. import db
-    from . import classify, extract
+    from backend.core import extract
+    from .. import classify, db
+    from ..schemas import schema_for_case_type
 
     document = db.get_document(document_id)
     if not document:
@@ -28,7 +29,7 @@ def process_document(document_id: str) -> None:
     case = db.get_case(document["case_id"]) or {}
     db.update_document(document_id, {"extraction_status": "processing"})
     try:
-        result = extract.run_extraction(document, case)
+        result = extract.run_extraction(document, case, schema_for_case_type)
         doc_type = classify.classify(result["markdown"])
         db.update_document(document_id, {"document_type": doc_type, "extraction_status": "done"})
         db.write_audit(case["case_id"], "system", "document_extracted",

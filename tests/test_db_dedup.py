@@ -7,7 +7,7 @@ either side can't silently drift.
 """
 import hashlib
 
-from backend.db import _content_hash
+from backend.core.db_core import _content_hash
 
 
 def test_matches_sql_md5_formula_for_a_finding():

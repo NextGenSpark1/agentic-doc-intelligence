@@ -17,7 +17,7 @@ import uuid
 from collections import defaultdict
 
 from .. import db
-from . import llm_reasoning
+from backend.core import llm_reasoning
 
 # (shared field, the entity it ties together, edge label)
 _SHARED_LINKS = [

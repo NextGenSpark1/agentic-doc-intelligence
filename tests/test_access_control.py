@@ -6,7 +6,7 @@ function is pure (raises HTTPException or returns None), so it's tested directly
 import pytest
 from fastapi import HTTPException
 
-from backend.main import _assert_case_access
+from backend.core.access import assert_case_access as _assert_case_access
 
 
 def _denied(case, user_id, membership=None):
