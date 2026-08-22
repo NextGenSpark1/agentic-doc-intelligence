@@ -104,13 +104,13 @@ function DocCard({ doc }: { doc: LibraryDocument }) {
       )}
 
       {/* Tags */}
-      {doc.tags.length > 0 && (
+      {(doc.tags ?? []).length > 0 && (
         <div className="flex flex-wrap gap-1 mb-4">
-          {doc.tags.slice(0, 3).map((tag) => (
+          {(doc.tags ?? []).slice(0, 3).map((tag) => (
             <span key={tag} className="px-1.5 py-0.5 bg-panel-3 text-text-mute text-[11px] rounded">{tag}</span>
           ))}
-          {doc.tags.length > 3 && (
-            <span className="px-1.5 py-0.5 bg-panel-3 text-text-mute text-[11px] rounded">+{doc.tags.length - 3}</span>
+          {(doc.tags ?? []).length > 3 && (
+            <span className="px-1.5 py-0.5 bg-panel-3 text-text-mute text-[11px] rounded">+{(doc.tags ?? []).length - 3}</span>
           )}
         </div>
       )}
@@ -263,8 +263,8 @@ export function DocumentLibraryPage() {
     const q = search.toLowerCase();
     const matchSearch =
       d.title.toLowerCase().includes(q) ||
-      d.filename.toLowerCase().includes(q) ||
-      d.tags.some((t) => t.toLowerCase().includes(q));
+      (d.filename ?? '').toLowerCase().includes(q) ||
+      (d.tags ?? []).some((t) => t.toLowerCase().includes(q));
     const matchCat = categoryFilter === 'all' || d.category === categoryFilter;
     const matchStatus = statusFilter === 'all' || d.verification_status === statusFilter;
     return matchSearch && matchCat && matchStatus;
@@ -281,7 +281,7 @@ export function DocumentLibraryPage() {
   const statusButtons: { label: string; value: VerificationStatus | 'all' }[] = [
     { label: 'All', value: 'all' },
     { label: 'Verified', value: 'verified' },
-    { label: 'Pending', value: 'pending' },
+    { label: 'Pending', value: 'pending' as VerificationStatus },
     { label: 'Expired', value: 'expired' },
   ];
 

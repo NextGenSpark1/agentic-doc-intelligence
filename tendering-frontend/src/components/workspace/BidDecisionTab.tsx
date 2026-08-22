@@ -30,7 +30,7 @@ export function BidDecisionTab({
       `Buyer:        ${workspace.buyer}`,
       `Value:        ${formatCurrency(workspace.contract_value, workspace.currency)}`,
       `Closing:      ${workspace.closing_date}`,
-      `Generated:    ${formatDate(report.generated_at, { day: 'numeric', month: 'long', year: 'numeric' })}`,
+      `Generated:    ${formatDate(report.generated_at ?? report.analysed_at ?? '', { day: 'numeric', month: 'long', year: 'numeric' })}`,
       ``,
       `AI SCORE: ${report.score}/100`,
       `RECOMMENDATION: ${report.recommendation.toUpperCase()}`,
@@ -84,7 +84,7 @@ export function BidDecisionTab({
             <div className="text-right">
               <p className="text-xs text-text-mute mb-1">AI Analysis</p>
               <p className="text-[11px] text-text-mute">
-                {formatDate(report.generated_at, { day: 'numeric', month: 'short', year: 'numeric' })}
+                {formatDate(report.generated_at ?? report.analysed_at ?? '', { day: 'numeric', month: 'short', year: 'numeric' })}
               </p>
             </div>
             <button

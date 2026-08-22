@@ -416,8 +416,8 @@ function DocumentViewerModal({ doc, onClose }: { doc: WorkspaceDocument; onClose
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-text truncate">{doc.name}</p>
             <p className="text-xs text-text-mute mt-0.5">
-              {(doc.size_bytes / 1_000_000).toFixed(1)} MB · {extracted.pages} pages ·
-              Uploaded {formatDate(doc.uploaded_at, { day: 'numeric', month: 'short', year: 'numeric' })}
+              {((doc.size_bytes ?? 0) / 1_000_000).toFixed(1)} MB · {extracted.pages} pages ·
+              Uploaded {formatDate(doc.uploaded_at ?? '', { day: 'numeric', month: 'short', year: 'numeric' })}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -527,7 +527,7 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
                 <Upload size={12} /> Upload
               </button>
             </div>
-            {workspace.documents.length === 0 ? (
+            {(workspace.documents ?? []).length === 0 ? (
               <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
                 <Upload size={20} className="text-text-mute mx-auto mb-2" />
                 <p className="text-sm text-text-mute">Drop tender documents here</p>
@@ -535,7 +535,7 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
               </div>
             ) : (
               <div className="space-y-2">
-                {workspace.documents.map((doc) => {
+                {(workspace.documents ?? []).map((doc) => {
                   const ext = doc.name.split('.').pop()?.toUpperCase() ?? '';
                   const extColour =
                     ext === 'PDF' ? 'bg-red-bg text-red' :
@@ -554,7 +554,7 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
                         <div className="min-w-0">
                           <p className="text-xs font-medium text-text truncate group-hover:text-teal transition-colors">{doc.name}</p>
                           <p className="text-[11px] text-text-mute">
-                            {(doc.size_bytes / 1_000_000).toFixed(1)} MB · {formatDate(doc.uploaded_at, { day: 'numeric', month: 'short' })}
+                            {((doc.size_bytes ?? 0) / 1_000_000).toFixed(1)} MB · {formatDate(doc.uploaded_at ?? '', { day: 'numeric', month: 'short' })}
                           </p>
                         </div>
                       </div>
@@ -609,7 +609,7 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
               <button className="text-xs text-teal hover:text-teal-soft font-medium">Add</button>
             </div>
             <div className="space-y-2">
-              {workspace.team_members.map((member, i) => {
+              {(workspace.team_members ?? []).map((member, i) => {
                 const initials = member.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
                 return (
                   <div key={member} className="flex items-center gap-3">
