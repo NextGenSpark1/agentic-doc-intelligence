@@ -1,6 +1,7 @@
+import { useState, useRef, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FolderOpen, Library, LogOut, UserCircle } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { LayoutDashboard, FolderOpen, Library, LogOut, Settings, ShieldCheck, Building2, Users } from 'lucide-react';
+import { useAuth, PLATFORM_ADMIN_EMAILS } from '../context/AuthContext';
 
 const NAV_LINKS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -9,9 +10,40 @@ const NAV_LINKS = [
 ];
 
 export function Navbar() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, orgCtx } = useAuth();
   const navigate = useNavigate();
-  const displayName = (user?.user_metadata?.full_name as string) || user?.email || '';
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(user?.email ?? '');
+  const hasOrg = !!orgCtx?.org_id;
+
+  const fullName = ((user?.user_metadata?.full_name as string | undefined) ?? '').trim();
+  const email = user?.email ?? '';
+  const displayName = fullName || email;
+  const initials = displayName.slice(0, 2).toUpperCase();
+
+  useEffect(() => {
+    function handleClickOutside(clickEvent: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(clickEvent.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    if (menuOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
+
+  async function handleSignOut() {
+    setMenuOpen(false);
+    await signOut();
+    navigate('/login', { replace: true });
+  }
+
+  const orgSettingsLabel = orgCtx?.role === 'org_admin'
+    ? 'Org Settings'
+    : orgCtx?.role === 'supervisor'
+    ? 'Team'
+    : 'My Team';
 
   return (
     <header className="fixed top-0 inset-x-0 z-50">
@@ -24,24 +56,69 @@ export function Navbar() {
           />
           <span className="text-white font-semibold text-sm tracking-wide">Tendering Intelligence</span>
         </div>
-        <div className="flex items-center gap-3">
-          {user && (
-            <button
-              onClick={() => navigate('/account')}
-              className="flex items-center gap-2 text-white/60 hover:text-white text-xs transition-colors"
-            >
-              <UserCircle size={16} />
-              <span className="hidden sm:block truncate max-w-[160px]">{displayName}</span>
-            </button>
-          )}
-          <div className="w-px h-4 bg-white/20" />
+
+        <div className="relative" ref={menuRef}>
           <button
-            onClick={signOut}
-            className="flex items-center gap-1.5 text-white/60 hover:text-white text-xs transition-colors"
+            onClick={() => setMenuOpen(open => !open)}
+            className="bg-teal hover:bg-teal-soft text-white font-semibold text-sm w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+            aria-label="Account menu"
           >
-            <LogOut size={13} />
-            Sign out
+            {initials}
           </button>
+
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-2 w-60 bg-panel border border-border rounded-xl shadow-lg overflow-hidden z-50">
+              <div className="px-4 py-3 border-b border-border">
+                <p className="text-sm font-semibold text-text truncate">{displayName}</p>
+                {fullName && <p className="text-xs text-text-mute truncate mt-0.5">{email}</p>}
+                {orgCtx?.org_name && (
+                  <p className="text-[10px] text-text-mute mt-1 truncate">{orgCtx.org_name}</p>
+                )}
+                {isPlatformAdmin && (
+                  <p className="text-[10px] font-semibold text-teal mt-1 uppercase tracking-wide">Platform Admin</p>
+                )}
+              </div>
+
+              {isPlatformAdmin && (
+                <button
+                  onClick={() => { setMenuOpen(false); navigate('/admin'); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-text-mid hover:bg-panel-2 hover:text-text transition-colors"
+                >
+                  <ShieldCheck size={14} className="text-text-mute" />
+                  Platform Admin
+                </button>
+              )}
+
+              {hasOrg && (
+                <button
+                  onClick={() => { setMenuOpen(false); navigate('/org/settings'); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-text-mid hover:bg-panel-2 hover:text-text transition-colors"
+                >
+                  {orgCtx?.role === 'org_admin'
+                    ? <Building2 size={14} className="text-text-mute" />
+                    : <Users size={14} className="text-text-mute" />
+                  }
+                  {orgSettingsLabel}
+                </button>
+              )}
+
+              <button
+                onClick={() => { setMenuOpen(false); navigate('/account'); }}
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-text-mid hover:bg-panel-2 hover:text-text transition-colors"
+              >
+                <Settings size={14} className="text-text-mute" />
+                Account Settings
+              </button>
+
+              <button
+                onClick={handleSignOut}
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-text-mid hover:bg-panel-2 hover:text-text transition-colors"
+              >
+                <LogOut size={14} className="text-text-mute" />
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
