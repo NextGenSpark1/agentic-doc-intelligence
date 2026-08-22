@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
+import LandingPage from './pages/LandingPage'
 import CasesPage from './pages/CasesPage'
 import CaseWorkspacePage from './pages/CaseWorkspacePage'
 import AccountPage from './pages/AccountPage'
@@ -45,6 +46,8 @@ export default function App() {
       <AuthProvider>
         <Toaster position="top-right" toastOptions={{ style: { fontSize: '0.875rem' } }} />
         <Routes>
+          {/* Landing page — always accessible, auth-aware CTAs */}
+          <Route index element={<LandingPage />} />
           {/* Public routes — no auth required */}
           <Route path="/invite/:token" element={<InviteAcceptPage />} />
           <Route element={<GuestLayout />}>
@@ -54,7 +57,6 @@ export default function App() {
           {/* Standalone — must not be inside GuestLayout (Supabase sets a recovery session on arrival) */}
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route element={<AuthLayout />}>
-            <Route index element={<Navigate to="/cases" replace />} />
             <Route path="/cases" element={<CasesPage />} />
             <Route path="/cases/:caseId" element={<CaseWorkspacePage />} />
             <Route path="/account" element={<AccountPage />} />
