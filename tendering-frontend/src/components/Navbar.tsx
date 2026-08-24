@@ -59,7 +59,7 @@ export function Navbar() {
 
         <div className="relative" ref={menuRef}>
           <button
-            onClick={() => setMenuOpen(open => !open)}
+            onClick={() => setMenuOpen(previous => !previous)}
             className="bg-teal hover:bg-teal-soft text-white font-semibold text-sm w-8 h-8 flex items-center justify-center rounded-full transition-colors"
             aria-label="Account menu"
           >

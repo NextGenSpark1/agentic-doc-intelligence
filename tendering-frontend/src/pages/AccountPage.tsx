@@ -76,7 +76,7 @@ export function AccountPage() {
             </label>
             <input
               value={nameValue}
-              onChange={(e) => setNameValue(e.target.value)}
+              onChange={(inputEvent) => setNameValue(inputEvent.target.value)}
               placeholder="Your full name"
               className="w-full px-3 py-2.5 text-sm bg-canvas border border-border rounded-lg outline-none focus:border-teal focus:ring-2 focus:ring-teal/15 transition-colors"
             />
@@ -120,7 +120,7 @@ export function AccountPage() {
             <input
               type="password"
               value={currentPw}
-              onChange={(e) => setCurrentPw(e.target.value)}
+              onChange={(inputEvent) => setCurrentPw(inputEvent.target.value)}
               placeholder="••••••••"
               autoComplete="current-password"
               className="w-full px-3 py-2.5 text-sm bg-canvas border border-border rounded-lg outline-none focus:border-teal focus:ring-2 focus:ring-teal/15 transition-colors"
@@ -133,7 +133,7 @@ export function AccountPage() {
               <input
                 type="password"
                 value={newPw}
-                onChange={(e) => setNewPw(e.target.value)}
+                onChange={(inputEvent) => setNewPw(inputEvent.target.value)}
                 placeholder="Min 8 characters"
                 autoComplete="new-password"
                 className="w-full px-3 py-2.5 text-sm bg-canvas border border-border rounded-lg outline-none focus:border-teal focus:ring-2 focus:ring-teal/15 transition-colors"
@@ -144,7 +144,7 @@ export function AccountPage() {
               <input
                 type="password"
                 value={confirmPw}
-                onChange={(e) => setConfirmPw(e.target.value)}
+                onChange={(inputEvent) => setConfirmPw(inputEvent.target.value)}
                 placeholder="Repeat new password"
                 autoComplete="new-password"
                 className="w-full px-3 py-2.5 text-sm bg-canvas border border-border rounded-lg outline-none focus:border-teal focus:ring-2 focus:ring-teal/15 transition-colors"

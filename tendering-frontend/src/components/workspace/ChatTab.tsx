@@ -40,19 +40,19 @@ export function ChatTab({ workspace }: { workspace: TenderWorkspace }) {
     if (!input.trim() || loading) return;
     const userMsg = input.trim();
     setInput('');
-    setMessages((m) => [...m, { role: 'user', text: userMsg }]);
+    setMessages((previous) => [...previous, { role: 'user', text: userMsg }]);
     setLoading(true);
 
-    await new Promise((r) => setTimeout(r, 1200 + Math.random() * 800));
+    await new Promise((resolve) => setTimeout(resolve, 1200 + Math.random() * 800));
 
-    const lc = userMsg.toLowerCase();
+    const lowercaseMsg = userMsg.toLowerCase();
     const reply =
-      lc.includes('local') || lc.includes('workforce') ? MOCK_RESPONSES['local workforce'] :
-      lc.includes('27001') || lc.includes('iso 27') || lc.includes('security') ? MOCK_RESPONSES['iso 27001'] :
-      lc.includes('noc') || lc.includes('network operations') ? MOCK_RESPONSES['noc'] :
+      lowercaseMsg.includes('local') || lowercaseMsg.includes('workforce') ? MOCK_RESPONSES['local workforce'] :
+      lowercaseMsg.includes('27001') || lowercaseMsg.includes('iso 27') || lowercaseMsg.includes('security') ? MOCK_RESPONSES['iso 27001'] :
+      lowercaseMsg.includes('noc') || lowercaseMsg.includes('network operations') ? MOCK_RESPONSES['noc'] :
       MOCK_RESPONSES['default'];
 
-    setMessages((m) => [...m, { role: 'assistant', text: reply }]);
+    setMessages((previous) => [...previous, { role: 'assistant', text: reply }]);
     setLoading(false);
   }
 
@@ -76,8 +76,8 @@ export function ChatTab({ workspace }: { workspace: TenderWorkspace }) {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+        {messages.map((msg, index) => (
+          <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             {msg.role === 'assistant' && (
               <div className="w-6 h-6 rounded-full bg-teal/10 flex items-center justify-center mr-2 mt-1 flex-shrink-0">
                 <Sparkles size={11} className="text-teal" />
@@ -102,11 +102,11 @@ export function ChatTab({ workspace }: { workspace: TenderWorkspace }) {
             </div>
             <div className="bg-panel-2 border border-border px-4 py-3 rounded-xl rounded-tl-sm">
               <div className="flex gap-1">
-                {[0, 1, 2].map((i) => (
+                {[0, 1, 2].map((dotIndex) => (
                   <div
-                    key={i}
+                    key={dotIndex}
                     className="w-1.5 h-1.5 rounded-full bg-text-mute animate-bounce"
-                    style={{ animationDelay: `${i * 0.15}s` }}
+                    style={{ animationDelay: `${dotIndex * 0.15}s` }}
                   />
                 ))}
               </div>
@@ -119,13 +119,13 @@ export function ChatTab({ workspace }: { workspace: TenderWorkspace }) {
       {/* Quick prompts — only shown until first user message */}
       {messages.length === 1 && (
         <div className="px-5 py-3 border-t border-border flex gap-2 flex-wrap bg-panel-2 flex-shrink-0">
-          {PROMPTS.map((p) => (
+          {PROMPTS.map((prompt) => (
             <button
-              key={p}
-              onClick={() => setInput(p)}
+              key={prompt}
+              onClick={() => setInput(prompt)}
               className="text-xs px-3 py-1.5 rounded-full bg-panel border border-border text-text-mid hover:border-teal hover:text-teal transition-colors"
             >
-              {p}
+              {prompt}
             </button>
           ))}
         </div>

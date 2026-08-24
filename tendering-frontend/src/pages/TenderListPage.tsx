@@ -32,13 +32,13 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
   const [submitting, setSubmitting] = useState(false);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
-    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+    setForm((previous) => ({ ...previous, [e.target.name]: e.target.value }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 900)); // mock API call
+    await new Promise((resolve) => setTimeout(resolve, 900)); // mock API call
     toast.success('Workspace created — uploading documents next');
     setSubmitting(false);
     onClose();
@@ -290,14 +290,14 @@ export function TenderListPage() {
     getWorkspaces().then(setWorkspaces).finally(() => setLoading(false));
   }, []);
 
-  const filtered = workspaces.filter((w) => {
-    const q = search.toLowerCase();
+  const filtered = workspaces.filter((workspace) => {
+    const searchQuery = search.toLowerCase();
     const matchesSearch =
-      w.title.toLowerCase().includes(q) ||
-      w.buyer.toLowerCase().includes(q) ||
-      w.reference.toLowerCase().includes(q) ||
-      w.category.toLowerCase().includes(q);
-    const matchesStage = stageFilter === 'all' || w.stage === stageFilter;
+      workspace.title.toLowerCase().includes(searchQuery) ||
+      workspace.buyer.toLowerCase().includes(searchQuery) ||
+      workspace.reference.toLowerCase().includes(searchQuery) ||
+      workspace.category.toLowerCase().includes(searchQuery);
+    const matchesStage = stageFilter === 'all' || workspace.stage === stageFilter;
     return matchesSearch && matchesStage;
   });
 
@@ -363,8 +363,8 @@ export function TenderListPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filtered.map((w) => (
-            <WorkspaceCard key={w.id} workspace={w} />
+          {filtered.map((workspace) => (
+            <WorkspaceCard key={workspace.id} workspace={workspace} />
           ))}
         </div>
       )}

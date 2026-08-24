@@ -25,8 +25,8 @@ export function InviteAcceptPage() {
     if (!token) return;
     getInvitation(token)
       .then(data => { setInvite(data); setStatus('ready'); })
-      .catch(err => {
-        const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      .catch(error => {
+        const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
         setErrorMsg(detail ?? 'Invalid or expired invitation.');
         setStatus('error');
       });

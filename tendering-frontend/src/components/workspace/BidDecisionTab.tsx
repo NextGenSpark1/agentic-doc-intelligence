@@ -19,7 +19,7 @@ export function BidDecisionTab({
   async function handleExport() {
     if (!report) return;
     setExporting(true);
-    await new Promise((r) => setTimeout(r, 800));
+    await new Promise((resolve) => setTimeout(resolve, 800));
 
     const lines = [
       `BID DECISION REPORT`,
@@ -41,11 +41,11 @@ export function BidDecisionTab({
       ``,
       `STRENGTHS`,
       `---------`,
-      ...report.strengths.map((s) => `  ✓ ${s}`),
+      ...report.strengths.map((strength) => `  ✓ ${strength}`),
       ``,
       `RISKS`,
       `-----`,
-      ...report.risks.map((r) => `  ! ${r}`),
+      ...report.risks.map((risk) => `  ! ${risk}`),
       ``,
       `TEAM DECISION: ${(confirmed ?? workspace.bid_decision).toUpperCase()}`,
     ];
@@ -64,7 +64,7 @@ export function BidDecisionTab({
 
   async function handleConfirm(decision: 'bid' | 'no_bid') {
     setConfirming(true);
-    await new Promise((r) => setTimeout(r, 700));
+    await new Promise((resolve) => setTimeout(resolve, 700));
     setConfirmed(decision);
     setConfirming(false);
     toast.success(decision === 'bid' ? 'Bid decision confirmed' : 'No-bid decision recorded');
@@ -148,10 +148,10 @@ export function BidDecisionTab({
                 <span className="text-sm font-semibold text-green">Strengths</span>
               </div>
               <ul className="space-y-2">
-                {report.strengths.map((s, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-text-mid">
+                {report.strengths.map((strength, index) => (
+                  <li key={index} className="flex items-start gap-2 text-xs text-text-mid">
                     <span className="text-green mt-0.5 flex-shrink-0">✓</span>
-                    {s}
+                    {strength}
                   </li>
                 ))}
               </ul>
@@ -162,10 +162,10 @@ export function BidDecisionTab({
                 <span className="text-sm font-semibold text-red">Risks</span>
               </div>
               <ul className="space-y-2">
-                {report.risks.map((r, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-text-mid">
+                {report.risks.map((risk, index) => (
+                  <li key={index} className="flex items-start gap-2 text-xs text-text-mid">
                     <span className="text-red mt-0.5 flex-shrink-0">!</span>
-                    {r}
+                    {risk}
                   </li>
                 ))}
               </ul>

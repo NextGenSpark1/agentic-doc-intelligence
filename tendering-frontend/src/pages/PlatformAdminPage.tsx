@@ -54,16 +54,16 @@ export function PlatformAdminPage() {
     }
   }
 
-  async function handlePlanSave(org: Organisation) {
-    const newPlan = editingPlan[org.org_id];
-    if (!newPlan || newPlan === org.plan) return;
-    setSavingPlan(org.org_id);
+  async function handlePlanSave(organisation: Organisation) {
+    const newPlan = editingPlan[organisation.org_id];
+    if (!newPlan || newPlan === organisation.plan) return;
+    setSavingPlan(organisation.org_id);
     try {
-      const updated = await updateOrg(org.org_id, { plan: newPlan });
+      const updated = await updateOrg(organisation.org_id, { plan: newPlan });
       setOrgs(previous => previous.map(existingOrg =>
-        existingOrg.org_id === org.org_id ? { ...existingOrg, plan: updated.plan ?? newPlan } : existingOrg
+        existingOrg.org_id === organisation.org_id ? { ...existingOrg, plan: updated.plan ?? newPlan } : existingOrg
       ));
-      setEditingPlan(previous => { const next = { ...previous }; delete next[org.org_id]; return next; });
+      setEditingPlan(previous => { const next = { ...previous }; delete next[organisation.org_id]; return next; });
     } catch {
       alert('Failed to update plan');
     } finally {
@@ -71,15 +71,15 @@ export function PlatformAdminPage() {
     }
   }
 
-  async function handleToggleStatus(org: Organisation) {
-    const newStatus = (org.status ?? 'active') === 'active' ? 'suspended' : 'active';
+  async function handleToggleStatus(organisation: Organisation) {
+    const newStatus = (organisation.status ?? 'active') === 'active' ? 'suspended' : 'active';
     const label = newStatus === 'suspended' ? 'Suspend' : 'Reactivate';
-    if (!window.confirm(`${label} "${org.name}"?`)) return;
-    setTogglingStatus(org.org_id);
+    if (!window.confirm(`${label} "${organisation.name}"?`)) return;
+    setTogglingStatus(organisation.org_id);
     try {
-      const updated = await updateOrg(org.org_id, { status: newStatus });
+      const updated = await updateOrg(organisation.org_id, { status: newStatus });
       setOrgs(previous => previous.map(existingOrg =>
-        existingOrg.org_id === org.org_id ? { ...existingOrg, status: updated.status ?? newStatus } : existingOrg
+        existingOrg.org_id === organisation.org_id ? { ...existingOrg, status: updated.status ?? newStatus } : existingOrg
       ));
     } catch {
       alert('Failed to update status');
@@ -88,12 +88,12 @@ export function PlatformAdminPage() {
     }
   }
 
-  async function handleDelete(org: Organisation) {
-    if (!window.confirm(`Permanently delete "${org.name}"? This cannot be undone.`)) return;
-    setDeletingOrg(org.org_id);
+  async function handleDelete(organisation: Organisation) {
+    if (!window.confirm(`Permanently delete "${organisation.name}"? This cannot be undone.`)) return;
+    setDeletingOrg(organisation.org_id);
     try {
-      await deleteOrg(org.org_id);
-      setOrgs(previous => previous.filter(existingOrg => existingOrg.org_id !== org.org_id));
+      await deleteOrg(organisation.org_id);
+      setOrgs(previous => previous.filter(existingOrg => existingOrg.org_id !== organisation.org_id));
     } catch {
       alert('Failed to delete organisation');
     } finally {
@@ -169,14 +169,14 @@ export function PlatformAdminPage() {
           <div className="text-center py-16 text-text-mute text-sm">No organisations yet.</div>
         ) : (
           <div className="flex flex-col gap-3">
-            {orgs.map(org => {
-              const suspended = (org.status ?? 'active') === 'suspended';
-              const isExpanded = expandedOrg === org.org_id;
-              const pendingPlan = editingPlan[org.org_id] ?? org.plan;
+            {orgs.map(organisation => {
+              const suspended = (organisation.status ?? 'active') === 'suspended';
+              const isExpanded = expandedOrg === organisation.org_id;
+              const pendingPlan = editingPlan[organisation.org_id] ?? organisation.plan;
 
               return (
                 <div
-                  key={org.org_id}
+                  key={organisation.org_id}
                   className={`bg-panel rounded-xl border overflow-hidden transition-opacity ${
                     suspended ? 'border-red/20 opacity-80' : 'border-border'
                   }`}
@@ -184,7 +184,7 @@ export function PlatformAdminPage() {
                   <div className="px-5 py-4 flex items-center gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
-                        <p className="text-sm font-semibold text-text">{org.name}</p>
+                        <p className="text-sm font-semibold text-text">{organisation.name}</p>
                         {suspended && (
                           <span className="text-[10px] font-bold uppercase tracking-wide text-red bg-red-bg border border-red/20 rounded-full px-2 py-0.5">
                             Suspended
@@ -192,17 +192,17 @@ export function PlatformAdminPage() {
                         )}
                       </div>
                       <p className="text-[11px] text-text-mute font-mono">
-                        {org.org_id} · Created {new Date(org.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {organisation.org_id} · Created {new Date(organisation.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </p>
                     </div>
 
                     <div className="flex gap-6 text-center shrink-0">
                       <div>
-                        <p className="text-base font-bold text-text">{org.member_count ?? 0}</p>
+                        <p className="text-base font-bold text-text">{organisation.member_count ?? 0}</p>
                         <p className="text-[10px] text-text-mute">members</p>
                       </div>
                       <div>
-                        <p className="text-base font-bold text-text">{org.workspace_count ?? 0}</p>
+                        <p className="text-base font-bold text-text">{organisation.workspace_count ?? 0}</p>
                         <p className="text-[10px] text-text-mute">workspaces</p>
                       </div>
                     </div>
@@ -210,49 +210,49 @@ export function PlatformAdminPage() {
                     <div className="flex items-center gap-2 shrink-0">
                       <select
                         value={pendingPlan}
-                        onChange={selectEvent => setEditingPlan(previous => ({ ...previous, [org.org_id]: selectEvent.target.value }))}
+                        onChange={selectEvent => setEditingPlan(previous => ({ ...previous, [organisation.org_id]: selectEvent.target.value }))}
                         className={`text-[10px] font-bold border rounded-full px-2.5 py-0.5 uppercase tracking-wide cursor-pointer focus:outline-none ${PLAN_BADGE[pendingPlan] ?? 'text-text-mute bg-panel-2 border-border'}`}
                       >
                         <option value="trial">Trial</option>
                         <option value="pro">Pro</option>
                         <option value="enterprise">Enterprise</option>
                       </select>
-                      {pendingPlan !== org.plan && (
+                      {pendingPlan !== organisation.plan && (
                         <button
-                          onClick={() => handlePlanSave(org)}
-                          disabled={savingPlan === org.org_id}
+                          onClick={() => handlePlanSave(organisation)}
+                          disabled={savingPlan === organisation.org_id}
                           className="text-[11px] font-semibold text-navy border border-navy/20 rounded-lg px-2.5 py-1 hover:bg-navy/5 transition-colors disabled:opacity-40"
                         >
-                          {savingPlan === org.org_id ? '…' : 'Save'}
+                          {savingPlan === organisation.org_id ? '…' : 'Save'}
                         </button>
                       )}
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
                       <button
-                        onClick={() => setExpandedOrg(isExpanded ? null : org.org_id)}
+                        onClick={() => setExpandedOrg(isExpanded ? null : organisation.org_id)}
                         className="flex items-center gap-1 text-xs text-text-mute border border-border rounded-lg px-2.5 py-1.5 hover:border-border-strong hover:text-text transition-colors"
                       >
                         {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                         Members
                       </button>
                       <button
-                        onClick={() => handleToggleStatus(org)}
-                        disabled={togglingStatus === org.org_id}
+                        onClick={() => handleToggleStatus(organisation)}
+                        disabled={togglingStatus === organisation.org_id}
                         className={`text-xs font-medium border rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-40 ${
                           suspended
                             ? 'text-green-700 border-green-200 hover:bg-green-50'
                             : 'text-amber-700 border-amber-200 hover:bg-amber-50'
                         }`}
                       >
-                        {togglingStatus === org.org_id ? '…' : suspended ? 'Activate' : 'Suspend'}
+                        {togglingStatus === organisation.org_id ? '…' : suspended ? 'Activate' : 'Suspend'}
                       </button>
                       <button
-                        onClick={() => handleDelete(org)}
-                        disabled={deletingOrg === org.org_id}
+                        onClick={() => handleDelete(organisation)}
+                        disabled={deletingOrg === organisation.org_id}
                         className="text-xs font-medium text-red/70 border border-red/20 rounded-lg px-2.5 py-1.5 hover:text-red hover:border-red/40 transition-colors disabled:opacity-40"
                       >
-                        {deletingOrg === org.org_id ? '…' : 'Delete'}
+                        {deletingOrg === organisation.org_id ? '…' : 'Delete'}
                       </button>
                     </div>
                   </div>
@@ -260,11 +260,11 @@ export function PlatformAdminPage() {
                   {isExpanded && (
                     <div className="border-t border-border bg-canvas px-5 py-4">
                       <p className="text-[10px] font-semibold text-text-mute uppercase tracking-widest mb-3">Members</p>
-                      {!org.members || org.members.length === 0 ? (
+                      {!organisation.members || organisation.members.length === 0 ? (
                         <p className="text-sm text-text-mute">No members loaded. Expand from org member list.</p>
                       ) : (
                         <div className="flex flex-col gap-2">
-                          {org.members.map(member => (
+                          {organisation.members.map(member => (
                             <div key={member.user_id} className="flex items-center gap-3">
                               <div className="w-7 h-7 rounded-full bg-navy/10 flex items-center justify-center text-[10px] font-bold text-navy shrink-0">
                                 {(member.full_name || member.email).slice(0, 2).toUpperCase()}

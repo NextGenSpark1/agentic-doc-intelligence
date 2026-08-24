@@ -78,7 +78,7 @@ function DeadlineBar({ workspace }: { workspace: TenderWorkspace }) {
 
 function PipelineStageCol({ stage, workspaces }: { stage: WorkspaceStage; workspaces: TenderWorkspace[] }) {
   const navigate = useNavigate();
-  const stageWorkspaces = workspaces.filter((w) => w.stage === stage);
+  const stageWorkspaces = workspaces.filter((workspace) => workspace.stage === stage);
 
   return (
     <div className="flex-1 min-w-0">
@@ -92,23 +92,23 @@ function PipelineStageCol({ stage, workspaces }: { stage: WorkspaceStage; worksp
             <span className="text-xs text-text-mute">—</span>
           </div>
         ) : (
-          stageWorkspaces.map((w) => (
+          stageWorkspaces.map((workspace) => (
             <div
-              key={w.id}
-              onClick={() => navigate(`/tenders/${w.id}`)}
+              key={workspace.id}
+              onClick={() => navigate(`/tenders/${workspace.id}`)}
               className="bg-panel border border-border rounded-lg p-3 cursor-pointer hover:border-teal hover:shadow-sm transition-all group"
             >
               <p className="text-xs font-medium text-text line-clamp-2 mb-2 group-hover:text-teal transition-colors">
-                {w.title}
+                {workspace.title}
               </p>
               <div className="flex items-center justify-between gap-1">
                 <div className="flex items-center gap-1">
                   <div className={`w-1.5 h-1.5 rounded-full ${
-                    w.readiness_score >= 80 ? 'bg-green' : w.readiness_score >= 50 ? 'bg-teal' : 'bg-amber'
+                    workspace.readiness_score >= 80 ? 'bg-green' : workspace.readiness_score >= 50 ? 'bg-teal' : 'bg-amber'
                   }`} />
-                  <span className="text-[11px] text-text-mute">{w.readiness_score}%</span>
+                  <span className="text-[11px] text-text-mute">{workspace.readiness_score}%</span>
                 </div>
-                <BidDecisionBadge decision={w.bid_decision} />
+                <BidDecisionBadge decision={workspace.bid_decision} />
               </div>
             </div>
           ))
@@ -125,17 +125,17 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getDashboardStats(), getWorkspaces()]).then(([s, ws]) => {
-      setStats(s);
-      setWorkspaces(ws);
+    Promise.all([getDashboardStats(), getWorkspaces()]).then(([dashboardStats, allWorkspaces]) => {
+      setStats(dashboardStats);
+      setWorkspaces(allWorkspaces);
     }).finally(() => setLoading(false));
   }, []);
 
   const activeWorkspaces = workspaces
-    .filter((w) => ACTIVE_STAGES.includes(w.stage))
-    .sort((a, b) => daysUntil(a.closing_date) - daysUntil(b.closing_date));
+    .filter((workspace) => ACTIVE_STAGES.includes(workspace.stage))
+    .sort((workspaceA, workspaceB) => daysUntil(workspaceA.closing_date) - daysUntil(workspaceB.closing_date));
 
-  const closingSoon = activeWorkspaces.filter((w) => daysUntil(w.closing_date) <= 21);
+  const closingSoon = activeWorkspaces.filter((workspace) => daysUntil(workspace.closing_date) <= 21);
 
   return (
     <div className="pt-[6.5rem] px-6 pb-12 max-w-6xl mx-auto">
@@ -197,8 +197,8 @@ export function DashboardPage() {
             <div className="p-8 text-center text-sm text-text-mute">No active workspaces.</div>
           ) : (
             <div className="divide-y divide-border">
-              {activeWorkspaces.map((w) => (
-                <DeadlineBar key={w.id} workspace={w} />
+              {activeWorkspaces.map((workspace) => (
+                <DeadlineBar key={workspace.id} workspace={workspace} />
               ))}
             </div>
           )}
@@ -215,17 +215,17 @@ export function DashboardPage() {
                 <span className="text-sm font-semibold text-amber">Closing Soon</span>
               </div>
               <div className="space-y-2">
-                {closingSoon.map((w) => (
+                {closingSoon.map((workspace) => (
                   <div
-                    key={w.id}
-                    onClick={() => navigate(`/tenders/${w.id}`)}
+                    key={workspace.id}
+                    onClick={() => navigate(`/tenders/${workspace.id}`)}
                     className="flex items-center justify-between cursor-pointer group"
                   >
                     <p className="text-xs text-text-mid group-hover:text-text truncate flex-1 mr-2 transition-colors">
-                      {w.title}
+                      {workspace.title}
                     </p>
                     <span className="text-xs font-semibold text-amber flex-shrink-0">
-                      {daysUntil(w.closing_date)}d
+                      {daysUntil(workspace.closing_date)}d
                     </span>
                   </div>
                 ))}
@@ -242,17 +242,17 @@ export function DashboardPage() {
               </div>
               <div className="space-y-3">
                 {workspaces
-                  .filter((w) => ACTIVE_STAGES.includes(w.stage))
-                  .map((w) => (
+                  .filter((workspace) => ACTIVE_STAGES.includes(workspace.stage))
+                  .map((workspace) => (
                     <div
-                      key={w.id}
-                      onClick={() => navigate(`/tenders/${w.id}`)}
+                      key={workspace.id}
+                      onClick={() => navigate(`/tenders/${workspace.id}`)}
                       className="flex items-center justify-between cursor-pointer group"
                     >
                       <p className="text-xs text-text-mid group-hover:text-text truncate flex-1 mr-2 transition-colors">
-                        {w.title.split('—')[0].trim()}
+                        {workspace.title.split('—')[0].trim()}
                       </p>
-                      <BidDecisionBadge decision={w.bid_decision} />
+                      <BidDecisionBadge decision={workspace.bid_decision} />
                     </div>
                   ))}
               </div>
@@ -268,17 +268,17 @@ export function DashboardPage() {
               </div>
               <div className="space-y-3">
                 {workspaces
-                  .filter((w) => ['awarded', 'lost', 'no_bid'].includes(w.stage))
-                  .map((w) => (
+                  .filter((workspace) => ['awarded', 'lost', 'no_bid'].includes(workspace.stage))
+                  .map((workspace) => (
                     <div
-                      key={w.id}
-                      onClick={() => navigate(`/tenders/${w.id}`)}
+                      key={workspace.id}
+                      onClick={() => navigate(`/tenders/${workspace.id}`)}
                       className="flex items-center justify-between cursor-pointer group"
                     >
                       <p className="text-xs text-text-mid group-hover:text-text truncate flex-1 mr-2 transition-colors">
-                        {w.title.split('—')[0].trim()}
+                        {workspace.title.split('—')[0].trim()}
                       </p>
-                      <StageBadge stage={w.stage} />
+                      <StageBadge stage={workspace.stage} />
                     </div>
                   ))}
               </div>

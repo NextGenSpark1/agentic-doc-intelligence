@@ -273,33 +273,33 @@ function UploadModal({ workspaceId, onClose }: { workspaceId: string; onClose: (
 
   function addFiles(incoming: FileList | null) {
     if (!incoming) return;
-    const valid = Array.from(incoming).filter((f) => ACCEPTED.includes(f.type) || f.name.match(/\.(pdf|docx|xlsx)$/i));
-    setFiles((prev) => {
-      const names = new Set(prev.map((f) => f.name));
-      return [...prev, ...valid.filter((f) => !names.has(f.name))];
+    const valid = Array.from(incoming).filter((file) => ACCEPTED.includes(file.type) || file.name.match(/\.(pdf|docx|xlsx)$/i));
+    setFiles((previous) => {
+      const names = new Set(previous.map((file) => file.name));
+      return [...previous, ...valid.filter((file) => !names.has(file.name))];
     });
   }
 
   function removeFile(name: string) {
-    setFiles((prev) => prev.filter((f) => f.name !== name));
+    setFiles((previous) => previous.filter((file) => file.name !== name));
   }
 
   async function handleUpload() {
     if (!files.length) return;
     setStage('uploading');
-    await new Promise((r) => setTimeout(r, 1200));
+    await new Promise((resolve) => setTimeout(resolve, 1200));
     setStage('extracting');
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
     setStage('done');
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((resolve) => setTimeout(resolve, 600));
     toast.success(`${files.length} document${files.length > 1 ? 's' : ''} uploaded — AI analysis running`);
     onClose();
   }
 
   const ext = (name: string) => name.split('.').pop()?.toUpperCase() ?? 'FILE';
-  const extColour = (e: string) =>
-    e === 'PDF' ? 'bg-red-bg text-red' :
-    e === 'XLSX' ? 'bg-green-bg text-green' : 'bg-teal/10 text-teal';
+  const extColour = (extension: string) =>
+    extension === 'PDF' ? 'bg-red-bg text-red' :
+    extension === 'XLSX' ? 'bg-green-bg text-green' : 'bg-teal/10 text-teal';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
@@ -340,16 +340,16 @@ function UploadModal({ workspaceId, onClose }: { workspaceId: string; onClose: (
               {/* File list */}
               {files.length > 0 && (
                 <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {files.map((f) => (
-                    <div key={f.name} className="flex items-center gap-3 px-3 py-2 bg-panel-2 rounded-lg border border-border">
-                      <div className={`w-7 h-7 rounded flex items-center justify-center text-[9px] font-bold flex-shrink-0 ${extColour(ext(f.name))}`}>
-                        {ext(f.name)}
+                  {files.map((file) => (
+                    <div key={file.name} className="flex items-center gap-3 px-3 py-2 bg-panel-2 rounded-lg border border-border">
+                      <div className={`w-7 h-7 rounded flex items-center justify-center text-[9px] font-bold flex-shrink-0 ${extColour(ext(file.name))}`}>
+                        {ext(file.name)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-text truncate">{f.name}</p>
-                        <p className="text-[11px] text-text-mute">{(f.size / 1_000_000).toFixed(1)} MB</p>
+                        <p className="text-xs font-medium text-text truncate">{file.name}</p>
+                        <p className="text-[11px] text-text-mute">{(file.size / 1_000_000).toFixed(1)} MB</p>
                       </div>
-                      <button onClick={() => removeFile(f.name)} className="text-text-mute hover:text-red transition-colors">
+                      <button onClick={() => removeFile(file.name)} className="text-text-mute hover:text-red transition-colors">
                         <X size={13} />
                       </button>
                     </div>
@@ -474,7 +474,7 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
     if (newStage === currentStage) return;
     setUpdatingStage(true);
     // TODO: PATCH /tendering/workspaces/{workspace.id} when backend ready
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((resolve) => setTimeout(resolve, 500));
     setCurrentStage(newStage);
     setUpdatingStage(false);
     toast.success(`Stage updated to ${newStage}`);
@@ -535,26 +535,26 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
               </div>
             ) : (
               <div className="space-y-2">
-                {(workspace.documents ?? []).map((doc) => {
-                  const ext = doc.name.split('.').pop()?.toUpperCase() ?? '';
-                  const extColour =
-                    ext === 'PDF' ? 'bg-red-bg text-red' :
-                    ext === 'XLSX' ? 'bg-green-bg text-green' :
-                    ext === 'DOCX' ? 'bg-teal/10 text-teal' : 'bg-panel-3 text-text-mute';
+                {(workspace.documents ?? []).map((document) => {
+                  const fileExtension = document.name.split('.').pop()?.toUpperCase() ?? '';
+                  const fileExtensionColour =
+                    fileExtension === 'PDF' ? 'bg-red-bg text-red' :
+                    fileExtension === 'XLSX' ? 'bg-green-bg text-green' :
+                    fileExtension === 'DOCX' ? 'bg-teal/10 text-teal' : 'bg-panel-3 text-text-mute';
                   return (
                     <div
-                      key={doc.id}
-                      onClick={() => setViewingDoc(doc)}
+                      key={document.id}
+                      onClick={() => setViewingDoc(document)}
                       className="flex items-center justify-between py-2.5 px-3 bg-panel-2 rounded-lg border border-border hover:border-teal cursor-pointer transition-all group"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 text-[9px] font-bold ${extColour}`}>
-                          {ext}
+                        <div className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 text-[9px] font-bold ${fileExtensionColour}`}>
+                          {fileExtension}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs font-medium text-text truncate group-hover:text-teal transition-colors">{doc.name}</p>
+                          <p className="text-xs font-medium text-text truncate group-hover:text-teal transition-colors">{document.name}</p>
                           <p className="text-[11px] text-text-mute">
-                            {((doc.size_bytes ?? 0) / 1_000_000).toFixed(1)} MB · {formatDate(doc.uploaded_at ?? '', { day: 'numeric', month: 'short' })}
+                            {((document.size_bytes ?? 0) / 1_000_000).toFixed(1)} MB · {formatDate(document.uploaded_at ?? '', { day: 'numeric', month: 'short' })}
                           </p>
                         </div>
                       </div>
@@ -609,11 +609,11 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
               <button className="text-xs text-teal hover:text-teal-soft font-medium">Add</button>
             </div>
             <div className="space-y-2">
-              {(workspace.team_members ?? []).map((member, i) => {
-                const initials = member.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+              {(workspace.team_members ?? []).map((member, index) => {
+                const initials = member.split(' ').map((namePart) => namePart[0]).join('').toUpperCase().slice(0, 2);
                 return (
                   <div key={member} className="flex items-center gap-3">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${memberColours[i % memberColours.length]}`}>
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${memberColours[index % memberColours.length]}`}>
                       {initials}
                     </div>
                     <span className="text-sm text-text-mid">{member}</span>

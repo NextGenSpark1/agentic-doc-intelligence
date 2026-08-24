@@ -145,7 +145,7 @@ function UploadModal({ onClose }: { onClose: () => void }) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 800));
+    await new Promise((resolve) => setTimeout(resolve, 800));
     toast.success('Document added to library');
     setSubmitting(false);
     onClose();
@@ -186,7 +186,7 @@ function UploadModal({ onClose }: { onClose: () => void }) {
             </label>
             <input
               value={form.title}
-              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+              onChange={(e) => setForm((previous) => ({ ...previous, title: e.target.value }))}
               placeholder="e.g. ISO 9001:2015 Quality Certificate"
               required
               className="w-full px-3 py-2 text-sm bg-canvas border border-border rounded-lg outline-none focus:border-teal focus:ring-2 focus:ring-teal/15 transition-colors"
@@ -201,7 +201,7 @@ function UploadModal({ onClose }: { onClose: () => void }) {
               </label>
               <select
                 value={form.category}
-                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as DocCategory }))}
+                onChange={(e) => setForm((previous) => ({ ...previous, category: e.target.value as DocCategory }))}
                 className="w-full px-3 py-2 text-sm bg-canvas border border-border rounded-lg outline-none focus:border-teal transition-colors"
               >
                 <option value="registration">Registration</option>
@@ -219,7 +219,7 @@ function UploadModal({ onClose }: { onClose: () => void }) {
               <input
                 type="date"
                 value={form.expiry_date}
-                onChange={(e) => setForm((f) => ({ ...f, expiry_date: e.target.value }))}
+                onChange={(e) => setForm((previous) => ({ ...previous, expiry_date: e.target.value }))}
                 className="w-full px-3 py-2 text-sm bg-canvas border border-border rounded-lg outline-none focus:border-teal transition-colors"
               />
             </div>
@@ -259,24 +259,24 @@ export function DocumentLibraryPage() {
     getLibraryDocuments().then(setDocs).finally(() => setLoading(false));
   }, []);
 
-  const filtered = docs.filter((d) => {
-    const q = search.toLowerCase();
+  const filtered = docs.filter((document) => {
+    const searchQuery = search.toLowerCase();
     const matchSearch =
-      d.title.toLowerCase().includes(q) ||
-      (d.filename ?? '').toLowerCase().includes(q) ||
-      (d.tags ?? []).some((t) => t.toLowerCase().includes(q));
-    const matchCat = categoryFilter === 'all' || d.category === categoryFilter;
-    const matchStatus = statusFilter === 'all' || d.verification_status === statusFilter;
+      document.title.toLowerCase().includes(searchQuery) ||
+      (document.filename ?? '').toLowerCase().includes(searchQuery) ||
+      (document.tags ?? []).some((tag) => tag.toLowerCase().includes(searchQuery));
+    const matchCat = categoryFilter === 'all' || document.category === categoryFilter;
+    const matchStatus = statusFilter === 'all' || document.verification_status === statusFilter;
     return matchSearch && matchCat && matchStatus;
   });
 
-  const expired = docs.filter((d) => d.verification_status === 'expired').length;
-  const expiringSoon = docs.filter((d) => {
-    if (!d.expiry_date || d.verification_status === 'expired') return false;
-    const days = daysUntilExpiry(d.expiry_date);
+  const expired = docs.filter((document) => document.verification_status === 'expired').length;
+  const expiringSoon = docs.filter((document) => {
+    if (!document.expiry_date || document.verification_status === 'expired') return false;
+    const days = daysUntilExpiry(document.expiry_date);
     return days >= 0 && days <= 90;
   }).length;
-  const verified = docs.filter((d) => d.verification_status === 'verified').length;
+  const verified = docs.filter((document) => document.verification_status === 'verified').length;
 
   const statusButtons: { label: string; value: VerificationStatus | 'all' }[] = [
     { label: 'All', value: 'all' },
@@ -407,8 +407,8 @@ export function DocumentLibraryPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((doc) => (
-            <DocCard key={doc.doc_id} doc={doc} />
+          {filtered.map((document) => (
+            <DocCard key={document.doc_id} doc={document} />
           ))}
         </div>
       )}

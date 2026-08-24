@@ -473,39 +473,39 @@ const MOCK_STATS: DashboardStats = {
 async function withMockFallback<T>(fn: () => Promise<T>, mock: T): Promise<T> {
   try {
     return await fn();
-  } catch (err: unknown) {
-    if (axios.isAxiosError(err) && err.response?.status === 404) {
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
       return mock;
     }
-    throw err;
+    throw error;
   }
 }
 
 // ─── API functions ────────────────────────────────────────────────────────────
 
 export const getWorkspaces = (): Promise<TenderWorkspace[]> =>
-  withMockFallback(() => api.get<TenderWorkspace[]>('/tendering/workspaces').then((r) => r.data), MOCK_WORKSPACES);
+  withMockFallback(() => api.get<TenderWorkspace[]>('/tendering/workspaces').then((response) => response.data), MOCK_WORKSPACES);
 
 export const getWorkspace = (id: string): Promise<TenderWorkspace> =>
   withMockFallback(
-    () => api.get<TenderWorkspace>(`/tendering/workspaces/${id}`).then((r) => r.data),
-    MOCK_WORKSPACES.find((w) => w.id === id) ?? MOCK_WORKSPACES[0],
+    () => api.get<TenderWorkspace>(`/tendering/workspaces/${id}`).then((response) => response.data),
+    MOCK_WORKSPACES.find((workspace) => workspace.id === id) ?? MOCK_WORKSPACES[0],
   );
 
 export const getRequirements = (tenderId: string): Promise<Requirement[]> =>
   withMockFallback(
-    () => api.get<Requirement[]>(`/tendering/workspaces/${tenderId}/requirements`).then((r) => r.data),
+    () => api.get<Requirement[]>(`/tendering/workspaces/${tenderId}/requirements`).then((response) => response.data),
     MOCK_REQUIREMENTS[tenderId] ?? [],
   );
 
 export const getBidDecision = (tenderId: string): Promise<BidDecisionReport | null> =>
   withMockFallback(
-    () => api.get<BidDecisionReport>(`/tendering/workspaces/${tenderId}/bid-decision`).then((r) => r.data),
+    () => api.get<BidDecisionReport>(`/tendering/workspaces/${tenderId}/bid-decision`).then((response) => response.data),
     MOCK_BID_DECISIONS[tenderId] ?? null,
   );
 
 export const getDashboardStats = (): Promise<DashboardStats> =>
-  withMockFallback(() => api.get<DashboardStats>('/tendering/stats').then((r) => r.data), MOCK_STATS);
+  withMockFallback(() => api.get<DashboardStats>('/tendering/stats').then((response) => response.data), MOCK_STATS);
 
 export const getLibraryDocuments = (): Promise<LibraryDocument[]> =>
-  withMockFallback(() => api.get<LibraryDocument[]>('/tendering/library').then((r) => r.data), MOCK_LIBRARY);
+  withMockFallback(() => api.get<LibraryDocument[]>('/tendering/library').then((response) => response.data), MOCK_LIBRARY);

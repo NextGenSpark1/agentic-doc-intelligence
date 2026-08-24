@@ -21,13 +21,13 @@ export function RequirementsTab({ requirements: initialRequirements }: { require
   const [editState, setEditState] = useState<EditState>({ status: 'unchecked', owner: '', notes: '' });
   const [saving, setSaving] = useState(false);
 
-  const filtered = requirements.filter((r) => {
-    const matchStatus = statusFilter === 'all' || r.status === statusFilter;
-    const matchCat = categoryFilter === 'all' || r.category === categoryFilter;
+  const filtered = requirements.filter((requirement) => {
+    const matchStatus = statusFilter === 'all' || requirement.status === statusFilter;
+    const matchCat = categoryFilter === 'all' || requirement.category === categoryFilter;
     return matchStatus && matchCat;
   });
 
-  const uniqueCategories = [...new Set(requirements.map((r) => r.category))];
+  const uniqueCategories = [...new Set(requirements.map((requirement) => requirement.category))];
 
   function startEdit(req: Requirement, e: React.MouseEvent) {
     e.stopPropagation();
@@ -45,12 +45,12 @@ export function RequirementsTab({ requirements: initialRequirements }: { require
     e.stopPropagation();
     setSaving(true);
     // TODO: PATCH /tendering/requirements/{req.req_id} when backend is ready
-    await new Promise((r) => setTimeout(r, 600));
-    setRequirements((prev) =>
-      prev.map((r) =>
-        r.req_id === req.req_id
-          ? { ...r, status: editState.status, owner: editState.owner, notes: editState.notes }
-          : r,
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    setRequirements((previous) =>
+      previous.map((requirement) =>
+        requirement.req_id === req.req_id
+          ? { ...requirement, status: editState.status, owner: editState.owner, notes: editState.notes }
+          : requirement,
       ),
     );
     setEditing(null);
@@ -69,10 +69,10 @@ export function RequirementsTab({ requirements: initialRequirements }: { require
   }
 
   const counts = {
-    met: requirements.filter((r) => r.status === 'met').length,
-    partial: requirements.filter((r) => r.status === 'partial').length,
-    gap: requirements.filter((r) => r.status === 'gap').length,
-    unchecked: requirements.filter((r) => r.status === 'unchecked').length,
+    met: requirements.filter((requirement) => requirement.status === 'met').length,
+    partial: requirements.filter((requirement) => requirement.status === 'partial').length,
+    gap: requirements.filter((requirement) => requirement.status === 'gap').length,
+    unchecked: requirements.filter((requirement) => requirement.status === 'unchecked').length,
   };
 
   const statusColour = (s: RequirementStatus) =>
@@ -108,15 +108,15 @@ export function RequirementsTab({ requirements: initialRequirements }: { require
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-2 mb-5">
         <div className="flex gap-1.5 flex-wrap">
-          {(['all', 'met', 'partial', 'gap', 'unchecked'] as const).map((v) => (
+          {(['all', 'met', 'partial', 'gap', 'unchecked'] as const).map((statusValue) => (
             <button
-              key={v}
-              onClick={() => setStatusFilter(v)}
+              key={statusValue}
+              onClick={() => setStatusFilter(statusValue)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors capitalize ${
-                statusFilter === v ? 'bg-navy text-white' : 'bg-panel border border-border text-text-mid hover:bg-panel-2'
+                statusFilter === statusValue ? 'bg-navy text-white' : 'bg-panel border border-border text-text-mid hover:bg-panel-2'
               }`}
             >
-              {v === 'all' ? 'All Status' : v}
+              {statusValue === 'all' ? 'All Status' : statusValue}
             </button>
           ))}
         </div>
@@ -129,15 +129,15 @@ export function RequirementsTab({ requirements: initialRequirements }: { require
           >
             All Categories
           </button>
-          {uniqueCategories.map((cat) => (
+          {uniqueCategories.map((category) => (
             <button
-              key={cat}
-              onClick={() => setCategoryFilter(cat)}
+              key={category}
+              onClick={() => setCategoryFilter(category)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${
-                categoryFilter === cat ? 'bg-navy text-white' : 'bg-panel border border-border text-text-mid hover:bg-panel-2'
+                categoryFilter === category ? 'bg-navy text-white' : 'bg-panel border border-border text-text-mid hover:bg-panel-2'
               }`}
             >
-              {cat}
+              {category}
             </button>
           ))}
         </div>
@@ -145,7 +145,7 @@ export function RequirementsTab({ requirements: initialRequirements }: { require
 
       {/* Requirements list */}
       <div className="space-y-2">
-        {filtered.map((req, idx) => {
+        {filtered.map((req, index) => {
           const isExpanded = expanded === req.req_id;
           const isEditing = editing === req.req_id;
 
@@ -156,7 +156,7 @@ export function RequirementsTab({ requirements: initialRequirements }: { require
                 className="flex items-start gap-4 px-4 py-3.5 cursor-pointer hover:bg-panel-2 transition-colors"
                 onClick={() => !isEditing && setExpanded(isExpanded ? null : req.req_id)}
               >
-                <span className="text-xs text-text-mute font-mono mt-0.5 w-5 flex-shrink-0">{idx + 1}</span>
+                <span className="text-xs text-text-mute font-mono mt-0.5 w-5 flex-shrink-0">{index + 1}</span>
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start gap-2 flex-wrap mb-1.5">
@@ -200,17 +200,17 @@ export function RequirementsTab({ requirements: initialRequirements }: { require
                       <div>
                         <label className="block text-[11px] font-semibold text-text-mute uppercase tracking-wide mb-1.5">Status</label>
                         <div className="flex gap-2 flex-wrap">
-                          {STATUS_OPTIONS.map((s) => (
+                          {STATUS_OPTIONS.map((statusOption) => (
                             <button
-                              key={s}
-                              onClick={(e) => { e.stopPropagation(); setEditState((p) => ({ ...p, status: s })); }}
+                              key={statusOption}
+                              onClick={(clickEvent) => { clickEvent.stopPropagation(); setEditState((previous) => ({ ...previous, status: statusOption })); }}
                               className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize border transition-colors ${
-                                editState.status === s
-                                  ? statusColour(s) + ' ring-2 ring-current/30'
+                                editState.status === statusOption
+                                  ? statusColour(statusOption) + ' ring-2 ring-current/30'
                                   : 'bg-canvas border-border text-text-mute hover:bg-panel'
                               }`}
                             >
-                              {s}
+                              {statusOption}
                             </button>
                           ))}
                         </div>
@@ -221,8 +221,8 @@ export function RequirementsTab({ requirements: initialRequirements }: { require
                         <label className="block text-[11px] font-semibold text-text-mute uppercase tracking-wide mb-1.5">Owner</label>
                         <input
                           value={editState.owner}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => setEditState((p) => ({ ...p, owner: e.target.value }))}
+                          onClick={(clickEvent) => clickEvent.stopPropagation()}
+                          onChange={(inputEvent) => setEditState((previous) => ({ ...previous, owner: inputEvent.target.value }))}
                           placeholder="e.g. Legal Team"
                           className="w-full px-3 py-2 text-sm bg-canvas border border-border rounded-lg outline-none focus:border-teal focus:ring-2 focus:ring-teal/15 transition-colors"
                         />
@@ -233,8 +233,8 @@ export function RequirementsTab({ requirements: initialRequirements }: { require
                         <label className="block text-[11px] font-semibold text-text-mute uppercase tracking-wide mb-1.5">Notes</label>
                         <textarea
                           value={editState.notes}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => setEditState((p) => ({ ...p, notes: e.target.value }))}
+                          onClick={(clickEvent) => clickEvent.stopPropagation()}
+                          onChange={(inputEvent) => setEditState((previous) => ({ ...previous, notes: inputEvent.target.value }))}
                           placeholder="How is this requirement being addressed?"
                           rows={3}
                           className="w-full px-3 py-2 text-sm bg-canvas border border-border rounded-lg outline-none focus:border-teal focus:ring-2 focus:ring-teal/15 transition-colors resize-none"

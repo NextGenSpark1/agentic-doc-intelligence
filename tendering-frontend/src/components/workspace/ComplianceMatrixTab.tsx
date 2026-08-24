@@ -80,14 +80,14 @@ export function ComplianceMatrixTab({ requirements }: { requirements: Requiremen
   const [statusFilter, setStatusFilter] = useState<RequirementStatus | 'all'>('all');
 
   const counts = {
-    met: requirements.filter((r) => r.status === 'met').length,
-    partial: requirements.filter((r) => r.status === 'partial').length,
-    gap: requirements.filter((r) => r.status === 'gap' && r.mandatory).length,
-    unchecked: requirements.filter((r) => r.status === 'unchecked').length,
+    met: requirements.filter((requirement) => requirement.status === 'met').length,
+    partial: requirements.filter((requirement) => requirement.status === 'partial').length,
+    gap: requirements.filter((requirement) => requirement.status === 'gap' && requirement.mandatory).length,
+    unchecked: requirements.filter((requirement) => requirement.status === 'unchecked').length,
   };
 
   const filtered =
-    statusFilter === 'all' ? requirements : requirements.filter((r) => r.status === statusFilter);
+    statusFilter === 'all' ? requirements : requirements.filter((requirement) => requirement.status === statusFilter);
 
   if (requirements.length === 0) {
     return (
@@ -136,7 +136,7 @@ export function ComplianceMatrixTab({ requirements }: { requirements: Requiremen
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtered.map((req, idx) => {
+              {filtered.map((req, index) => {
                 const { icon, label } = STATUS_CONFIG[req.status];
                 const barColour = STATUS_CONFIG[req.status].bar;
                 const coveredBy = req.matched_doc_ids ?? [];
@@ -150,7 +150,7 @@ export function ComplianceMatrixTab({ requirements }: { requirements: Requiremen
                       req.status === 'gap' ? 'border-l-red' :
                       'border-l-transparent'
                     }`}>
-                      <span className="text-xs text-text-mute font-mono">{idx + 1}</span>
+                      <span className="text-xs text-text-mute font-mono">{index + 1}</span>
                     </td>
 
                     {/* Requirement description */}
@@ -231,11 +231,11 @@ export function ComplianceMatrixTab({ requirements }: { requirements: Requiremen
           </div>
           <ul className="space-y-1.5">
             {requirements
-              .filter((r) => r.status === 'gap' && r.mandatory)
-              .map((g) => (
-                <li key={g.req_id} className="text-xs text-red flex items-start gap-2">
+              .filter((requirement) => requirement.status === 'gap' && requirement.mandatory)
+              .map((gapRequirement) => (
+                <li key={gapRequirement.req_id} className="text-xs text-red flex items-start gap-2">
                   <span className="mt-0.5 flex-shrink-0">•</span>
-                  {g.description}
+                  {gapRequirement.description}
                 </li>
               ))}
           </ul>

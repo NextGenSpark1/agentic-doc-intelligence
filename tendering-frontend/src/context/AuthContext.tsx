@@ -114,9 +114,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
-  return ctx;
+  const authContext = useContext(AuthContext);
+  if (!authContext) throw new Error('useAuth must be used inside AuthProvider');
+  return authContext;
 }
 
 export { PLATFORM_ADMIN_EMAILS };
