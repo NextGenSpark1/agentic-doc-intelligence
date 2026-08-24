@@ -5,7 +5,8 @@ import asyncio
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
+from typing import Annotated
 from pydantic import BaseModel
 
 from . import db_core as db, email as mail
@@ -13,6 +14,11 @@ from .auth import get_current_user
 from .config import get_settings
 
 router = APIRouter()
+
+
+def _get_platform(x_platform: Annotated[str | None, Header()] = None) -> str:
+    platform = (x_platform or "adi").lower()
+    return platform if platform in ("adi", "tendering") else "adi"
 
 
 def _is_platform_admin(user: dict) -> bool:
@@ -66,9 +72,9 @@ class AcceptInviteBody(BaseModel):
 # ── Platform admin endpoints ───────────────────────────────────────────────
 
 @router.get("/platform/orgs")
-async def platform_list_orgs(user: dict = Depends(_require_platform_admin)):
+async def platform_list_orgs(user: dict = Depends(_require_platform_admin), platform: str = Depends(_get_platform)):
     """List all orgs with metadata — platform admin only, no case content."""
-    orgs = await asyncio.to_thread(db.list_orgs)
+    orgs = await asyncio.to_thread(db.list_orgs, platform)
     result = []
     for org in orgs:
         members = await asyncio.to_thread(db.list_org_members, org["org_id"])
@@ -117,10 +123,10 @@ async def platform_delete_org(org_id: str, user: dict = Depends(_require_platfor
 
 
 @router.post("/platform/orgs", status_code=201)
-async def platform_create_org(body: CreateOrgBody, user: dict = Depends(_require_platform_admin)):
+async def platform_create_org(body: CreateOrgBody, user: dict = Depends(_require_platform_admin), platform: str = Depends(_get_platform)):
     """Create a new organisation and send first invite to org admin — platform admin only."""
     org_id = str(uuid.uuid4())[:8].upper()
-    org = await asyncio.to_thread(db.create_org, org_id, body.name, body.plan, user["user_id"])
+    org = await asyncio.to_thread(db.create_org, org_id, body.name, body.plan, user["user_id"], platform)
     invite = await asyncio.to_thread(db.create_invitation, org_id, body.admin_email, "org_admin", user["user_id"])
     invite_link = f"{get_settings().frontend_url}/invite/{invite['token']}"
     email_sent = await asyncio.to_thread(
@@ -144,11 +150,11 @@ async def platform_remove_member(org_id: str, user_id: str, user: dict = Depends
 # ── Org member endpoints ───────────────────────────────────────────────────
 
 @router.get("/orgs/me")
-async def get_my_org(user: dict = Depends(get_current_user)):
+async def get_my_org(user: dict = Depends(get_current_user), platform: str = Depends(_get_platform)):
     """Return current user's org membership and org details."""
     if _is_platform_admin(user):
         return {"role": "platform_admin", "org": None}
-    m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    m = await asyncio.to_thread(db.get_user_membership, user["user_id"], platform)
     if not m:
         return {"role": None, "org": None}
     org = m.get("organisations") or {}
