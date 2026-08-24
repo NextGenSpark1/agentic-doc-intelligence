@@ -3,7 +3,7 @@ import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { OrgContext } from '../types';
 
-const PLATFORM_ADMIN_EMAILS = ['nextgenspark2025@gmail.com', 'itshabibahassan@gmail.com'];
+const PLATFORM_ADMIN_EMAILS = ['nextgenspark2025@gmail.com'];
 
 interface AuthContextValue {
   user: User | null;
