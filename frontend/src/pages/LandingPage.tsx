@@ -21,17 +21,17 @@ const FEATURES = [
   {
     icon: Search,
     title: 'Anomaly Detection',
-    description: 'Detects patterns that matter — duplicate invoices, round-number transfers, missing document periods, and behavioural outliers — surfaced automatically.',
+    description: 'Identifies potential anomalies across documents, transactions and records for investigator review.',
   },
   {
     icon: MessageSquare,
-    title: 'Evidence-Backed Chat',
-    description: 'Ask questions in plain language. Every answer is cited to a specific document and page. No hallucinations, no guesses — just traceable analysis.',
+    title: 'Evidence-Grounded Assistant',
+    description: 'Ask questions in plain language. Responses are grounded in case documents and linked to specific source pages for verification.',
   },
   {
     icon: Shield,
     title: 'Full Audit Trail',
-    description: 'Every extraction, inference, and AI decision is logged. Complete chain of custody from raw document to finding, ready for court or review.',
+    description: 'Every extraction, inference, and AI decision is logged. Complete audit trail from source document to extracted evidence and investigator finding.',
   },
 ]
 
@@ -125,7 +125,7 @@ export default function LandingPage() {
             <div className="inline-flex items-center gap-2.5 border border-teal/30 bg-teal/10 rounded-full px-4 py-1.5 mb-10">
               <div className="w-1.5 h-1.5 rounded-full bg-teal animate-pulse" />
               <span className="text-teal text-[11px] font-bold uppercase tracking-widest">
-                Forensic Document Intelligence
+                Investigation Document Intelligence
               </span>
             </div>
 
@@ -140,8 +140,8 @@ export default function LandingPage() {
 
             {/* Subheadline */}
             <p className="text-lg sm:text-xl text-white/55 leading-relaxed mb-10 max-w-2xl">
-              AI-powered document analysis that extracts entities, reconstructs timelines,
-              detects anomalies, and surfaces findings — with every insight linked back to its source.
+              Analyse complex case documents to extract entities, reconstruct timelines,
+              identify anomalies and surface findings — with every insight traceable to its original source.
             </p>
 
             {/* CTAs */}
@@ -250,6 +250,37 @@ export default function LandingPage() {
                   <h3 className="text-text font-semibold mb-2">{title}</h3>
                   <p className="text-sm text-text-mute leading-relaxed">{description}</p>
                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Controlled environments ────────────────────────────────────────── */}
+      <section className="bg-canvas border-t border-border py-24">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="max-w-3xl mx-auto text-center mb-12">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-teal mb-3">
+              Built for institutions
+            </p>
+            <h2 className="text-3xl sm:text-4xl font-semibold text-text leading-snug">
+              Designed for controlled investigation environments
+            </h2>
+          </div>
+          <div className="flex flex-wrap justify-center gap-4">
+            {[
+              'Role-based access',
+              'Source-level traceability',
+              'Audit logging',
+              'Human review of findings',
+              'Secure document processing',
+            ].map((item) => (
+              <div
+                key={item}
+                className="flex items-center gap-3 bg-panel border border-border rounded-xl px-5 py-3.5"
+              >
+                <div className="w-1.5 h-1.5 rounded-full bg-teal shrink-0" />
+                <span className="text-text-mid text-sm font-medium">{item}</span>
               </div>
             ))}
           </div>
