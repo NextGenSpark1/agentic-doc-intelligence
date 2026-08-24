@@ -24,7 +24,7 @@ async function fetchOrgContext(accessToken: string): Promise<OrgContext | null> 
   try {
     const response = await fetch(
       `${import.meta.env.VITE_API_URL ?? 'http://localhost:8000'}/orgs/me`,
-      { headers: { Authorization: `Bearer ${accessToken}` } },
+      { headers: { Authorization: `Bearer ${accessToken}`, 'X-Platform': 'tendering' } },
     );
     if (!response.ok) return null;
     return await response.json();

@@ -1,7 +1,10 @@
 import axios from 'axios';
 import type { OrgMember, PendingInvitation, InvitationPreview, Organisation, OrgRole } from '../types';
 
-const api = axios.create({ baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:8000' });
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:8000',
+  headers: { 'X-Platform': 'tendering' },
+});
 
 api.interceptors.request.use((config) => {
   const stored = localStorage.getItem('sb-session');

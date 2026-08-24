@@ -230,9 +230,9 @@ def delete_document(document_id: str, storage_path: str) -> None:
 
 # ─────────────────────── Organisations ───────────────────────────
 
-def create_org(org_id: str, name: str, plan: str, created_by: str) -> dict:
+def create_org(org_id: str, name: str, plan: str, created_by: str, platform: str = "adi") -> dict:
     return get_client().table("organisations").insert({
-        "org_id": org_id, "name": name, "plan": plan, "created_by": created_by,
+        "org_id": org_id, "name": name, "plan": plan, "created_by": created_by, "platform": platform,
     }).execute().data[0]
 
 
@@ -241,8 +241,11 @@ def get_org(org_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def list_orgs() -> list[dict]:
-    return get_client().table("organisations").select("*").order("created_at", desc=True).execute().data
+def list_orgs(platform: str | None = None) -> list[dict]:
+    query = get_client().table("organisations").select("*").order("created_at", desc=True)
+    if platform:
+        query = query.eq("platform", platform)
+    return query.execute().data
 
 
 def delete_org(org_id: str) -> None:
@@ -261,10 +264,17 @@ def get_org_member(org_id: str, user_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def get_user_membership(user_id: str) -> dict | None:
-    """Return the user's org membership (first org found — users belong to one org)."""
-    rows = get_client().table("org_members").select("*, organisations(name, plan, status)").eq("user_id", user_id).execute().data
-    return rows[0] if rows else None
+def get_user_membership(user_id: str, platform: str = "adi") -> dict | None:
+    """Return the user's org membership filtered by platform.
+    A user may belong to one ADI org and one tendering org — platform ensures
+    each frontend sees only its own org context.
+    """
+    rows = get_client().table("org_members").select("*, organisations(name, plan, status, platform)").eq("user_id", user_id).execute().data
+    for row in rows:
+        org = row.get("organisations") or {}
+        if isinstance(org, dict) and org.get("platform", "adi") == platform:
+            return row
+    return None
 
 
 def list_org_members(org_id: str) -> list[dict]:
