@@ -4,7 +4,7 @@ import { LayoutDashboard, FolderOpen, Library, LogOut, Settings, ShieldCheck, Bu
 import { useAuth, PLATFORM_ADMIN_EMAILS } from '../context/AuthContext';
 
 const NAV_LINKS = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { to: '/tenders', label: 'Tenders', icon: FolderOpen },
   { to: '/documents', label: 'Document Library', icon: Library },
 ];
@@ -36,7 +36,7 @@ export function Navbar() {
   async function handleSignOut() {
     setMenuOpen(false);
     await signOut();
-    navigate('/login', { replace: true });
+    navigate('/', { replace: true });
   }
 
   const orgSettingsLabel = orgCtx?.role === 'org_admin'

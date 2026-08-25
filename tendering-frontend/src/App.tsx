@@ -3,6 +3,7 @@ import { Toaster } from 'react-hot-toast';
 import { Loader2, ShieldOff } from 'lucide-react';
 import { AuthProvider, useAuth, PLATFORM_ADMIN_EMAILS } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
+import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
@@ -74,6 +75,9 @@ function AuthLayout() {
 function AppRoutes() {
   return (
     <Routes>
+      {/* Landing page — always accessible, auth-aware CTAs */}
+      <Route index element={<LandingPage />} />
+
       {/* Public — no auth required */}
       <Route path="/invite/:token" element={<InviteAcceptPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -86,7 +90,7 @@ function AppRoutes() {
 
       {/* Authenticated */}
       <Route element={<AuthLayout />}>
-        <Route index element={<DashboardPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/tenders" element={<TenderListPage />} />
         <Route path="/tenders/:id" element={<TenderDetailPage />} />
         <Route path="/documents" element={<DocumentLibraryPage />} />
