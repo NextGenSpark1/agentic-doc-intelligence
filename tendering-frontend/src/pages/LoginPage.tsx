@@ -4,6 +4,7 @@ import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, CheckCircle2 } from 'luc
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { RequestAccessModal } from '../components/RequestAccessModal';
 
 type Mode = 'login' | 'forgot' | 'sent';
 
@@ -11,6 +12,7 @@ export function LoginPage() {
   const { session, signInWithPassword, signInWithGoogle } = useAuth();
 
   const [mode, setMode] = useState<Mode>('login');
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -350,13 +352,19 @@ export function LoginPage() {
             </button>
           </form>
 
-          {/* Invitation note */}
           <p className="text-center text-sm text-text-mute mt-8">
             Don't have access?{' '}
-            <span className="text-text-mid font-medium">Contact your administrator — access is by invitation only.</span>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="text-teal hover:text-teal-soft font-medium transition-colors"
+            >
+              Request access
+            </button>
           </p>
         </div>
       </div>
+
+      {isModalOpen && <RequestAccessModal onClose={() => setIsModalOpen(false)} />}
     </div>
   );
 }

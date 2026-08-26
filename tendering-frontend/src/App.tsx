@@ -5,7 +5,6 @@ import { AuthProvider, useAuth, PLATFORM_ADMIN_EMAILS } from './context/AuthCont
 import { Navbar } from './components/Navbar';
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
-import { RegisterPage } from './pages/RegisterPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { InviteAcceptPage } from './pages/InviteAcceptPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -85,7 +84,7 @@ function AppRoutes() {
       {/* Guest only — redirect to / if already logged in */}
       <Route element={<GuestLayout />}>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/register" element={<Navigate to="/" replace />} />
       </Route>
 
       {/* Authenticated */}
