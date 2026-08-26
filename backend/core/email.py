@@ -91,3 +91,86 @@ def send_invitation_email(
         return True
     except Exception:
         return False
+
+
+def send_access_request_email(
+    name: str,
+    organisation: str,
+    email: str,
+    message: str,
+    platform: str = "adi",
+) -> bool:
+    """Notify NextGen Spark team of a new platform access request."""
+    s = get_settings()
+    if not s.resend_api_key:
+        return False
+
+    try:
+        import resend
+        resend.api_key = s.resend_api_key
+    except ImportError:
+        return False
+
+    platform_label = "Investigation Intelligence" if platform == "adi" else "Tendering Intelligence"
+    notify_email = s.platform_admin_emails[0] if s.platform_admin_emails else "nextgenspark2025@gmail.com"
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body {{ font-family: 'Helvetica Neue', Arial, sans-serif; background: #0F172A; margin: 0; padding: 40px 20px; }}
+    .card {{ max-width: 520px; margin: 0 auto; background: #1E293B; border-radius: 12px; overflow: hidden; border: 1px solid #334155; }}
+    .header {{ background: #1558D4; padding: 24px 32px; }}
+    .brand {{ color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }}
+    .body {{ padding: 32px; }}
+    .title {{ color: #F8FAFC; font-size: 20px; font-weight: 600; margin: 0 0 20px; }}
+    .row {{ margin-bottom: 16px; }}
+    .label {{ color: #475569; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }}
+    .value {{ color: #F8FAFC; font-size: 14px; }}
+    .message-box {{ background: #0F172A; border: 1px solid #334155; border-radius: 6px; padding: 14px; color: #94A3B8; font-size: 14px; line-height: 1.6; margin-top: 4px; }}
+    .footer {{ color: #334155; font-size: 11px; border-top: 1px solid #334155; padding-top: 20px; margin-top: 24px; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="brand">NextGen Spark &mdash; {platform_label}</div>
+    </div>
+    <div class="body">
+      <p class="title">New Access Request</p>
+      <div class="row">
+        <div class="label">Name</div>
+        <div class="value">{name}</div>
+      </div>
+      <div class="row">
+        <div class="label">Organisation</div>
+        <div class="value">{organisation}</div>
+      </div>
+      <div class="row">
+        <div class="label">Email</div>
+        <div class="value">{email}</div>
+      </div>
+      <div class="row">
+        <div class="label">Message</div>
+        <div class="message-box">{message if message.strip() else '—'}</div>
+      </div>
+      <div class="footer">
+        Reply directly to {email} to follow up with this request.
+      </div>
+    </div>
+  </div>
+</body>
+</html>"""
+
+    try:
+        resend.Emails.send({
+            "from": s.resend_from_email,
+            "to": [notify_email],
+            "reply_to": email,
+            "subject": f"Access request — {platform_label} — {name} from {organisation}",
+            "html": html,
+        })
+        return True
+    except Exception:
+        return False

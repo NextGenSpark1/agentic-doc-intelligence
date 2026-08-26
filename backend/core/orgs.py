@@ -69,6 +69,27 @@ class AcceptInviteBody(BaseModel):
     token: str
 
 
+class AccessRequestBody(BaseModel):
+    name: str
+    organisation: str
+    email: str
+    message: str = ""
+    platform: str = "adi"
+
+
+# ── Public endpoints ───────────────────────────────────────────────────────
+
+@router.post("/request-access", status_code=200)
+async def request_access(body: AccessRequestBody):
+    """Public — sends an access request notification email to the NextGen Spark team."""
+    await asyncio.to_thread(
+        mail.send_access_request_email,
+        body.name.strip(), body.organisation.strip(),
+        body.email.strip(), body.message.strip(), body.platform,
+    )
+    return {"ok": True}
+
+
 # ── Platform admin endpoints ───────────────────────────────────────────────
 
 @router.get("/platform/orgs")
