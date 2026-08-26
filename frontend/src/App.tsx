@@ -7,7 +7,6 @@ import CasesPage from './pages/CasesPage'
 import CaseWorkspacePage from './pages/CaseWorkspacePage'
 import AccountPage from './pages/AccountPage'
 import LoginPage from './pages/LoginPage'
-import RegisterPage from './pages/RegisterPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import InviteAcceptPage from './pages/InviteAcceptPage'
 import PlatformAdminPage from './pages/PlatformAdminPage'
@@ -52,7 +51,7 @@ export default function App() {
           <Route path="/invite/:token" element={<InviteAcceptPage />} />
           <Route element={<GuestLayout />}>
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/register" element={<Navigate to="/" replace />} />
           </Route>
           {/* Standalone — must not be inside GuestLayout (Supabase sets a recovery session on arrival) */}
           <Route path="/reset-password" element={<ResetPasswordPage />} />

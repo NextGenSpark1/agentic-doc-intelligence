@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabaseClient'
+import RequestAccessModal from '../components/RequestAccessModal'
 
 type Mode = 'login' | 'forgot' | 'sent'
 
@@ -14,6 +15,7 @@ export default function LoginPage() {
   const inviteToken = searchParams.get('invite')
 
   const [mode, setMode] = useState<Mode>('login')
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   // login
   const [email, setEmail] = useState('')
@@ -337,13 +339,18 @@ export default function LoginPage() {
           </form>
 
           <p className="text-center text-sm text-text-mute mt-8">
-            Don&apos;t have an account?{' '}
-            <Link to="/register" className="text-teal hover:text-teal-soft font-medium transition-colors">
-              Create one
-            </Link>
+            Don&apos;t have access?{' '}
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="text-teal hover:text-teal-soft font-medium transition-colors"
+            >
+              Request access
+            </button>
           </p>
         </div>
       </div>
+
+      {isModalOpen && <RequestAccessModal onClose={() => setIsModalOpen(false)} />}
     </div>
   )
 }
