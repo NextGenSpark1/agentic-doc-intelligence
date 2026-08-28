@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from backend.core.auth import get_current_user
 from backend.core.config import get_settings
@@ -38,6 +40,38 @@ def _get_tendering_org_id(user: dict) -> str:
         raise HTTPException(404, "No tendering organisation membership")
     check_org_not_suspended(membership)
     return membership["org_id"]
+
+
+# ── Request models ─────────────────────────────────────────────────────────────
+
+class CreateWorkspaceIn(BaseModel):
+    title: str
+    reference: str = ""
+    buyer: str = ""
+    category: str = ""
+    closing_date: Optional[date] = None
+    contract_value: float = 0
+    currency: str = "USD"
+
+
+class UpdateWorkspaceIn(BaseModel):
+    title: Optional[str] = None
+    reference: Optional[str] = None
+    buyer: Optional[str] = None
+    category: Optional[str] = None
+    closing_date: Optional[date] = None
+    contract_value: Optional[float] = None
+    currency: Optional[str] = None
+    stage: Optional[str] = None
+    bid_decision: Optional[str] = None
+    readiness_score: Optional[int] = None
+    description: Optional[str] = None
+
+
+class UpdateRequirementIn(BaseModel):
+    status: Optional[str] = None
+    owner: Optional[str] = None
+    notes: Optional[str] = None
 
 
 # ── Dashboard stats ────────────────────────────────────────────────────────────
@@ -76,6 +110,13 @@ async def list_workspaces(user: dict = Depends(get_current_user)):
     return workspaces
 
 
+@router.post("/workspaces", status_code=201)
+async def create_workspace(body: CreateWorkspaceIn, user: dict = Depends(get_current_user)):
+    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    workspace = await asyncio.to_thread(db.create_workspace, org_id, body.model_dump())
+    return workspace
+
+
 @router.get("/workspaces/{workspace_id}")
 async def get_workspace(workspace_id: str, user: dict = Depends(get_current_user)):
     org_id = await asyncio.to_thread(_get_tendering_org_id, user)
@@ -84,6 +125,24 @@ async def get_workspace(workspace_id: str, user: dict = Depends(get_current_user
         raise HTTPException(404, "Workspace not found")
     workspace["documents"] = await asyncio.to_thread(db.list_workspace_documents, workspace_id)
     return workspace
+
+
+@router.patch("/workspaces/{workspace_id}")
+async def update_workspace(
+    workspace_id: str,
+    body: UpdateWorkspaceIn,
+    user: dict = Depends(get_current_user),
+):
+    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
+    if not workspace or workspace["org_id"] != org_id:
+        raise HTTPException(404, "Workspace not found")
+    updated = await asyncio.to_thread(
+        db.update_workspace, workspace_id, body.model_dump(exclude_none=True)
+    )
+    if not updated:
+        raise HTTPException(500, "Update failed")
+    return updated
 
 
 @router.get("/workspaces/{workspace_id}/requirements")
@@ -105,6 +164,29 @@ async def get_bid_decision(workspace_id: str, user: dict = Depends(get_current_u
     if not decision:
         raise HTTPException(404, "No bid decision for this workspace")
     return decision
+
+
+# ── Requirements ───────────────────────────────────────────────────────────────
+
+@router.patch("/requirements/{req_id}")
+async def update_requirement(
+    req_id: str,
+    body: UpdateRequirementIn,
+    user: dict = Depends(get_current_user),
+):
+    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    requirement = await asyncio.to_thread(db.get_requirement, req_id)
+    if not requirement:
+        raise HTTPException(404, "Requirement not found")
+    workspace = await asyncio.to_thread(db.get_tendering_workspace, requirement["workspace_id"])
+    if not workspace or workspace["org_id"] != org_id:
+        raise HTTPException(404, "Requirement not found")
+    updated = await asyncio.to_thread(
+        db.update_requirement, req_id, body.model_dump(exclude_none=True)
+    )
+    if not updated:
+        raise HTTPException(500, "Update failed")
+    return updated
 
 
 # ── Document library ───────────────────────────────────────────────────────────
