@@ -397,5 +397,7 @@ async def get_document_chunks(case_id: str, document_id: str, user: dict = Depen
 # ------------------- product routers (mounted last) -------------------
 # Same URL paths as before the core/apps split — the deployed frontend is unaffected.
 from backend.apps.investigation.routes import router as investigation_router  # noqa: E402
+from backend.apps.tendering.routes import router as tendering_router  # noqa: E402
 
 app.include_router(investigation_router)
+app.include_router(tendering_router)
