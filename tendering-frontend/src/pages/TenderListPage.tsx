@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, CalendarDays, ArrowRight } from 'lucide-react';
-import { getWorkspaces } from '../api/tenders';
+import { getWorkspaces, createWorkspace } from '../api/tenders';
 import { StageBadge, BidDecisionBadge } from '../components/Badge';
 import { daysUntil, formatCurrency } from '../lib/utils';
 import type { TenderWorkspace, WorkspaceStage } from '../types';
@@ -20,6 +20,7 @@ const STAGE_FILTERS: { label: string; value: WorkspaceStage | 'all' }[] = [
 // ─── Create Workspace Modal ───────────────────────────────────────────────────
 
 function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
+  const navigate = useNavigate();
   const [form, setForm] = useState({
     title: '',
     reference: '',
@@ -38,10 +39,23 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
-    await new Promise((resolve) => setTimeout(resolve, 900)); // mock API call
-    toast.success('Workspace created — uploading documents next');
-    setSubmitting(false);
-    onClose();
+    try {
+      const workspace = await createWorkspace({
+        title: form.title,
+        reference: form.reference,
+        buyer: form.buyer,
+        category: form.category,
+        closing_date: form.closing_date || undefined,
+        contract_value: form.contract_value ? parseFloat(form.contract_value) : 0,
+        currency: form.currency,
+      });
+      toast.success('Workspace created');
+      onClose();
+      navigate(`/tenders/${workspace.id}`);
+    } catch {
+      toast.error('Failed to create workspace');
+      setSubmitting(false);
+    }
   }
 
   const isValid = form.title.trim() && form.buyer.trim() && form.closing_date;

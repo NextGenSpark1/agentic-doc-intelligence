@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Loader2, Sparkles, ThumbsUp, ThumbsDown, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { updateWorkspace } from '../../api/tenders';
 import { BidDecisionBadge } from '../Badge';
 import { formatDate, formatCurrency } from '../../lib/utils';
 import type { BidDecisionReport, TenderWorkspace } from '../../types';
@@ -64,10 +65,15 @@ export function BidDecisionTab({
 
   async function handleConfirm(decision: 'bid' | 'no_bid') {
     setConfirming(true);
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    setConfirmed(decision);
-    setConfirming(false);
-    toast.success(decision === 'bid' ? 'Bid decision confirmed' : 'No-bid decision recorded');
+    try {
+      await updateWorkspace(workspace.id, { bid_decision: decision });
+      setConfirmed(decision);
+      toast.success(decision === 'bid' ? 'Bid decision confirmed' : 'No-bid decision recorded');
+    } catch {
+      toast.error('Failed to save decision');
+    } finally {
+      setConfirming(false);
+    }
   }
 
   return (

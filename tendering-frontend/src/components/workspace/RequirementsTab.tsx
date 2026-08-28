@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, Sparkles, Pencil, Check, X } from 'lucide-react';
 import { RequirementStatusBadge, RequirementCategoryBadge } from '../Badge';
+import { updateRequirement } from '../../api/tenders';
 import toast from 'react-hot-toast';
 import type { Requirement, RequirementStatus, RequirementCategory } from '../../types';
 
@@ -44,18 +45,26 @@ export function RequirementsTab({ requirements: initialRequirements }: { require
   async function saveEdit(req: Requirement, e: React.MouseEvent) {
     e.stopPropagation();
     setSaving(true);
-    // TODO: PATCH /tendering/requirements/{req.req_id} when backend is ready
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    setRequirements((previous) =>
-      previous.map((requirement) =>
-        requirement.req_id === req.req_id
-          ? { ...requirement, status: editState.status, owner: editState.owner, notes: editState.notes }
-          : requirement,
-      ),
-    );
-    setEditing(null);
-    setSaving(false);
-    toast.success('Requirement updated');
+    try {
+      await updateRequirement(req.req_id, {
+        status: editState.status,
+        owner: editState.owner,
+        notes: editState.notes,
+      });
+      setRequirements((previous) =>
+        previous.map((requirement) =>
+          requirement.req_id === req.req_id
+            ? { ...requirement, status: editState.status, owner: editState.owner, notes: editState.notes }
+            : requirement,
+        ),
+      );
+      setEditing(null);
+      toast.success('Requirement updated');
+    } catch {
+      toast.error('Failed to update requirement');
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (requirements.length === 0) {

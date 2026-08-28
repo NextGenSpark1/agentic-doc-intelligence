@@ -509,3 +509,26 @@ export const getDashboardStats = (): Promise<DashboardStats> =>
 
 export const getLibraryDocuments = (): Promise<LibraryDocument[]> =>
   withMockFallback(() => api.get<LibraryDocument[]>('/tendering/library').then((response) => response.data), MOCK_LIBRARY);
+
+export const createWorkspace = (data: {
+  title: string;
+  reference?: string;
+  buyer?: string;
+  category?: string;
+  closing_date?: string;
+  contract_value?: number;
+  currency?: string;
+}): Promise<TenderWorkspace> =>
+  api.post<TenderWorkspace>('/tendering/workspaces', data).then((response) => response.data);
+
+export const updateWorkspace = (
+  id: string,
+  patch: Partial<Pick<TenderWorkspace, 'bid_decision' | 'stage' | 'title' | 'reference' | 'buyer' | 'category' | 'closing_date' | 'contract_value' | 'currency' | 'readiness_score' | 'description'>>,
+): Promise<TenderWorkspace> =>
+  api.patch<TenderWorkspace>(`/tendering/workspaces/${id}`, patch).then((response) => response.data);
+
+export const updateRequirement = (
+  reqId: string,
+  patch: { status?: Requirement['status']; owner?: string; notes?: string },
+): Promise<Requirement> =>
+  api.patch<Requirement>(`/tendering/requirements/${reqId}`, patch).then((response) => response.data);
