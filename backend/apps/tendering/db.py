@@ -162,6 +162,45 @@ def get_workspace_bid_decision(workspace_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
+def create_workspace_document(workspace_id: str, data: dict) -> dict:
+    row = (
+        get_client()
+        .table("workspace_documents")
+        .insert({
+            "workspace_id": workspace_id,
+            "name": data["name"],
+            "category": data.get("category", "supporting"),
+            "file_type": data.get("file_type", ""),
+            "size_bytes": data.get("size_bytes", 0),
+            "url": data.get("url", ""),
+        })
+        .execute()
+        .data
+    )
+    return row[0]
+
+
+def create_library_document(org_id: str, data: dict) -> dict:
+    row = (
+        get_client()
+        .table("library_documents")
+        .insert({
+            "org_id": org_id,
+            "title": data["title"],
+            "filename": data.get("filename", ""),
+            "category": data.get("category", "other"),
+            "file_type": data.get("file_type", ""),
+            "issue_date": data.get("issue_date"),
+            "expiry_date": data.get("expiry_date"),
+            "tags": data.get("tags", []),
+            "url": data.get("url", ""),
+        })
+        .execute()
+        .data
+    )
+    return row[0]
+
+
 def list_library_documents(org_id: str) -> list[dict]:
     return (
         get_client()

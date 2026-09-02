@@ -74,6 +74,25 @@ class UpdateRequirementIn(BaseModel):
     notes: Optional[str] = None
 
 
+class CreateWorkspaceDocumentIn(BaseModel):
+    name: str
+    category: str = "supporting"
+    file_type: str = ""
+    size_bytes: int = 0
+    url: str = ""
+
+
+class CreateLibraryDocumentIn(BaseModel):
+    title: str
+    filename: str = ""
+    category: str = "other"
+    file_type: str = ""
+    issue_date: Optional[date] = None
+    expiry_date: Optional[date] = None
+    tags: list[str] = []
+    url: str = ""
+
+
 # ── Dashboard stats ────────────────────────────────────────────────────────────
 
 @router.get("/stats")
@@ -145,6 +164,19 @@ async def update_workspace(
     return updated
 
 
+@router.post("/workspaces/{workspace_id}/documents", status_code=201)
+async def add_workspace_document(
+    workspace_id: str,
+    body: CreateWorkspaceDocumentIn,
+    user: dict = Depends(get_current_user),
+):
+    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
+    if not workspace or workspace["org_id"] != org_id:
+        raise HTTPException(404, "Workspace not found")
+    return await asyncio.to_thread(db.create_workspace_document, workspace_id, body.model_dump())
+
+
 @router.get("/workspaces/{workspace_id}/requirements")
 async def list_requirements(workspace_id: str, user: dict = Depends(get_current_user)):
     org_id = await asyncio.to_thread(_get_tendering_org_id, user)
@@ -195,3 +227,12 @@ async def update_requirement(
 async def list_library(user: dict = Depends(get_current_user)):
     org_id = await asyncio.to_thread(_get_tendering_org_id, user)
     return await asyncio.to_thread(db.list_library_documents, org_id)
+
+
+@router.post("/library", status_code=201)
+async def add_library_document(
+    body: CreateLibraryDocumentIn,
+    user: dict = Depends(get_current_user),
+):
+    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    return await asyncio.to_thread(db.create_library_document, org_id, body.model_dump())

@@ -76,5 +76,9 @@ CREATE TABLE IF NOT EXISTS library_documents (
     verification_status TEXT DEFAULT 'pending' CHECK (verification_status IN ('verified','pending','expired','missing')),
     tags                TEXT[] DEFAULT '{}',
     used_in_tenders     INTEGER DEFAULT 0,
+    url                 TEXT DEFAULT '',
     uploaded_at         TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Run this if the table already exists (adds the url column):
+-- ALTER TABLE library_documents ADD COLUMN IF NOT EXISTS url TEXT DEFAULT '';
