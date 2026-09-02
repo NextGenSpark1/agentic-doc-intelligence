@@ -4,6 +4,8 @@ import type { WorkspaceStage } from '../../types';
 import toast from 'react-hot-toast';
 import { StageBadge } from '../Badge';
 import { daysUntil, formatCurrency, formatDate, readinessColour } from '../../lib/utils';
+import { updateWorkspace, addWorkspaceDocument } from '../../api/tenders';
+import { supabase } from '../../lib/supabase';
 import type { TenderWorkspace, WorkspaceDocument } from '../../types';
 
 // ─── Mock extracted text per document ─────────────────────────────────────────
@@ -263,13 +265,19 @@ const ACCEPTED_EXT = '.pdf,.docx,.xlsx';
 
 type UploadStage = 'idle' | 'uploading' | 'extracting' | 'done';
 
-function UploadModal({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
+function UploadModal({
+  workspaceId,
+  onUploaded,
+  onClose,
+}: {
+  workspaceId: string;
+  onUploaded: (docs: WorkspaceDocument[]) => void;
+  onClose: () => void;
+}) {
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
   const [stage, setStage] = useState<UploadStage>('idle');
   const inputRef = useRef<HTMLInputElement>(null);
-
-  void workspaceId; // will be used when wiring real API
 
   function addFiles(incoming: FileList | null) {
     if (!incoming) return;
@@ -287,12 +295,33 @@ function UploadModal({ workspaceId, onClose }: { workspaceId: string; onClose: (
   async function handleUpload() {
     if (!files.length) return;
     setStage('uploading');
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    const uploaded: WorkspaceDocument[] = [];
+    for (const file of files) {
+      const path = `${workspaceId}/${Date.now()}-${file.name}`;
+      const { error: storageError } = await supabase.storage
+        .from('tender-documents')
+        .upload(path, file, { contentType: file.type, upsert: false });
+      if (storageError) { toast.error(`Failed to upload ${file.name}`); continue; }
+      const { data: { publicUrl } } = supabase.storage.from('tender-documents').getPublicUrl(path);
+      try {
+        const doc = await addWorkspaceDocument(workspaceId, {
+          name: file.name,
+          category: 'supporting',
+          file_type: file.name.split('.').pop()?.toLowerCase() ?? '',
+          size_bytes: file.size,
+          url: publicUrl,
+        });
+        uploaded.push(doc);
+      } catch { toast.error(`Failed to register ${file.name}`); }
+    }
     setStage('extracting');
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 800));
     setStage('done');
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    toast.success(`${files.length} document${files.length > 1 ? 's' : ''} uploaded — AI analysis running`);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    if (uploaded.length) {
+      onUploaded(uploaded);
+      toast.success(`${uploaded.length} document${uploaded.length > 1 ? 's' : ''} uploaded — AI analysis queued`);
+    }
     onClose();
   }
 
@@ -467,17 +496,22 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
   const [showUpload, setShowUpload] = useState(false);
   const [currentStage, setCurrentStage] = useState(workspace.stage);
   const [updatingStage, setUpdatingStage] = useState(false);
+  const [documents, setDocuments] = useState<WorkspaceDocument[]>(workspace.documents ?? []);
   const days = daysUntil(workspace.closing_date);
   const isActive = ['new', 'analysing', 'preparing'].includes(workspace.stage);
 
   async function handleStageChange(newStage: TenderWorkspace['stage']) {
     if (newStage === currentStage) return;
     setUpdatingStage(true);
-    // TODO: PATCH /tendering/workspaces/{workspace.id} when backend ready
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    setCurrentStage(newStage);
-    setUpdatingStage(false);
-    toast.success(`Stage updated to ${newStage}`);
+    try {
+      await updateWorkspace(workspace.id, { stage: newStage });
+      setCurrentStage(newStage);
+      toast.success(`Stage updated to ${newStage}`);
+    } catch {
+      toast.error('Failed to update stage');
+    } finally {
+      setUpdatingStage(false);
+    }
   }
   const { bar, text } = readinessColour(workspace.readiness_score);
 
@@ -527,7 +561,7 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
                 <Upload size={12} /> Upload
               </button>
             </div>
-            {(workspace.documents ?? []).length === 0 ? (
+            {documents.length === 0 ? (
               <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
                 <Upload size={20} className="text-text-mute mx-auto mb-2" />
                 <p className="text-sm text-text-mute">Drop tender documents here</p>
@@ -535,7 +569,7 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
               </div>
             ) : (
               <div className="space-y-2">
-                {(workspace.documents ?? []).map((document) => {
+                {documents.map((document) => {
                   const fileExtension = document.name.split('.').pop()?.toUpperCase() ?? '';
                   const fileExtensionColour =
                     fileExtension === 'PDF' ? 'bg-red-bg text-red' :
@@ -663,7 +697,11 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
         <DocumentViewerModal doc={viewingDoc} onClose={() => setViewingDoc(null)} />
       )}
       {showUpload && (
-        <UploadModal workspaceId={workspace.id} onClose={() => setShowUpload(false)} />
+        <UploadModal
+          workspaceId={workspace.id}
+          onUploaded={(newDocs) => setDocuments((previous) => [...previous, ...newDocs])}
+          onClose={() => setShowUpload(false)}
+        />
       )}
     </>
   );

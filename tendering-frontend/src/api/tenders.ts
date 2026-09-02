@@ -1,6 +1,7 @@
 import axios from 'axios';
 import type {
   TenderWorkspace,
+  WorkspaceDocument,
   Requirement,
   BidDecisionReport,
   LibraryDocument,
@@ -532,3 +533,19 @@ export const updateRequirement = (
   patch: { status?: Requirement['status']; owner?: string; notes?: string },
 ): Promise<Requirement> =>
   api.patch<Requirement>(`/tendering/requirements/${reqId}`, patch).then((response) => response.data);
+
+export const addWorkspaceDocument = (
+  workspaceId: string,
+  data: { name: string; category?: string; file_type?: string; size_bytes?: number; url?: string },
+): Promise<WorkspaceDocument> =>
+  api.post<WorkspaceDocument>(`/tendering/workspaces/${workspaceId}/documents`, data).then((response) => response.data);
+
+export const addLibraryDocument = (data: {
+  title: string;
+  filename?: string;
+  category?: string;
+  file_type?: string;
+  expiry_date?: string;
+  url?: string;
+}): Promise<LibraryDocument> =>
+  api.post<LibraryDocument>('/tendering/library', data).then((response) => response.data);
