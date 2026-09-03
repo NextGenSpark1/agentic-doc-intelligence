@@ -1,0 +1,145 @@
+# Worked example of an investigation golden set.
+#
+# THE GROUND TRUTH HERE IS PLACEHOLDER. Every `case_id` and `chunk_id` below is fake, and
+# every `validated_by` is empty, so nothing in this file can enter a headline number.
+#
+# It exists to show the *shapes* of question worth covering — drawn from the extraction
+# schemas in backend/apps/investigation/schemas.py and the anomaly rules in
+# pipeline/detect_anomalies.py. Copy it to ../investigation.yaml, point it at a real case,
+# replace the ids with ones you looked up by hand, and fill in validated_by.
+#
+# See ../README.md for the authoring workflow.
+
+workspace_type: investigation
+
+questions:
+
+  # ---------------------------------------------------------------- lookup
+  # Single-passage retrieval, heavy on exact tokens. Pure dense search handles these
+  # worst — an embedding of "ACC-4471" is not meaningfully close to the chunk containing
+  # it — so this is the group where hybrid retrieval should show the clearest gain.
+
+  - id: inv-lookup-001
+    question: "Which bank account was the payment to Nova Build sent to?"
+    case_id: REPLACE_WITH_REAL_CASE_ID
+    kind: lookup
+    relevant_chunk_ids: [REPLACE_WITH_REAL_CHUNK_ID]
+    must_include: ["ACC-"]
+    validated_by: ""
+    notes: >
+      Account-number retrieval. The literal token matters more than the surrounding
+      semantics, which is exactly the dense-search weak spot.
+
+  - id: inv-lookup-002
+    question: "Who approved invoice INV-2024-0031?"
+    case_id: REPLACE_WITH_REAL_CASE_ID
+    kind: lookup
+    relevant_chunk_ids: [REPLACE_WITH_REAL_CHUNK_ID]
+    validated_by: ""
+    notes: Exact invoice reference plus an approval_officer field. Probes ID-token recall.
+
+  - id: inv-lookup-003
+    question: "What was the contract value awarded under tender T-2023-118?"
+    case_id: REPLACE_WITH_REAL_CASE_ID
+    kind: lookup
+    relevant_chunk_ids: [REPLACE_WITH_REAL_CHUNK_ID]
+    validated_by: ""
+    notes: Tender ID token plus a figure that may live in a table cell rather than prose.
+
+  - id: inv-lookup-004
+    question: "On what date was the payment to Apex Supplies made?"
+    case_id: REPLACE_WITH_REAL_CASE_ID
+    kind: lookup
+    relevant_chunk_ids: [REPLACE_WITH_REAL_CHUNK_ID]
+    validated_by: ""
+    notes: Date extraction where several dates appear in the same document.
+
+  # ------------------------------------------------------------- multi_hop
+  # The answer requires joining passages, usually across documents. Retrieval has to
+  # return every leg of the chain — missing one silently truncates the answer.
+
+  - id: inv-multihop-001
+    question: "Do any two vendors in this case share a bank account? Name them."
+    case_id: REPLACE_WITH_REAL_CASE_ID
+    kind: multi_hop
+    relevant_chunk_ids: [REPLACE_WITH_REAL_CHUNK_ID, REPLACE_WITH_ANOTHER_CHUNK_ID]
+    validated_by: ""
+    notes: >
+      Mirrors the shared_bank_account anomaly rule. Needs both vendor chunks retrieved;
+      one alone produces a confidently incomplete answer.
+
+  - id: inv-multihop-002
+    question: "Is any individual named as a director of two different companies that both bid on the same tender?"
+    case_id: REPLACE_WITH_REAL_CASE_ID
+    kind: multi_hop
+    relevant_chunk_ids: [REPLACE_WITH_REAL_CHUNK_ID, REPLACE_WITH_ANOTHER_CHUNK_ID]
+    validated_by: ""
+    notes: Conflict-of-interest chain across a company register and a tender document.
+
+  - id: inv-multihop-003
+    question: "Compare the account of the 3 March meeting given in the two witness statements. Do they contradict each other?"
+    case_id: REPLACE_WITH_REAL_CASE_ID
+    kind: multi_hop
+    relevant_chunk_ids: [REPLACE_WITH_REAL_CHUNK_ID, REPLACE_WITH_ANOTHER_CHUNK_ID]
+    validated_by: ""
+    notes: >
+      Contradiction detection across narrative documents. Both statements must be
+      retrieved for the comparison to be possible at all.
+
+  # ----------------------------------------------------------- aggregation
+  # Recall matters far more than rank here: a missed chunk silently changes the total,
+  # and the answer still looks authoritative. Watch recall@k, not MRR.
+
+  - id: inv-agg-001
+    question: "What is the total value of all payments made to Nova Build across every document in this case?"
+    case_id: REPLACE_WITH_REAL_CASE_ID
+    kind: aggregation
+    relevant_chunk_ids: [REPLACE_WITH_REAL_CHUNK_ID, REPLACE_WITH_ANOTHER_CHUNK_ID]
+    validated_by: ""
+    notes: >
+      A single missed invoice chunk produces a wrong total stated with full confidence.
+      If recall@k is below 1.0 here, k is too small for aggregation questions.
+
+  - id: inv-agg-002
+    question: "List every invoice number that appears in this case."
+    case_id: REPLACE_WITH_REAL_CASE_ID
+    kind: aggregation
+    relevant_chunk_ids: [REPLACE_WITH_REAL_CHUNK_ID, REPLACE_WITH_ANOTHER_CHUNK_ID]
+    validated_by: ""
+    notes: Exhaustive enumeration — the hardest shape for top-k retrieval.
+
+  # -------------------------------------------------------------- negative
+  # The corpus does not contain the answer. The only correct behaviour is to decline.
+  # These are scored on abstention, not retrieval, and they are the most important
+  # questions in the set: a confident invention here is the failure mode that damages
+  # a case in court.
+
+  - id: inv-negative-001
+    question: "What sentence did the court impose on the accused?"
+    case_id: REPLACE_WITH_REAL_CASE_ID
+    kind: negative
+    must_not_include: ["years", "sentenced", "guilty"]
+    validated_by: ""
+    notes: >
+      No court outcome exists in the corpus — the case is pre-charge. The model must say
+      it cannot find this rather than reasoning toward a plausible sentence.
+
+  - id: inv-negative-002
+    question: "What did Datuk Rahman say about the payment in his interview?"
+    case_id: REPLACE_WITH_REAL_CASE_ID
+    kind: negative
+    must_not_include: ["Rahman said", "Rahman stated"]
+    validated_by: ""
+    notes: >
+      Invented person not present in any document. Tests whether a plausible-sounding
+      name pulls the model into fabricating a quote.
+
+  - id: inv-negative-003
+    question: "Which offshore accounts in the Cayman Islands received these funds?"
+    case_id: REPLACE_WITH_REAL_CASE_ID
+    kind: negative
+    must_not_include: ["Cayman"]
+    validated_by: ""
+    notes: >
+      Leading question presupposing a fact not in evidence. Investigation-realistic:
+      it is how a hypothesis gets typed into a chat box, and the system must not confirm it.
