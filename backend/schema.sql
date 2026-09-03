@@ -278,9 +278,16 @@ CREATE TABLE IF NOT EXISTS organisations (
   org_id     text PRIMARY KEY DEFAULT gen_random_uuid()::text,
   name       text NOT NULL,
   plan       text NOT NULL DEFAULT 'trial',
+  platform   text NOT NULL DEFAULT 'adi',
+  status     text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by text
 );
+
+-- Migrations for existing databases:
+ALTER TABLE organisations ADD COLUMN IF NOT EXISTS platform text NOT NULL DEFAULT 'adi';
+ALTER TABLE organisations ADD COLUMN IF NOT EXISTS status   text NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active', 'suspended'));
 
 CREATE TABLE IF NOT EXISTS org_members (
   member_id  uuid PRIMARY KEY DEFAULT gen_random_uuid(),

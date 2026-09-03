@@ -10,7 +10,8 @@ CREATE INDEX IF NOT EXISTS documents_workspace_id_idx ON documents(workspace_id)
 CREATE INDEX IF NOT EXISTS chunks_workspace_id_idx    ON chunks(workspace_id)    WHERE workspace_id IS NOT NULL;
 
 -- 2. workspace_documents gets a pointer to its core document row (set when extraction is triggered).
-ALTER TABLE workspace_documents ADD COLUMN IF NOT EXISTS document_id UUID REFERENCES documents(document_id) ON DELETE SET NULL;
+-- document_id is TEXT to match documents.document_id (which is a text primary key).
+ALTER TABLE workspace_documents ADD COLUMN IF NOT EXISTS document_id TEXT REFERENCES documents(document_id) ON DELETE SET NULL;
 
 -- 3. New columns on tender_workspaces.
 ALTER TABLE tender_workspaces ADD COLUMN IF NOT EXISTS ai_summary TEXT DEFAULT '';

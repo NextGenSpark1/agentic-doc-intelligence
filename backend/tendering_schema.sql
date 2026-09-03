@@ -17,9 +17,13 @@ CREATE TABLE IF NOT EXISTS tender_workspaces (
     readiness_score INTEGER DEFAULT 0      CHECK (readiness_score >= 0 AND readiness_score <= 100),
     description     TEXT DEFAULT '',
     team_members    TEXT[] DEFAULT '{}',
+    created_by      TEXT DEFAULT '',
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migration for existing databases:
+ALTER TABLE tender_workspaces ADD COLUMN IF NOT EXISTS created_by TEXT DEFAULT '';
 
 -- 2. Documents attached to a workspace (the RFP + supporting docs)
 CREATE TABLE IF NOT EXISTS workspace_documents (
@@ -48,8 +52,13 @@ CREATE TABLE IF NOT EXISTS workspace_requirements (
     mandatory       BOOLEAN DEFAULT TRUE,
     confidence      INTEGER DEFAULT 100 CHECK (confidence >= 0 AND confidence <= 100),
     matched_doc_ids TEXT[] DEFAULT '{}',
+    source          TEXT DEFAULT 'rule' CHECK (source IN ('rule', 'llm', 'manual')),
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migration for existing databases:
+ALTER TABLE workspace_requirements ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'rule'
+    CHECK (source IN ('rule', 'llm', 'manual'));
 
 -- 4. Bid decision reports (one per workspace, latest wins)
 CREATE TABLE IF NOT EXISTS workspace_bid_decisions (
