@@ -122,3 +122,45 @@ def test_finding_grounded_in_real_document_is_kept(sample_extractions):
     assert len(findings) == 1
     assert findings[0]["source"] == "llm"
     assert findings[0]["supporting_document_ids"] == ["d1"]  # the invented doc id is stripped
+
+
+# --------------------------- ask() failure contract ---------------------------
+# The tests above monkeypatch `ask` itself, so they never exercise its own failure path.
+# These do. `ask` is documented to never raise: every LLM-augmented stage relies on that to
+# fall back to its rule-only results, so a raise here takes down a whole analysis run instead
+# of degrading it. (Regression: the core/apps split left a `from .. import db` behind, which
+# raised ImportError out of `ask` on every LLM failure.)
+def test_ask_returns_none_instead_of_raising_when_the_llm_fails():
+    from backend.core import llm_reasoning
+
+    with patch("backend.core.llm.complete", side_effect=RuntimeError("provider down")), \
+         patch("backend.core.db_core.write_audit"):
+        assert llm_reasoning.ask("system prompt", {"a": 1}, "case-1") is None
+
+
+def test_ask_audits_the_failure_so_a_dead_tier_is_diagnosable():
+    from backend.core import llm_reasoning
+
+    with patch("backend.core.llm.complete", side_effect=RuntimeError("provider down")), \
+         patch("backend.core.db_core.write_audit") as audit:
+        llm_reasoning.ask("system prompt", {}, "case-1")
+
+    assert audit.called, "a failing LLM tier must be visible in the audit log"
+    case_id, actor, action = audit.call_args[0][:3]
+    assert (case_id, action) == ("case-1", "case_reasoning_failed")
+
+
+def test_ask_still_returns_none_when_audit_logging_itself_fails():
+    from backend.core import llm_reasoning
+
+    with patch("backend.core.llm.complete", side_effect=RuntimeError("provider down")), \
+         patch("backend.core.db_core.write_audit", side_effect=RuntimeError("db down")):
+        assert llm_reasoning.ask("system prompt", {}, "case-1") is None
+
+
+def test_ask_returns_none_on_unparseable_json():
+    from backend.core import llm_reasoning
+
+    with patch("backend.core.llm.complete", return_value="not json at all"), \
+         patch("backend.core.db_core.write_audit"):
+        assert llm_reasoning.ask("system prompt", {}, "case-1") is None
