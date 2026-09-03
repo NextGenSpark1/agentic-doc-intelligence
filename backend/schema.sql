@@ -313,3 +313,109 @@ CREATE INDEX IF NOT EXISTS idx_cases_org_id       ON cases(org_id);
 CREATE INDEX IF NOT EXISTS idx_org_members_user   ON org_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_org_members_org    ON org_members(org_id);
 CREATE INDEX IF NOT EXISTS idx_invitations_token  ON invitations(token);
+
+-- =====================================================================================
+-- HYBRID RETRIEVAL (dense + keyword)  — migration, run once in the Supabase SQL editor.
+-- =====================================================================================
+-- Pure dense search is weak exactly where investigation queries are strongest: exact
+-- tokens. An embedding of "INV-2024-0031" is not meaningfully close to the chunk that
+-- contains it, so a literal reference can rank below loosely-related prose. Adding a
+-- lexical arm and fusing the two rankings fixes that without losing semantic recall.
+--
+-- Isolation note: BOTH arms filter on case_id inside SQL, exactly as match_chunks does.
+-- Tenant scoping is never left to application code.
+
+-- 1. Lexical index. Generated + stored so it stays in sync with `text` automatically and
+--    can be GIN-indexed. Chunk text can carry ADE's HTML (tables, spans) — the tags are
+--    stripped here so markup never becomes a searchable token.
+--    WARNING: adding a stored generated column rewrites the chunks table. On a large
+--    corpus run this in a maintenance window.
+ALTER TABLE chunks ADD COLUMN IF NOT EXISTS text_search tsvector
+    GENERATED ALWAYS AS (
+        to_tsvector('english', regexp_replace(coalesce(text, ''), '<[^>]*>', ' ', 'g'))
+    ) STORED;
+
+CREATE INDEX IF NOT EXISTS chunks_text_search_idx ON chunks USING gin (text_search);
+
+-- 2. Candidate pool from both arms, with each arm's rank.
+--
+--    This returns CANDIDATES, not a final ranking: fusion happens in Python
+--    (backend/core/retrieval.py::reciprocal_rank_fusion). That split is deliberate —
+--    the fusion constants are what the eval harness tunes, and tuning must not require
+--    a database migration each time. One round trip, testable fusion.
+--
+--    The keyword arm ORs the question's lexemes rather than ANDing them
+--    (plainto_tsquery/websearch_to_tsquery both AND, which returns nothing for a
+--    natural-language question). ts_rank_cd then ranks by how many terms matched and
+--    how densely — so a chunk containing the exact reference still wins.
+--
+--    Shape notes, both of which matter for performance:
+--      * Each arm takes its top-N in an inner subquery and assigns row_number() OUTSIDE
+--        it, so the ANN / GIN index drives an early-terminating top-N rather than the
+--        planner having to rank every matching chunk first.
+--      * The final join is driven FROM the small candidate set into chunks. Joining the
+--        other way (chunks LEFT JOIN arms, filtering afterwards) scans the whole table.
+DROP FUNCTION IF EXISTS match_chunks_candidates(text, vector, text, int);
+CREATE OR REPLACE FUNCTION match_chunks_candidates(
+    p_case_id text,
+    p_query_embedding vector(1536),
+    p_query_text text,
+    p_pool int
+)
+RETURNS TABLE (
+    document_id text,
+    chunk_id text,
+    text text,
+    page int,
+    bbox jsonb,
+    similarity float,
+    keyword_score float,
+    dense_rank int,
+    keyword_rank int
+)
+LANGUAGE sql STABLE AS $$
+    WITH q AS (
+        -- OR the question's lexemes together; NULL when the question is all stopwords,
+        -- which simply disables the keyword arm for that query.
+        SELECT to_tsquery('english', string_agg(quote_literal(lexeme), ' | ')) AS tsq
+        FROM unnest(
+            to_tsvector('english', regexp_replace(coalesce(p_query_text, ''), '<[^>]*>', ' ', 'g'))
+        )
+    ),
+    dense_top AS (
+        SELECT c.id, 1 - (c.embedding <=> p_query_embedding) AS sim
+        FROM chunks c
+        WHERE c.case_id = p_case_id AND c.embedding IS NOT NULL
+        ORDER BY c.embedding <=> p_query_embedding
+        LIMIT p_pool
+    ),
+    dense AS (
+        SELECT id, sim, row_number() OVER (ORDER BY sim DESC)::int AS rnk FROM dense_top
+    ),
+    kw_top AS (
+        SELECT c.id, ts_rank_cd(c.text_search, q.tsq)::float AS score
+        FROM chunks c, q
+        WHERE c.case_id = p_case_id
+          AND q.tsq IS NOT NULL
+          AND c.text_search @@ q.tsq
+        ORDER BY ts_rank_cd(c.text_search, q.tsq) DESC
+        LIMIT p_pool
+    ),
+    kw AS (
+        SELECT id, score, row_number() OVER (ORDER BY score DESC)::int AS rnk FROM kw_top
+    ),
+    candidates AS (
+        SELECT id FROM dense
+        UNION
+        SELECT id FROM kw
+    )
+    SELECT c.document_id, c.chunk_id, c.text, c.page, c.bbox,
+           coalesce(d.sim, 0)::float   AS similarity,
+           coalesce(k.score, 0)::float AS keyword_score,
+           d.rnk AS dense_rank,
+           k.rnk AS keyword_rank
+    FROM candidates cand
+    JOIN chunks c   ON c.id = cand.id
+    LEFT JOIN dense d ON d.id = cand.id
+    LEFT JOIN kw    k ON k.id = cand.id;
+$$;

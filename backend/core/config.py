@@ -48,6 +48,21 @@ class Settings(BaseSettings):
     # RAG
     rag_top_k: int = 8
 
+    # --- Hybrid retrieval (dense + keyword, fused with RRF) ---
+    # Off by default: it needs the match_chunks_candidates migration in schema.sql. Flip
+    # RAG_HYBRID_ENABLED=true once that has run. If the RPC is missing or errors, retrieval
+    # degrades to pure dense rather than failing the request.
+    rag_hybrid_enabled: bool = False
+    # How deep each arm contributes before fusion. Must comfortably exceed rag_top_k — the
+    # gain comes from a chunk one arm ranks 30th and the other ranks 2nd.
+    rag_hybrid_pool: int = 50
+    # RRF damping constant. Higher flattens the curve so deep results count for more.
+    rag_rrf_k: int = 60
+    # Relative arm weights. Raise the keyword weight for corpora dominated by exact
+    # references (invoice/account/tender numbers); tune with `python -m backend.eval compare`.
+    rag_dense_weight: float = 1.0
+    rag_keyword_weight: float = 1.0
+
     # --- CORS ---
     # Comma-separated list of browser origins allowed to call the API. Defaults to "*"
     # (permissive — fine for local dev). Set CORS_ALLOW_ORIGINS to the real dashboard origin(s)

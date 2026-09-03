@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from shared.schemas import ChatRequest, ChatResponse, CitationSchema  # platform contract
 
-from backend.core import llm
+from backend.core import llm, retrieval
 from backend.core.access import load_case_or_403 as _load_case_or_403
 from backend.core.auth import get_current_user
 from backend.core.config import get_settings
@@ -215,6 +215,35 @@ async def review_finding(finding_id: str, body: FindingReview, user: dict = Depe
 
 
 # ------------------------------ chat (RAG) ------------------------
+def _retrieve_chunks(case_id: str, question: str, query_vec: list[float], settings) -> list[dict]:
+    """Retrieve context chunks, degrading rather than failing.
+
+    Hybrid (dense + keyword, RRF-fused) when enabled; pure dense otherwise. A hybrid failure
+    — most likely the match_chunks_candidates migration not having been run — must not take
+    chat down, so it is logged to the audit trail and retrieval falls back to dense. That
+    mirrors how the pipeline treats a failing LLM tier: degrade visibly, never silently.
+    """
+    if settings.rag_hybrid_enabled:
+        try:
+            return retrieval.hybrid_search(
+                case_id=case_id,
+                query_text=question,
+                query_embedding=query_vec,
+                top_k=settings.rag_top_k,
+                pool=settings.rag_hybrid_pool,
+                rrf_k=settings.rag_rrf_k,
+                dense_weight=settings.rag_dense_weight,
+                keyword_weight=settings.rag_keyword_weight,
+            )
+        except Exception as exc:
+            try:
+                db.write_audit(case_id, "system", "hybrid_retrieval_failed",
+                               {"error": f"{type(exc).__name__}: {exc}"})
+            except Exception:
+                pass  # never let audit logging break the request path
+    return db.match_chunks(case_id, query_vec, settings.rag_top_k)
+
+
 @router.post("/cases/{case_id}/chat", response_model=ChatResponse)
 async def chat(case_id: str, body: ChatRequest, user: dict = Depends(get_current_user)):
     """Grounded Q&A over a case's documents. Retrieved chunks become the citations,
@@ -222,11 +251,11 @@ async def chat(case_id: str, body: ChatRequest, user: dict = Depends(get_current
     await _load_case_or_403(case_id, user)
     settings = get_settings()
 
-    # 1. Retrieve relevant chunks (vector search; keyword fallback)
+    # 1. Retrieve relevant chunks (hybrid or dense; literal keyword scan as last resort)
     try:
         query_vec = llm.embed([body.message])[0]
         chunks = await asyncio.to_thread(
-            db.match_chunks, case_id, query_vec, settings.rag_top_k
+            _retrieve_chunks, case_id, body.message, query_vec, settings
         )
     except Exception:
         # Vector search unavailable — fall back to matching any salient word from the question.
