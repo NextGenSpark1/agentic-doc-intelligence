@@ -7,3 +7,6 @@ __pycache__/
 CLAUDE.md
 .claude/
 DEPLOYMENT.md
+
+# Claude Code session transcripts (local only)
+.claude-code-history/
