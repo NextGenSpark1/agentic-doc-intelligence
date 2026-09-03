@@ -112,6 +112,7 @@ class CreateWorkspaceDocumentIn(BaseModel):
     file_type: str = ""
     size_bytes: int = 0
     url: str = ""
+    storage_path: str = ""  # path within the Supabase Storage bucket
 
 
 class CreateLibraryDocumentIn(BaseModel):
@@ -246,7 +247,92 @@ async def add_workspace_document(
     workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
     if not workspace or workspace["org_id"] != org_id:
         raise HTTPException(404, "Workspace not found")
-    return await asyncio.to_thread(db.create_workspace_document, workspace_id, body.model_dump())
+
+    workspace_doc = await asyncio.to_thread(
+        db.create_workspace_document, workspace_id, body.model_dump()
+    )
+
+    # Create a core documents row so the extraction pipeline can find this file.
+    if body.storage_path:
+        from backend.core import db_core as core_db
+        import uuid as _uuid
+        from datetime import datetime, timezone
+        core_document_id = str(_uuid.uuid4())
+        await asyncio.to_thread(core_db.insert_document, {
+            "document_id": core_document_id,
+            "case_id": None,
+            "workspace_id": workspace_id,
+            "filename": body.name,
+            "file_hash": "",
+            "storage_path": body.storage_path,
+            "document_type": "unclassified",
+            "extraction_status": "uploaded",
+            "page_count": 0,
+            "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        })
+        await asyncio.to_thread(
+            db.link_core_document_to_workspace_doc, workspace_doc["id"], core_document_id
+        )
+        workspace_doc["document_id"] = core_document_id
+
+    return workspace_doc
+
+
+@router.post("/workspaces/{workspace_id}/documents/{doc_id}/extract", status_code=202)
+async def extract_workspace_document(
+    workspace_id: str,
+    doc_id: str,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(get_current_user),
+):
+    """Trigger ADE extraction for a single workspace document.
+
+    Returns 202 immediately; extraction runs in the background.
+    Only works if the doc was registered with a storage_path.
+    """
+    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
+    if not workspace or workspace["org_id"] != org_id:
+        raise HTTPException(404, "Workspace not found")
+
+    workspace_doc = await asyncio.to_thread(db.get_workspace_document, doc_id)
+    if not workspace_doc or workspace_doc["workspace_id"] != workspace_id:
+        raise HTTPException(404, "Document not found")
+
+    core_document_id = workspace_doc.get("document_id")
+    if not core_document_id:
+        raise HTTPException(409, "Document has no storage path — re-upload with storage_path set")
+
+    from backend.core import db_core as core_db
+    core_doc = await asyncio.to_thread(core_db.get_document, core_document_id)
+    if not core_doc:
+        raise HTTPException(404, "Core document record missing")
+    if core_doc.get("extraction_status") not in ("uploaded", "failed"):
+        raise HTTPException(409, "Extraction already in progress or completed")
+
+    await asyncio.to_thread(core_db.update_document, core_document_id, {"extraction_status": "queued"})
+
+    from .pipeline import process_workspace_document
+    background_tasks.add_task(process_workspace_document, doc_id)
+    return {"status": "queued", "doc_id": doc_id, "document_id": core_document_id}
+
+
+@router.delete("/workspaces/{workspace_id}/documents/{doc_id}", status_code=204)
+async def delete_workspace_document(
+    workspace_id: str,
+    doc_id: str,
+    user: dict = Depends(get_current_user),
+):
+    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
+    if not workspace or workspace["org_id"] != org_id:
+        raise HTTPException(404, "Workspace not found")
+
+    workspace_doc = await asyncio.to_thread(db.get_workspace_document, doc_id)
+    if not workspace_doc or workspace_doc["workspace_id"] != workspace_id:
+        raise HTTPException(404, "Document not found")
+
+    await asyncio.to_thread(db.delete_workspace_document, doc_id)
 
 
 @router.post("/workspaces/{workspace_id}/analyse", status_code=202)
@@ -358,3 +444,15 @@ async def add_library_document(
 ):
     org_id = await asyncio.to_thread(_get_tendering_org_id, user)
     return await asyncio.to_thread(db.create_library_document, org_id, body.model_dump())
+
+
+@router.delete("/library/{doc_id}", status_code=204)
+async def delete_library_document(
+    doc_id: str,
+    user: dict = Depends(get_current_user),
+):
+    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    docs = await asyncio.to_thread(db.list_library_documents, org_id)
+    if not any(d["doc_id"] == doc_id for d in docs):
+        raise HTTPException(404, "Document not found")
+    await asyncio.to_thread(db.delete_library_document, doc_id)

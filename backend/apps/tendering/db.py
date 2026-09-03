@@ -251,6 +251,39 @@ def create_workspace_document(workspace_id: str, data: dict) -> dict:
     return row[0]
 
 
+def get_workspace_document(doc_id: str) -> dict | None:
+    rows = (
+        get_client()
+        .table("workspace_documents")
+        .select("*")
+        .eq("id", doc_id)
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None
+
+
+def link_core_document_to_workspace_doc(workspace_doc_id: str, core_document_id: str) -> None:
+    """Set the document_id FK on a workspace_documents row after the core doc is created."""
+    get_client().table("workspace_documents").update(
+        {"document_id": core_document_id}
+    ).eq("id", workspace_doc_id).execute()
+
+
+def delete_workspace_document(doc_id: str) -> None:
+    """Delete workspace document row and its linked core document (chunks cascade)."""
+    row = get_workspace_document(doc_id)
+    if not row:
+        return
+    core_document_id = row.get("document_id")
+    get_client().table("workspace_documents").delete().eq("id", doc_id).execute()
+    if core_document_id:
+        from backend.core import db_core as _core
+        core_doc = _core.get_document(core_document_id)
+        if core_doc:
+            _core.delete_document(core_document_id, core_doc.get("storage_path", ""))
+
+
 def create_library_document(org_id: str, data: dict) -> dict:
     row = (
         get_client()
@@ -270,6 +303,10 @@ def create_library_document(org_id: str, data: dict) -> dict:
         .data
     )
     return row[0]
+
+
+def delete_library_document(doc_id: str) -> None:
+    get_client().table("library_documents").delete().eq("doc_id", doc_id).execute()
 
 
 def update_library_document(doc_id: str, patch: dict) -> dict | None:
