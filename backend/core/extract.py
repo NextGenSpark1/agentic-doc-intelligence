@@ -73,7 +73,10 @@ def run_extraction(document: dict, case: dict, schema_resolver: Callable[[str], 
         }
     )
 
-    _index_chunks(case["case_id"], document["document_id"], parsed["chunks"])
+    # A tender workspace passes `tender_id` instead of `case_id`; chunks carry whichever
+    # scope owns them so tender and investigation retrieval stay isolated in SQL.
+    _index_chunks(case.get("case_id"), document["document_id"], parsed["chunks"],
+                  tender_id=case.get("tender_id"))
 
     db.update_document(document["document_id"], {"page_count": parsed["page_count"]})
     return {"markdown": parsed["markdown"]}
@@ -115,13 +118,19 @@ def _embed_in_batches(texts: list[str], case_id: str, document_id: str) -> list[
     return vectors
 
 
-def _index_chunks(case_id: str, document_id: str, chunks: list[dict]) -> None:
+def _index_chunks(case_id: str | None, document_id: str, chunks: list[dict],
+                  tender_id: str | None = None) -> None:
     """Embed chunk text and store for retrieval. Degrades to text-only storage per-batch if
-    embedding fails (see `_embed_in_batches`)."""
+    embedding fails (see `_embed_in_batches`).
+
+    Exactly one of `case_id` / `tender_id` is set, naming the workspace that owns these chunks.
+    Both columns are indexed and both retrieval RPCs filter on their own one, so a tender's
+    chunks can never surface in a case's search and vice versa.
+    """
     texts = [c["text"] for c in chunks if c.get("text")]
     if not texts:
         return
-    vectors = _embed_in_batches(texts, case_id, document_id)
+    vectors = _embed_in_batches(texts, case_id or tender_id or "", document_id)
 
     rows, vector_index = [], 0
     for c in chunks:
@@ -131,6 +140,7 @@ def _index_chunks(case_id: str, document_id: str, chunks: list[dict]) -> None:
         rows.append(
             {
                 "case_id": case_id,
+                "tender_id": tender_id,
                 "document_id": document_id,
                 "chunk_id": c.get("chunk_id") or str(uuid.uuid4()),
                 "text": c["text"],

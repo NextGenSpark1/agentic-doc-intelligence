@@ -175,6 +175,25 @@ def match_chunks(case_id: str, query_embedding: list[float], top_k: int) -> list
     ).execute().data or []
 
 
+def match_chunks_candidates(
+    case_id: str, query_embedding: list[float], query_text: str, pool: int
+) -> list[dict]:
+    """Hybrid-retrieval candidate pool: dense + keyword arms with each arm's rank.
+
+    Fusion is done by backend/core/retrieval.py, not here — see that module for why.
+    Both arms filter on case_id inside SQL (schema.sql -> match_chunks_candidates).
+    """
+    return get_client().rpc(
+        "match_chunks_candidates",
+        {
+            "p_case_id": case_id,
+            "p_query_embedding": query_embedding,
+            "p_query_text": query_text,
+            "p_pool": pool,
+        },
+    ).execute().data or []
+
+
 def match_chunks_in_document(document_id: str, query_embedding: list[float], top_k: int) -> list[dict]:
     """Vector similarity search scoped to a single document — used for finding traceability."""
     return get_client().rpc(
@@ -184,9 +203,17 @@ def match_chunks_in_document(document_id: str, query_embedding: list[float], top
 
 
 # ------------------------- Audit log -----------------------------
-def write_audit(case_id: str, actor: str, action: str, detail: dict | None = None) -> None:
+def write_audit(case_id: str | None, actor: str, action: str, detail: dict | None = None,
+                tender_id: str | None = None) -> None:
+    """Append one audit row.
+
+    `case_id` and `tender_id` are parallel nullable columns — a row belongs to whichever
+    workspace produced it. Keeping both on one helper means there is a single place where audit
+    rows are written, so an action can never quietly skip the trail by using a different path.
+    """
     get_client().table("audit_log").insert(
-        {"case_id": case_id, "actor": actor, "action": action, "detail": detail or {}}
+        {"case_id": case_id, "tender_id": tender_id, "actor": actor,
+         "action": action, "detail": detail or {}}
     ).execute()
 
 

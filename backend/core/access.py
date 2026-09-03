@@ -13,10 +13,15 @@ from backend.core import db_core as db
 
 
 def assert_case_access(case: dict, user_id: str, membership: dict | None = None) -> None:
-    """Raise 403 if the requesting user should not access this case.
+    """Raise 403 if the requesting user should not access this workspace.
 
     With team isolation: org_admin sees all org cases; supervisor sees their own;
     member sees their supervisor's. Without membership (no org yet), falls back to owner_id.
+
+    The rules are workspace-generic — they read only `org_id`, `created_by`, and `owner_id`, so
+    `apps.tendering.access.load_tender_or_403` reuses this against a `tenders` row. Keep it that
+    way: two products enforcing isolation through one function is what makes the rules auditable
+    in a single place.
     """
     if membership:
         if case.get("org_id") != membership.get("org_id"):

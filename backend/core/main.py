@@ -273,8 +273,9 @@ async def trigger_extraction(case_id: str, document_id: str, background: Backgro
     if doc.get("extraction_status") not in ("uploaded", "failed"):
         raise HTTPException(409, "extraction already in progress or completed")
     await asyncio.to_thread(db.update_document, document_id, {"extraction_status": "queued"})
-    # Investigation's per-document pipeline (extract + classify). When Tendering lands, this
-    # will dispatch by product/case_type rather than importing investigation directly.
+    # Investigation's per-document pipeline. Tenders are not cases: the tender router owns
+    # /tenders/{tender_id}/documents/* and dispatches to its own pipeline, so core never has
+    # to branch on product here.
     from backend.apps.investigation import pipeline
     background.add_task(pipeline.process_document, document_id)
     return {"status": "queued", "document_id": document_id}
@@ -396,6 +397,10 @@ async def get_document_chunks(case_id: str, document_id: str, user: dict = Depen
 
 # ------------------- product routers (mounted last) -------------------
 # Same URL paths as before the core/apps split — the deployed frontend is unaffected.
+# The two products share this one FastAPI app and every core route above; they differ only
+# in the domain routes they mount here (investigation: /cases/*, tendering: /tenders/*).
 from backend.apps.investigation.routes import router as investigation_router  # noqa: E402
+from backend.apps.tendering.routes import router as tendering_router  # noqa: E402
 
 app.include_router(investigation_router)
+app.include_router(tendering_router)

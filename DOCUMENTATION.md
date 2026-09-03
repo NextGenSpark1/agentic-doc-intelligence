@@ -378,17 +378,33 @@ Chunk boundaries are decided by **LandingAI ADE**, not a text splitter. Each chu
 **Embedding — Gemini 1536-dim, batched, fault-tolerant.**
 Chunk text is embedded with `gemini-embedding-001` at 1536 dimensions (`backend/pipeline/extract.py`). Embedding runs in **batches of 100** (the provider's per-request cap) with retry-and-backoff on rate limits (3 retries, 20s backoff). If a batch still fails, those chunks are stored **text-only** (embedding `NULL`) rather than dropped, and the failure is logged to `audit_log` as `chunk_embedding_failed`. So a document is never silently lost to an embedding outage.
 
-**Retrieval — pure dense semantic search.**
-On a chat question, the question is embedded and matched against the case's chunks via the `match_chunks` Postgres function (cosine distance, `<=>`), returning the top `rag_top_k` (default **8**) chunks. The index is **HNSW** (approximate nearest-neighbour) over pgvector. There is **no reranking, no hybrid (BM25) retrieval, and no similarity threshold** — the top 8 by vector distance are used as-is. If embedding is unavailable, chat falls back to a **keyword search** (matches salient words from the question against chunk text).
+**Retrieval — dense by default, hybrid behind a flag.**
+On a chat question, the question is embedded and matched against the case's chunks via the `match_chunks` Postgres function (cosine distance, `<=>`), returning the top `rag_top_k` (default **8**) chunks. The index is **HNSW** (approximate nearest-neighbour) over pgvector. If embedding is unavailable, chat falls back to a **keyword search** (matches salient words from the question against chunk text).
+
+With `RAG_HYBRID_ENABLED=true`, retrieval instead runs **two arms and fuses them** (`backend/core/retrieval.py`):
+
+| Arm | Mechanism | Catches |
+|---|---|---|
+| Dense | pgvector cosine over `embedding` | Paraphrase, narrative, conceptual similarity |
+| Keyword | Postgres full-text (`ts_rank_cd`) over the generated `text_search` tsvector | Exact tokens — invoice/account/tender references, names, statute numbers |
+
+Both arms take their top `rag_hybrid_pool` (default 50) **inside SQL, each filtered on `case_id`**, so tenant isolation is never left to application code. The two rankings are then combined with **Reciprocal Rank Fusion** (`score = Σ weight / (rrf_k + rank)`, default `rrf_k` 60) in Python, and the top `rag_top_k` are returned.
+
+*Why RRF rather than blending the scores:* cosine similarity and `ts_rank_cd` live on different scales with different distributions, so their raw values are not comparable. Ranks are. Fusion also lives in Python rather than SQL on purpose — the constants are what `python -m backend.eval compare` tunes, and tuning must not require a database migration each time.
+
+Fused rows carry `found_by` (`dense` / `keyword` / `both`) and `fusion_score`, so a surprising citation can be traced to the arm that produced it. If the hybrid RPC is missing or errors, retrieval **degrades to pure dense** and logs `hybrid_retrieval_failed` to the audit log rather than failing the request.
+
+There is still **no reranking and no similarity threshold** — the top 8 after fusion are used as-is.
 
 **Grounding & citations.**
 The retrieved chunks are the only document context handed to the LLM, alongside case-level structured intelligence (entities, confirmed findings, relationships). The answer cites sources inline as `[n]`, and each citation carries the **page number and bounding box** from ADE's visual grounding, so the UI can jump to the exact spot in the source PDF. Across the analysis pipeline, LLM output that cites a `document_id`/entity/event not actually sent to the model is **dropped before persisting** (anti-hallucination guardrail, `backend/pipeline/llm_reasoning.py`).
 
 **Known limitations / roadmap (RAG).**
 - No sliding-window overlap between chunks.
-- No reranking (cross-encoder) or hybrid retrieval — dense search only.
+- No reranking (cross-encoder) — the next retrieval change after hybrid.
 - No minimum-similarity cutoff; weak matches can still enter the top-8 context.
-- No formal retrieval/faithfulness evaluation harness (no golden set, recall@k, or RAGAS) yet — the highest-priority next step for measuring RAG quality.
+- Hybrid retrieval is implemented but **off by default** and **not yet measured** — see §12.1. Its SQL migration has not been run against a live database yet.
+- The eval harness exists (§12.1) but **no golden set has been authored**, so there is still no retrieval number to quote.
 
 ---
 
@@ -547,6 +563,98 @@ All migrations live at the top of `backend/schema.sql` under the `-- MIGRATIONS`
 | `hnsw` chunk index | Replaces ivfflat — better recall for growing corpora, no retuning needed |
 | organisations / org_members / invitations tables | Multi-tenancy — full invite-chain role system |
 | `org_id` on cases | Links cases to their organisation |
+| `text_search` on chunks + `match_chunks_candidates()` | **Hybrid retrieval** — generated tsvector column, GIN index, and the dense+keyword candidate RPC. Adding the stored generated column rewrites the `chunks` table; run it in a maintenance window on a large corpus. Retrieval stays pure-dense until `RAG_HYBRID_ENABLED=true`. |
+
+### 11.1 Tendering migration — `backend/schema_tendering.sql`
+
+The Tendering product ships its schema as a **separate file**; `schema.sql` (investigation) is
+untouched by it. Run it in the Supabase SQL Editor **after** `schema.sql`. Idempotent.
+
+> **This file replaced an earlier draft.** The draft modelled a tender as a `cases` row with
+> `case_type='tender'` plus a `tender_meta` side-table; that was rejected in favour of a
+> dedicated `tenders` table. Section 0 of the migration drops the draft's tables. There is no
+> data migration — the draft was never used against real tenders.
+
+| Table | Purpose |
+|---|---|
+| `tenders` | The tender workspace. A dedicated table, **not** a flavour of `cases`. |
+| `requirements` | One extracted obligation per row, keyed on `tender_id`. Mirrors the `findings` shape — same source/confidence columns, same `content_hash` dedup, same `human_review_status` state machine. |
+| `supplier_documents` | The **org-level** supplier vault: uploaded once, citable by every tender the org bids on. Tracks issue/expiry dates and supersession. |
+| `supplier_document_chunks` | The vault's own vector table. Separate from `chunks` so vault evidence and case evidence can never surface in each other's retrieval. |
+| `evidence_links` | The join between a requirement and the vault document that satisfies it. AI proposes; a human approves. |
+| `tasks` | Plain workflow CRUD. No AI writes here. |
+
+It also adds nullable `tender_id` to the shared `documents`, `chunks`, and `audit_log` tables,
+so tender documents reuse the whole upload → parse → chunk → embed pipeline rather than
+duplicating it. Existing investigation rows keep their `case_id` and are untouched.
+
+**Four invariants are enforced by the database, not by convention:**
+
+- **`requirements_ai_must_cite`** — a requirement whose `source` is not `manual` is rejected
+  unless it carries `source_document_id` **and** `source_page`. Rule 2, enforced by Postgres.
+  `RequirementRecord` enforces the same rule earlier at model construction; the CHECK is the
+  backstop for anything bypassing that model.
+- **`evidence_links_ai_must_explain`** — an AI-proposed evidence link must carry a rationale
+  and a score. A match a bidder cannot justify is worse than no match: they would submit on it.
+- **`requirements_pending_dedup_idx`** — partial unique index on pending rows. A re-run cannot
+  double-insert unreviewed rows, but confirmed/dismissed rows stay out of scope so a re-run can
+  resurface something a human already ruled on.
+- **`match_supplier_docs`** filters on `org_id` *inside SQL* (and excludes expired and
+  superseded documents at the source), so vault isolation cannot be lost by an
+  application-layer mistake. Rule 4.
+
+### 11.2 Tendering API surface
+
+Tenders are not cases, so this router owns `/tenders/*` end to end — including its own document
+routes. Core Python is untouched by the product apart from chunk scoping in `extract.py` and
+mounting the router in `main.py`.
+
+| Route group | Endpoints |
+|---|---|
+| Tenders | `POST/GET /tenders`, `GET/PATCH/DELETE /tenders/{id}`, `POST /tenders/{id}/analysis` |
+| Documents | `GET/POST /tenders/{id}/documents`, `POST /tenders/{id}/documents/{doc}/extract` |
+| Requirements | `GET/POST /tenders/{id}/requirements`, `GET /tenders/{id}/compliance-matrix`, `PATCH /requirements/{id}`, `PATCH /requirements/{id}/review` |
+| Vault (org) | `GET/POST /vault/documents`, `PATCH /vault/documents/{id}`, `POST /vault/documents/{id}/supersede/{new}` |
+| Evidence | `POST /tenders/{id}/evidence-matching`, `GET/POST /requirements/{id}/evidence`, `PATCH /evidence/{id}/review` |
+| Readiness | `GET /tenders/{id}/readiness` (fresh scan; `?narrative=true` adds prose), `POST /tenders/{id}/readiness` (re-run and persist the score) |
+| Tasks | `GET/POST /tenders/{id}/tasks`, `PATCH/DELETE /tasks/{id}` |
+
+**Rule 3 is structural.** Pipeline stages write `human_review_status='pending'` rows and nothing
+else. `bid_decision`, requirement review, and evidence approval are reachable only through
+human-invoked, access-checked handlers.
+
+### 11.3 Submission readiness
+
+`pipeline/readiness_review.py` audits a tender across requirements, evidence links, vault
+expiry dates, documents, and tasks, and answers the question a bid manager asks the night
+before a deadline: *what is missing, and can we submit?*
+
+Three properties worth knowing:
+
+- **The score is arithmetic, not judgement.** `compute_gaps` and `compute_score` are pure
+  functions over database rows — no LLM decides readiness, so the number is reproducible and
+  every point of it traces to a named gap. The LLM, when available, only writes prose *from*
+  the computed report; it cannot introduce a gap or change the score.
+- **Score and blockers are separate.** A percentage alone hides the one unmet mandatory
+  requirement that gets a bid disqualified, so `submission_blocked` is its own boolean with its
+  own reasons. A tender can read 75% and still be blocked — and the UI should lead with the
+  blocker.
+- **Gaps are computed on demand, never stored.** They derive entirely from current state, so a
+  persisted copy would be stale the moment someone approves a document. Only the score is
+  written back, onto `tenders.readiness_score`. It is advisory and never gating (Rule 3).
+
+Mandatory requirements weigh 3× optional ones. A requirement counts as satisfied only when a
+human marked it complete *or* it has an **approved** evidence link to a vault document that is
+neither expired nor superseded — a pending AI proposal does not count.
+
+The gap type that most justifies the stage: **`evidence_expires_before_closing`**. A
+certificate valid today but expiring before the closing date will have lapsed at evaluation,
+and it is invisible to every other check.
+
+**Status:** all four slices are built — foundation, requirement extraction + compliance matrix,
+vault + evidence matching, and submission readiness. Evidence matching has no golden set yet;
+see `backend/apps/tendering/evidence_goldens.md` for what needs measuring before its thresholds
+are tuned. That gap now also affects readiness, since readiness depends on evidence links.
 
 ---
 
@@ -571,6 +679,11 @@ pytest tests/ -v
 | `tests/test_summarise.py` | Case summarisation — active vs dismissed findings, risk score |
 | `tests/test_llm_reasoning_guardrails.py` | Anti-hallucination guardrails — LLM output citing unknown document IDs is dropped |
 | `tests/test_timeline_and_classify.py` | Timeline event extraction/date parsing and document classification |
+| `tests/test_eval_harness.py` | Retrieval eval harness — metric arithmetic, golden-set validation, runner behaviour |
+| `tests/test_tendering_foundation.py` | Tendering foundation — schema resolution, classify labels, Rule 2 grounding validation, requirement dedup, core product dispatch, router wiring |
+| `tests/test_tendering_requirements.py` | Requirement extraction — rule pass, chunk-level grounding guardrail, rule/LLM merge, batching, tender summary, metadata back-fill |
+| `tests/test_tendering_evidence.py` | Evidence matching — retrieval shortlisting, grounding guardrail, score clamping, expiry handling, match query |
+| `tests/test_tendering_readiness.py` | Submission readiness — satisfaction rules, weighted scoring, gap detection and severity, blocker ordering, narrative |
 
 ### Design Principles
 
@@ -578,7 +691,44 @@ pytest tests/ -v
 - Tests cover both the happy path and edge cases (empty/clean corpus, duplicate inserts, ungrounded LLM output)
 - Access control tests cover every role combination explicitly
 
-> Coverage is on the deterministic pipeline logic and access control (pure, DB-free functions). API endpoints, the org/invitation flow, and the RAG retrieval path are not yet covered by automated tests.
+> Coverage is on the deterministic pipeline logic and access control (pure, DB-free functions). API endpoints and the org/invitation flow are not yet covered by automated tests.
+
+### 12.1 Retrieval Evaluation Harness (`backend/eval/`)
+
+Unit tests prove the pipeline logic is correct. They say nothing about whether retrieval finds
+the *right* chunks — which is the ceiling on every answer the system gives, since a chunk that
+is never retrieved can never be cited. The harness measures that.
+
+```bash
+python -m backend.eval lint --golden backend/eval/goldens/investigation.yaml   # validate a golden set
+python -m backend.eval run  --golden backend/eval/goldens/investigation.yaml   # score the live retriever
+python -m backend.eval run  --golden ... --record backend/eval/fixtures/dense-baseline.json
+python -m backend.eval compare --golden ... --baseline <fixture> --candidate hybrid --fail-on-regression
+```
+
+| Module | Role |
+|---|---|
+| `goldens.py` | Golden-set schema + loader. Rejects questions with no ground truth. |
+| `metrics.py` | recall@k, precision@k, hit@k, MRR, nDCG@k, abstention. Pure functions, no I/O. |
+| `retrievers.py` | The A/B seam — `DenseRetriever` (production path), `KeywordRetriever` (the degraded fallback), `FixtureRetriever` (offline replay). |
+| `runner.py` | Runs a golden set, scores it, records/compares fixtures. |
+| `report.py` | Console, markdown, and comparison formatting. |
+
+**Two properties worth knowing:**
+
+1. **Validated vs unvalidated is enforced, not advisory.** A golden question whose `validated_by`
+   is empty is scored into a *provisional* bucket and excluded from the headline number. Ground
+   truth nobody has checked measures nothing — and in a forensic context an unverified metric is
+   worse than none, because it looks like evidence.
+2. **Negative questions are first-class.** Questions the corpus genuinely cannot answer are scored
+   on whether the system *declines*, not on retrieval. Confident invention is the failure mode that
+   matters most here, and it is otherwise unmeasured.
+
+**Status:** the harness is built and tested; **no golden set has been authored yet.** It needs a
+domain expert to write questions against real cases and verify the ground truth by hand — see
+`backend/eval/goldens/README.md` for the workflow and
+`backend/eval/goldens/examples/investigation.example.yaml` for the question shapes to cover.
+Until that exists, there is no retrieval number to quote.
 
 ---
 
