@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from backend.core.auth import get_current_user
 from backend.core.config import get_settings
-from backend.core.db_core import get_user_membership
+from backend.core.db_core import get_user_membership, list_team_member_ids, list_org_members
 from backend.core.orgs import check_org_not_suspended
 from . import db
 
@@ -29,7 +29,12 @@ def _is_platform_admin(user: dict) -> bool:
 
 
 def _get_tendering_org_id(user: dict) -> str:
-    """Return the org_id for the authenticated user on the tendering platform.
+    """Return the org_id for the authenticated user on the tendering platform."""
+    return _get_tendering_membership(user)["org_id"]
+
+
+def _get_tendering_membership(user: dict) -> dict:
+    """Return full membership for the tendering platform.
 
     Returns 404 (not 403) for missing membership so the frontend mock-fallback catches it.
     """
@@ -39,7 +44,21 @@ def _get_tendering_org_id(user: dict) -> str:
     if not membership:
         raise HTTPException(404, "No tendering organisation membership")
     check_org_not_suspended(membership)
-    return membership["org_id"]
+    return membership
+
+
+def _can_access_workspace(workspace: dict, user_id: str, role: str, org_id: str) -> bool:
+    """Check if a user may read a specific workspace based on their role."""
+    if role == "org_admin":
+        return True
+    if role == "supervisor":
+        team_ids = list_team_member_ids(org_id, user_id)
+        return workspace.get("created_by") in ([user_id] + team_ids)
+    # member: own or assigned
+    return (
+        workspace.get("created_by") == user_id
+        or user_id in (workspace.get("team_members") or [])
+    )
 
 
 # ── Request models ─────────────────────────────────────────────────────────────
@@ -108,10 +127,39 @@ class CreateLibraryDocumentIn(BaseModel):
 
 # ── Dashboard stats ────────────────────────────────────────────────────────────
 
+@router.get("/my-team")
+async def get_my_team(user: dict = Depends(get_current_user)):
+    """Return org members the current user may assign to workspaces.
+
+    Supervisors get their invitees; org_admin gets all members; members get empty list.
+    """
+    membership = await asyncio.to_thread(_get_tendering_membership, user)
+    org_id = membership["org_id"]
+    role = membership["role"]
+    if role == "member":
+        return []
+    all_members = await asyncio.to_thread(list_org_members, org_id)
+    if role == "supervisor":
+        user_id = user["user_id"]
+        return [
+            m for m in all_members
+            if m.get("invited_by") == user_id and m["user_id"] != user_id
+        ]
+    # org_admin sees everyone
+    return [m for m in all_members if m["user_id"] != user["user_id"]]
+
+
 @router.get("/stats")
 async def get_stats(user: dict = Depends(get_current_user)):
-    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
-    workspaces = await asyncio.to_thread(db.list_tendering_workspaces, org_id)
+    membership = await asyncio.to_thread(_get_tendering_membership, user)
+    org_id = membership["org_id"]
+    role = membership["role"]
+    if role == "org_admin":
+        workspaces = await asyncio.to_thread(db.list_tendering_workspaces, org_id)
+    elif role == "supervisor":
+        workspaces = await asyncio.to_thread(db.list_tendering_workspaces_for_supervisor, org_id, user["user_id"])
+    else:
+        workspaces = await asyncio.to_thread(db.list_tendering_workspaces_for_member, org_id, user["user_id"])
     active_stages = {"new", "analysing", "preparing", "submitted"}
     active = [workspace for workspace in workspaces if workspace["stage"] in active_stages]
     today = date.today()
@@ -137,23 +185,34 @@ async def get_stats(user: dict = Depends(get_current_user)):
 
 @router.get("/workspaces")
 async def list_workspaces(user: dict = Depends(get_current_user)):
-    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
-    workspaces = await asyncio.to_thread(db.list_tendering_workspaces, org_id)
+    membership = await asyncio.to_thread(_get_tendering_membership, user)
+    org_id = membership["org_id"]
+    role = membership["role"]
+    if role == "org_admin":
+        workspaces = await asyncio.to_thread(db.list_tendering_workspaces, org_id)
+    elif role == "supervisor":
+        workspaces = await asyncio.to_thread(db.list_tendering_workspaces_for_supervisor, org_id, user["user_id"])
+    else:
+        workspaces = await asyncio.to_thread(db.list_tendering_workspaces_for_member, org_id, user["user_id"])
     return workspaces
 
 
 @router.post("/workspaces", status_code=201)
 async def create_workspace(body: CreateWorkspaceIn, user: dict = Depends(get_current_user)):
     org_id = await asyncio.to_thread(_get_tendering_org_id, user)
-    workspace = await asyncio.to_thread(db.create_workspace, org_id, body.model_dump())
+    workspace = await asyncio.to_thread(db.create_workspace, org_id, body.model_dump(), user["user_id"])
     return workspace
 
 
 @router.get("/workspaces/{workspace_id}")
 async def get_workspace(workspace_id: str, user: dict = Depends(get_current_user)):
-    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    membership = await asyncio.to_thread(_get_tendering_membership, user)
+    org_id = membership["org_id"]
+    role = membership["role"]
     workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
     if not workspace or workspace["org_id"] != org_id:
+        raise HTTPException(404, "Workspace not found")
+    if not _can_access_workspace(workspace, user["user_id"], role, org_id):
         raise HTTPException(404, "Workspace not found")
     workspace["documents"] = await asyncio.to_thread(db.list_workspace_documents, workspace_id)
     return workspace

@@ -173,12 +173,12 @@ async def list_cases(user: dict = Depends(get_current_user)):
         role = membership["role"]
         org_id = membership["org_id"]
         if role == "org_admin":
-            created_by = None          # admin sees every case in the org
+            cases = await asyncio.to_thread(db.list_cases, org_id=org_id)
         elif role == "supervisor":
-            created_by = user["user_id"]  # supervisor sees cases they created
+            team_ids = await asyncio.to_thread(db.list_team_member_ids, org_id, user["user_id"])
+            cases = await asyncio.to_thread(db.list_cases_by_creators, org_id, [user["user_id"]] + team_ids)
         else:
-            created_by = membership.get("invited_by")  # member sees their supervisor's cases
-        cases = await asyncio.to_thread(db.list_cases, org_id=org_id, created_by=created_by)
+            cases = await asyncio.to_thread(db.list_cases, org_id=org_id, created_by=user["user_id"])
 
     # Enrich each case concurrently with count-only queries (no rows transferred) — the old loop
     # did two serial DB round-trips per case and pulled every finding row just to count pending.

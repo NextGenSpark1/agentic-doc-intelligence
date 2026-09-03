@@ -327,3 +327,29 @@ def update_member_role(org_id: str, user_id: str, new_role: str) -> None:
 def list_org_cases_count(org_id: str) -> int:
     result = get_client().table("cases").select("case_id", count="exact").eq("org_id", org_id).execute()
     return result.count or 0
+
+
+def list_team_member_ids(org_id: str, supervisor_user_id: str) -> list[str]:
+    rows = (
+        get_client().table("org_members")
+        .select("user_id")
+        .eq("org_id", org_id)
+        .eq("invited_by", supervisor_user_id)
+        .execute()
+        .data or []
+    )
+    return [row["user_id"] for row in rows]
+
+
+def list_cases_by_creators(org_id: str, creator_ids: list[str]) -> list[dict]:
+    if not creator_ids:
+        return []
+    return (
+        get_client().table("cases")
+        .select("*")
+        .eq("org_id", org_id)
+        .in_("created_by", creator_ids)
+        .order("created_at", desc=True)
+        .execute()
+        .data or []
+    )

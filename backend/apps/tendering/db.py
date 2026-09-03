@@ -11,16 +11,7 @@ def _normalize_requirement(req: dict) -> dict:
     return req
 
 
-def list_tendering_workspaces(org_id: str) -> list[dict]:
-    workspaces = (
-        get_client()
-        .table("tender_workspaces")
-        .select("*")
-        .eq("org_id", org_id)
-        .order("created_at", desc=True)
-        .execute()
-        .data
-    ) or []
+def _enrich_workspaces(workspaces: list[dict]) -> list[dict]:
     for workspace in workspaces:
         requirements = (
             get_client()
@@ -37,6 +28,66 @@ def list_tendering_workspaces(org_id: str) -> list[dict]:
     return workspaces
 
 
+def list_tendering_workspaces(org_id: str) -> list[dict]:
+    workspaces = (
+        get_client()
+        .table("tender_workspaces")
+        .select("*")
+        .eq("org_id", org_id)
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    ) or []
+    return _enrich_workspaces(workspaces)
+
+
+def list_tendering_workspaces_for_supervisor(org_id: str, supervisor_user_id: str) -> list[dict]:
+    from backend.core.db_core import list_team_member_ids
+    team_ids = list_team_member_ids(org_id, supervisor_user_id)
+    creator_ids = [supervisor_user_id] + team_ids
+    workspaces = (
+        get_client()
+        .table("tender_workspaces")
+        .select("*")
+        .eq("org_id", org_id)
+        .in_("created_by", creator_ids)
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    ) or []
+    return _enrich_workspaces(workspaces)
+
+
+def list_tendering_workspaces_for_member(org_id: str, user_id: str) -> list[dict]:
+    own = (
+        get_client()
+        .table("tender_workspaces")
+        .select("*")
+        .eq("org_id", org_id)
+        .eq("created_by", user_id)
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    ) or []
+    assigned = (
+        get_client()
+        .table("tender_workspaces")
+        .select("*")
+        .eq("org_id", org_id)
+        .contains("team_members", [user_id])
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    ) or []
+    seen: set[str] = set()
+    combined: list[dict] = []
+    for workspace in own + assigned:
+        if workspace["id"] not in seen:
+            seen.add(workspace["id"])
+            combined.append(workspace)
+    return _enrich_workspaces(combined)
+
+
 def get_tendering_workspace(workspace_id: str) -> dict | None:
     rows = (
         get_client()
@@ -49,7 +100,7 @@ def get_tendering_workspace(workspace_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def create_workspace(org_id: str, data: dict) -> dict:
+def create_workspace(org_id: str, data: dict, created_by: str = "") -> dict:
     row = (
         get_client()
         .table("tender_workspaces")
@@ -62,6 +113,7 @@ def create_workspace(org_id: str, data: dict) -> dict:
             "closing_date": data.get("closing_date"),
             "contract_value": data.get("contract_value", 0),
             "currency": data.get("currency", "USD"),
+            "created_by": created_by,
         })
         .execute()
         .data
