@@ -1,12 +1,13 @@
-import { useState, useRef } from 'react';
-import { FileText, Users, Upload, X, CheckCircle2, FileCode, Loader2, CloudUpload } from 'lucide-react';
-import type { WorkspaceStage } from '../../types';
+import { useState, useRef, useEffect } from 'react';
+import { FileText, Users, Upload, X, CheckCircle2, FileCode, Loader2, CloudUpload, UserPlus } from 'lucide-react';
+import type { WorkspaceStage, OrgMember } from '../../types';
 import toast from 'react-hot-toast';
 import { StageBadge } from '../Badge';
 import { daysUntil, formatCurrency, formatDate, readinessColour } from '../../lib/utils';
-import { updateWorkspace, addWorkspaceDocument } from '../../api/tenders';
+import { updateWorkspace, addWorkspaceDocument, fetchMyTeam } from '../../api/tenders';
 import { supabase } from '../../lib/supabase';
 import type { TenderWorkspace, WorkspaceDocument } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 
 // ─── Mock extracted text per document ─────────────────────────────────────────
 
@@ -492,13 +493,62 @@ const STAGE_FLOW: { value: WorkspaceStage; label: string }[] = [
 ];
 
 export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
+  const { orgCtx } = useAuth();
+  const role = orgCtx?.role;
+  const canManageTeam = role === 'org_admin' || role === 'supervisor';
+
   const [viewingDoc, setViewingDoc] = useState<WorkspaceDocument | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [currentStage, setCurrentStage] = useState(workspace.stage);
   const [updatingStage, setUpdatingStage] = useState(false);
   const [documents, setDocuments] = useState<WorkspaceDocument[]>(workspace.documents ?? []);
+  const [currentTeamIds, setCurrentTeamIds] = useState<string[]>(workspace.team_members ?? []);
+  const [assignableMembers, setAssignableMembers] = useState<OrgMember[]>([]);
+  const [showAddDropdown, setShowAddDropdown] = useState(false);
+  const [addingMember, setAddingMember] = useState(false);
   const days = daysUntil(workspace.closing_date);
   const isActive = ['new', 'analysing', 'preparing'].includes(workspace.stage);
+
+  useEffect(() => {
+    if (!canManageTeam) return;
+    fetchMyTeam().then(setAssignableMembers).catch(() => {});
+  }, [canManageTeam]);
+
+  function resolveName(userId: string): string {
+    const found = assignableMembers.find((member) => member.user_id === userId);
+    if (found) return found.full_name ?? found.email;
+    return userId.includes(' ') ? userId : userId.slice(0, 8) + '…';
+  }
+
+  function getInitials(displayName: string): string {
+    return displayName.split(' ').map((part) => part[0]).join('').toUpperCase().slice(0, 2);
+  }
+
+  async function handleAddMember(memberId: string) {
+    setAddingMember(true);
+    setShowAddDropdown(false);
+    try {
+      const newIds = [...currentTeamIds, memberId];
+      await updateWorkspace(workspace.id, { team_members: newIds });
+      setCurrentTeamIds(newIds);
+    } catch {
+      toast.error('Failed to add team member');
+    } finally {
+      setAddingMember(false);
+    }
+  }
+
+  async function handleRemoveMember(memberId: string) {
+    try {
+      const newIds = currentTeamIds.filter((identifier) => identifier !== memberId);
+      await updateWorkspace(workspace.id, { team_members: newIds });
+      setCurrentTeamIds(newIds);
+    } catch {
+      toast.error('Failed to remove team member');
+    }
+  }
+
+  const availableToAdd = assignableMembers.filter((member) => !currentTeamIds.includes(member.user_id));
 
   async function handleStageChange(newStage: TenderWorkspace['stage']) {
     if (newStage === currentStage) return;
@@ -640,21 +690,62 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
                 <Users size={15} className="text-teal" />
                 <h3 className="text-sm font-semibold text-text">Team</h3>
               </div>
-              <button className="text-xs text-teal hover:text-teal-soft font-medium">Add</button>
-            </div>
-            <div className="space-y-2">
-              {(workspace.team_members ?? []).map((member, index) => {
-                const initials = member.split(' ').map((namePart) => namePart[0]).join('').toUpperCase().slice(0, 2);
-                return (
-                  <div key={member} className="flex items-center gap-3">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${memberColours[index % memberColours.length]}`}>
-                      {initials}
+              {canManageTeam && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowAddDropdown(!showAddDropdown)}
+                    disabled={addingMember || availableToAdd.length === 0}
+                    className="flex items-center gap-1 text-xs text-teal hover:text-teal-soft font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <UserPlus size={12} /> Add
+                  </button>
+                  {showAddDropdown && availableToAdd.length > 0 && (
+                    <div className="absolute right-0 top-full mt-1 bg-panel border border-border rounded-lg shadow-xl z-10 min-w-[168px]">
+                      {availableToAdd.map((member) => {
+                        const displayName = member.full_name ?? member.email;
+                        return (
+                          <button
+                            key={member.user_id}
+                            onClick={() => handleAddMember(member.user_id)}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-text-mid hover:bg-panel-2 transition-colors first:rounded-t-lg last:rounded-b-lg"
+                          >
+                            <div className="w-5 h-5 rounded-full bg-teal/20 text-teal flex items-center justify-center text-[9px] font-bold flex-shrink-0">
+                              {displayName.split(' ').map((part: string) => part[0]).join('').toUpperCase().slice(0, 2)}
+                            </div>
+                            <span className="truncate">{displayName}</span>
+                          </button>
+                        );
+                      })}
                     </div>
-                    <span className="text-sm text-text-mid">{member}</span>
-                  </div>
-                );
-              })}
+                  )}
+                </div>
+              )}
             </div>
+            {currentTeamIds.length === 0 ? (
+              <p className="text-xs text-text-mute italic">No team members assigned</p>
+            ) : (
+              <div className="space-y-2">
+                {currentTeamIds.map((memberId, index) => {
+                  const displayName = resolveName(memberId);
+                  return (
+                    <div key={memberId} className="flex items-center gap-3 group">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${memberColours[index % memberColours.length]}`}>
+                        {getInitials(displayName)}
+                      </div>
+                      <span className="text-sm text-text-mid flex-1 truncate">{displayName}</span>
+                      {canManageTeam && (
+                        <button
+                          onClick={() => handleRemoveMember(memberId)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-text-mute hover:text-red p-0.5"
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="bg-panel border border-border rounded-xl p-5">

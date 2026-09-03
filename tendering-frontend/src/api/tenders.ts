@@ -6,6 +6,7 @@ import type {
   BidDecisionReport,
   LibraryDocument,
   DashboardStats,
+  OrgMember,
 } from '../types';
 
 const api = axios.create({ baseURL: import.meta.env.VITE_API_URL });
@@ -524,9 +525,12 @@ export const createWorkspace = (data: {
 
 export const updateWorkspace = (
   id: string,
-  patch: Partial<Pick<TenderWorkspace, 'bid_decision' | 'stage' | 'title' | 'reference' | 'buyer' | 'category' | 'closing_date' | 'contract_value' | 'currency' | 'readiness_score' | 'description'>>,
+  patch: Partial<Pick<TenderWorkspace, 'bid_decision' | 'stage' | 'title' | 'reference' | 'buyer' | 'category' | 'closing_date' | 'contract_value' | 'currency' | 'readiness_score' | 'description' | 'team_members'>>,
 ): Promise<TenderWorkspace> =>
   api.patch<TenderWorkspace>(`/tendering/workspaces/${id}`, patch).then((response) => response.data);
+
+export const fetchMyTeam = (): Promise<OrgMember[]> =>
+  withMockFallback(() => api.get<OrgMember[]>('/tendering/my-team').then((response) => response.data), []);
 
 export const updateRequirement = (
   reqId: string,
