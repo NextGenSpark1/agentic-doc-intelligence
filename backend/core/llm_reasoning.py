@@ -20,7 +20,14 @@ from typing import Any
 from . import llm
 
 
-def ask(system_prompt: str, payload: dict, case_id: str) -> Any | None:
+def ask(system_prompt: str, payload: dict, case_id: str | None = None,
+        tender_id: str | None = None) -> Any | None:
+    """Run one grounded reasoning pass. Never raises — see the module docstring.
+
+    Pass `case_id` for an investigation workspace or `tender_id` for a tender one; the failure
+    audit is written against whichever is given, so a dead LLM tier is diagnosable from either
+    product's audit trail.
+    """
     try:
         raw = llm.complete(
             tier="case_reasoning",
@@ -32,10 +39,16 @@ def ask(system_prompt: str, payload: dict, case_id: str) -> Any | None:
         )
         return json.loads(raw)
     except Exception as exc:
-        from .. import db
-
         try:
-            db.write_audit(case_id, "system", "case_reasoning_failed", {"error": str(exc)[:500]})
+            # `backend.core.db_core`, not `backend.db` — the latter has not existed since the
+            # core/apps split, and importing it here raised ImportError out of ask(), breaking
+            # the "never raises" contract every LLM-augmented stage depends on for its
+            # rule-only fallback. Kept inside the try so audit logging can still never break
+            # that fallback.
+            from . import db_core
+
+            db_core.write_audit(case_id, "system", "case_reasoning_failed",
+                                {"error": str(exc)[:500]}, tender_id=tender_id)
         except Exception:
             pass  # audit logging must never break the graceful rule-only fallback
         return None

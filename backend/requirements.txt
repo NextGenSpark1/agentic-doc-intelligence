@@ -15,5 +15,8 @@ landingai-ade           # LandingAI ADE — replaces deprecated agentic-doc
 litellm                 # provider-agnostic LLM + embeddings router
 google-generativeai     # required by LiteLLM for gemini/ model prefix (Google AI Studio)
 
+# --- Evaluation ---
+PyYAML                  # golden-set files for the retrieval eval harness (backend/eval)
+
 # --- Email ---
 resend                  # transactional email for invitations (optional — skipped if RESEND_API_KEY not set)

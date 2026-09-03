@@ -251,6 +251,39 @@ def create_workspace_document(workspace_id: str, data: dict) -> dict:
     return row[0]
 
 
+def get_workspace_document(doc_id: str) -> dict | None:
+    rows = (
+        get_client()
+        .table("workspace_documents")
+        .select("*")
+        .eq("id", doc_id)
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None
+
+
+def link_core_document_to_workspace_doc(workspace_doc_id: str, core_document_id: str) -> None:
+    """Set the document_id FK on a workspace_documents row after the core doc is created."""
+    get_client().table("workspace_documents").update(
+        {"document_id": core_document_id}
+    ).eq("id", workspace_doc_id).execute()
+
+
+def delete_workspace_document(doc_id: str) -> None:
+    """Delete workspace document row and its linked core document (chunks cascade)."""
+    row = get_workspace_document(doc_id)
+    if not row:
+        return
+    core_document_id = row.get("document_id")
+    get_client().table("workspace_documents").delete().eq("id", doc_id).execute()
+    if core_document_id:
+        from backend.core import db_core as _core
+        core_doc = _core.get_document(core_document_id)
+        if core_doc:
+            _core.delete_document(core_document_id, core_doc.get("storage_path", ""))
+
+
 def create_library_document(org_id: str, data: dict) -> dict:
     row = (
         get_client()
@@ -270,6 +303,10 @@ def create_library_document(org_id: str, data: dict) -> dict:
         .data
     )
     return row[0]
+
+
+def delete_library_document(doc_id: str) -> None:
+    get_client().table("library_documents").delete().eq("doc_id", doc_id).execute()
 
 
 def update_library_document(doc_id: str, patch: dict) -> dict | None:
@@ -298,3 +335,117 @@ def list_library_documents(org_id: str) -> list[dict]:
         .execute()
         .data
     ) or []
+
+
+# ─────────────────────── Pipeline support ────────────────────────────────────
+
+import hashlib as _hashlib
+
+
+def requirement_hash(row: dict) -> str:
+    """Stable dedup key — description + source doc + page."""
+    text = (row.get("description") or "").strip().lower()
+    source = str(row.get("source_doc") or row.get("source_document_id") or "")
+    page = str(row.get("source_page") or "")
+    return _hashlib.md5(f"{text}|{source}|{page}".encode()).hexdigest()
+
+
+def list_pipeline_documents(workspace_id: str) -> list[dict]:
+    """Return workspace documents that have a linked core document_id (processable by ADE)."""
+    rows = (
+        get_client()
+        .table("workspace_documents")
+        .select("*")
+        .eq("workspace_id", workspace_id)
+        .execute()
+        .data
+    ) or []
+    # Return all docs; callers filter on extraction_status via the core documents row.
+    return rows
+
+
+def get_core_document(document_id: str) -> dict | None:
+    rows = get_client().table("documents").select("*").eq("document_id", document_id).execute().data
+    return rows[0] if rows else None
+
+
+def list_core_documents_for_workspace(workspace_id: str) -> list[dict]:
+    return (
+        get_client()
+        .table("documents")
+        .select("*")
+        .eq("workspace_id", workspace_id)
+        .execute()
+        .data
+    ) or []
+
+
+def delete_workspace_requirements(workspace_id: str, pending_only: bool = False) -> None:
+    """Delete requirements for a workspace. If pending_only, only deletes unchecked ones."""
+    query = get_client().table("workspace_requirements").delete().eq("workspace_id", workspace_id)
+    if pending_only:
+        query = query.eq("status", "unchecked")
+    query.execute()
+
+
+def insert_workspace_requirement(data: dict) -> dict | None:
+    try:
+        return get_client().table("workspace_requirements").insert(data).execute().data[0]
+    except Exception:
+        return None
+
+
+def list_workspace_requirements_raw(workspace_id: str) -> list[dict]:
+    """Return requirements without frontend field renaming — for pipeline use."""
+    return (
+        get_client()
+        .table("workspace_requirements")
+        .select("*")
+        .eq("workspace_id", workspace_id)
+        .execute()
+        .data
+    ) or []
+
+
+def list_evidence_links(workspace_id: str) -> list[dict]:
+    return (
+        get_client()
+        .table("evidence_links")
+        .select("*")
+        .eq("workspace_id", workspace_id)
+        .execute()
+        .data
+    ) or []
+
+
+def upsert_evidence_link(data: dict) -> dict | None:
+    try:
+        return (
+            get_client()
+            .table("evidence_links")
+            .upsert(data, on_conflict="req_id,doc_id")
+            .execute()
+            .data[0]
+        )
+    except Exception:
+        return None
+
+
+def write_workspace_audit(workspace_id: str, actor: str, action: str, detail: dict | None = None) -> None:
+    get_client().table("audit_log").insert({
+        "case_id": None,
+        "workspace_id": workspace_id,
+        "actor": actor,
+        "action": action,
+        "detail": detail or {},
+    }).execute()
+
+
+def get_extraction_by_document(document_id: str) -> dict | None:
+    from backend.core.db_core import get_extraction_by_document as _core_get
+    return _core_get(document_id)
+
+
+def list_chunks(document_id: str) -> list[dict]:
+    from backend.core.db_core import list_chunks as _core_list
+    return _core_list(document_id)
