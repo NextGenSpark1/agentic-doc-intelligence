@@ -66,6 +66,19 @@ class UpdateWorkspaceIn(BaseModel):
     bid_decision: Optional[str] = None
     readiness_score: Optional[int] = None
     description: Optional[str] = None
+    team_members: Optional[list[str]] = None
+
+
+class UpdateLibraryDocumentIn(BaseModel):
+    title: Optional[str] = None
+    filename: Optional[str] = None
+    category: Optional[str] = None
+    file_type: Optional[str] = None
+    issue_date: Optional[date] = None
+    expiry_date: Optional[date] = None
+    tags: Optional[list[str]] = None
+    url: Optional[str] = None
+    verification_status: Optional[str] = None
 
 
 class UpdateRequirementIn(BaseModel):
@@ -218,6 +231,8 @@ async def update_requirement(
     )
     if not updated:
         raise HTTPException(500, "Update failed")
+    if body.status is not None:
+        await asyncio.to_thread(db.recalculate_workspace_readiness, workspace["id"])
     return updated
 
 
@@ -227,6 +242,22 @@ async def update_requirement(
 async def list_library(user: dict = Depends(get_current_user)):
     org_id = await asyncio.to_thread(_get_tendering_org_id, user)
     return await asyncio.to_thread(db.list_library_documents, org_id)
+
+
+@router.patch("/library/{doc_id}")
+async def update_library_document(
+    doc_id: str,
+    body: UpdateLibraryDocumentIn,
+    user: dict = Depends(get_current_user),
+):
+    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    docs = await asyncio.to_thread(db.list_library_documents, org_id)
+    if not any(d["doc_id"] == doc_id for d in docs):
+        raise HTTPException(404, "Document not found")
+    updated = await asyncio.to_thread(db.update_library_document, doc_id, body.model_dump(exclude_none=True))
+    if not updated:
+        raise HTTPException(500, "Update failed")
+    return updated
 
 
 @router.post("/library", status_code=201)

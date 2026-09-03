@@ -148,6 +148,25 @@ def update_requirement(req_id: str, patch: dict) -> dict | None:
     return _normalize_requirement(row[0]) if row else None
 
 
+def recalculate_workspace_readiness(workspace_id: str) -> int:
+    requirements = (
+        get_client()
+        .table("workspace_requirements")
+        .select("status")
+        .eq("workspace_id", workspace_id)
+        .execute()
+        .data
+    ) or []
+    total = len(requirements)
+    if not total:
+        return 0
+    met = sum(1 for r in requirements if r["status"] == "met")
+    partial = sum(1 for r in requirements if r["status"] == "partial")
+    score = round((met + partial * 0.5) / total * 100)
+    get_client().table("tender_workspaces").update({"readiness_score": score}).eq("id", workspace_id).execute()
+    return score
+
+
 def get_workspace_bid_decision(workspace_id: str) -> dict | None:
     rows = (
         get_client()
@@ -199,6 +218,22 @@ def create_library_document(org_id: str, data: dict) -> dict:
         .data
     )
     return row[0]
+
+
+def update_library_document(doc_id: str, patch: dict) -> dict | None:
+    allowed = {"title", "filename", "category", "file_type", "issue_date", "expiry_date", "tags", "url", "verification_status"}
+    safe_patch = {key: value for key, value in patch.items() if key in allowed and value is not None}
+    if not safe_patch:
+        return None
+    row = (
+        get_client()
+        .table("library_documents")
+        .update(safe_patch)
+        .eq("doc_id", doc_id)
+        .execute()
+        .data
+    )
+    return row[0] if row else None
 
 
 def list_library_documents(org_id: str) -> list[dict]:
