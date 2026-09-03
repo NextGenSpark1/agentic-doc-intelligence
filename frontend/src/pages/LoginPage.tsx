@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabaseClient'
+import RequestAccessModal from '../components/RequestAccessModal'
 
 type Mode = 'login' | 'forgot' | 'sent'
 
@@ -14,6 +15,7 @@ export default function LoginPage() {
   const inviteToken = searchParams.get('invite')
 
   const [mode, setMode] = useState<Mode>('login')
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   // login
   const [email, setEmail] = useState('')
@@ -89,14 +91,30 @@ export default function LoginPage() {
       </div>
       <div className="relative z-10">
         <div className="w-14 h-1 bg-teal rounded-full mb-8" />
-        <h2 className="text-white text-3xl font-semibold leading-snug mb-4">
-          Agentic document<br />
-          <span className="text-teal">intelligence</span> for<br />
-          forensic teams.
+        <h2 className="text-white text-3xl font-semibold leading-snug mb-5">
+          Investigator-centric<br />
+          <span className="text-teal">document intelligence.</span>
         </h2>
-        <p className="text-white/50 text-sm leading-relaxed max-w-xs">
-          Ingest, extract, and reason over large document corpora using LLM-driven pipelines built for investigators.
+        <p className="text-white/55 text-sm leading-relaxed mb-8 max-w-xs">
+          Turn complex case files into traceable evidence, connected entities, timelines and actionable findings — with every insight linked back to its source.
         </p>
+        <p className="text-white/35 text-xs font-semibold uppercase tracking-widest mb-4">
+          Built to help investigators answer
+        </p>
+        <div className="flex flex-col gap-0">
+          {[
+            'What evidence supports this?',
+            'How reliable is it?',
+            'What should I do next?',
+          ].map((question, index) => (
+            <div key={index} className="flex items-center gap-3 py-3 border-t border-white/10 last:border-b last:border-white/10">
+              <span className="font-mono text-[10px] font-semibold text-teal bg-teal/15 rounded px-2 py-0.5 shrink-0">
+                0{index + 1}
+              </span>
+              <span className="text-white/65 text-sm">{question}</span>
+            </div>
+          ))}
+        </div>
       </div>
       <p className="relative z-10 text-white/25 text-xs">&copy; {new Date().getFullYear()} NextGen Spark</p>
     </div>
@@ -321,13 +339,18 @@ export default function LoginPage() {
           </form>
 
           <p className="text-center text-sm text-text-mute mt-8">
-            Don&apos;t have an account?{' '}
-            <Link to="/register" className="text-teal hover:text-teal-soft font-medium transition-colors">
-              Create one
-            </Link>
+            Don&apos;t have access?{' '}
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="text-teal hover:text-teal-soft font-medium transition-colors"
+            >
+              Request access
+            </button>
           </p>
         </div>
       </div>
+
+      {isModalOpen && <RequestAccessModal onClose={() => setIsModalOpen(false)} />}
     </div>
   )
 }
