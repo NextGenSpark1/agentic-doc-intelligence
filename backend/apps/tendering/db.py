@@ -298,3 +298,117 @@ def list_library_documents(org_id: str) -> list[dict]:
         .execute()
         .data
     ) or []
+
+
+# ─────────────────────── Pipeline support ────────────────────────────────────
+
+import hashlib as _hashlib
+
+
+def requirement_hash(row: dict) -> str:
+    """Stable dedup key — description + source doc + page."""
+    text = (row.get("description") or "").strip().lower()
+    source = str(row.get("source_doc") or row.get("source_document_id") or "")
+    page = str(row.get("source_page") or "")
+    return _hashlib.md5(f"{text}|{source}|{page}".encode()).hexdigest()
+
+
+def list_pipeline_documents(workspace_id: str) -> list[dict]:
+    """Return workspace documents that have a linked core document_id (processable by ADE)."""
+    rows = (
+        get_client()
+        .table("workspace_documents")
+        .select("*")
+        .eq("workspace_id", workspace_id)
+        .execute()
+        .data
+    ) or []
+    # Return all docs; callers filter on extraction_status via the core documents row.
+    return rows
+
+
+def get_core_document(document_id: str) -> dict | None:
+    rows = get_client().table("documents").select("*").eq("document_id", document_id).execute().data
+    return rows[0] if rows else None
+
+
+def list_core_documents_for_workspace(workspace_id: str) -> list[dict]:
+    return (
+        get_client()
+        .table("documents")
+        .select("*")
+        .eq("workspace_id", workspace_id)
+        .execute()
+        .data
+    ) or []
+
+
+def delete_workspace_requirements(workspace_id: str, pending_only: bool = False) -> None:
+    """Delete requirements for a workspace. If pending_only, only deletes unchecked ones."""
+    query = get_client().table("workspace_requirements").delete().eq("workspace_id", workspace_id)
+    if pending_only:
+        query = query.eq("status", "unchecked")
+    query.execute()
+
+
+def insert_workspace_requirement(data: dict) -> dict | None:
+    try:
+        return get_client().table("workspace_requirements").insert(data).execute().data[0]
+    except Exception:
+        return None
+
+
+def list_workspace_requirements_raw(workspace_id: str) -> list[dict]:
+    """Return requirements without frontend field renaming — for pipeline use."""
+    return (
+        get_client()
+        .table("workspace_requirements")
+        .select("*")
+        .eq("workspace_id", workspace_id)
+        .execute()
+        .data
+    ) or []
+
+
+def list_evidence_links(workspace_id: str) -> list[dict]:
+    return (
+        get_client()
+        .table("evidence_links")
+        .select("*")
+        .eq("workspace_id", workspace_id)
+        .execute()
+        .data
+    ) or []
+
+
+def upsert_evidence_link(data: dict) -> dict | None:
+    try:
+        return (
+            get_client()
+            .table("evidence_links")
+            .upsert(data, on_conflict="req_id,doc_id")
+            .execute()
+            .data[0]
+        )
+    except Exception:
+        return None
+
+
+def write_workspace_audit(workspace_id: str, actor: str, action: str, detail: dict | None = None) -> None:
+    get_client().table("audit_log").insert({
+        "case_id": None,
+        "workspace_id": workspace_id,
+        "actor": actor,
+        "action": action,
+        "detail": detail or {},
+    }).execute()
+
+
+def get_extraction_by_document(document_id: str) -> dict | None:
+    from backend.core.db_core import get_extraction_by_document as _core_get
+    return _core_get(document_id)
+
+
+def list_chunks(document_id: str) -> list[dict]:
+    from backend.core.db_core import list_chunks as _core_list
+    return _core_list(document_id)

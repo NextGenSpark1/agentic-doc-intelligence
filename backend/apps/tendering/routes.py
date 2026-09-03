@@ -10,7 +10,7 @@ import asyncio
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
 from backend.core.auth import get_current_user
@@ -247,6 +247,38 @@ async def add_workspace_document(
     if not workspace or workspace["org_id"] != org_id:
         raise HTTPException(404, "Workspace not found")
     return await asyncio.to_thread(db.create_workspace_document, workspace_id, body.model_dump())
+
+
+@router.post("/workspaces/{workspace_id}/analyse", status_code=202)
+async def analyse_workspace(
+    workspace_id: str,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(get_current_user),
+):
+    """Trigger the pipeline: extract requirements → summarise → readiness review.
+
+    Returns immediately (202); the pipeline runs in a background task. The workspace
+    stage is set to 'analysing' at once so the UI can show progress.
+    """
+    membership = await asyncio.to_thread(_get_tendering_membership, user)
+    org_id = membership["org_id"]
+    role = membership["role"]
+    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
+    if not workspace or workspace["org_id"] != org_id:
+        raise HTTPException(404, "Workspace not found")
+    if not _can_access_workspace(workspace, user["user_id"], role, org_id):
+        raise HTTPException(404, "Workspace not found")
+
+    await asyncio.to_thread(db.update_workspace, workspace_id, {"stage": "analysing"})
+
+    def _run_pipeline() -> None:
+        from .pipeline import run_workspace_analysis
+        result = run_workspace_analysis(workspace_id)
+        next_stage = "new" if "error" in result else "preparing"
+        db.update_workspace(workspace_id, {"stage": next_stage})
+
+    background_tasks.add_task(_run_pipeline)
+    return {"status": "analysing", "workspace_id": workspace_id}
 
 
 @router.get("/workspaces/{workspace_id}/requirements")
