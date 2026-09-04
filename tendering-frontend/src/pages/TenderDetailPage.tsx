@@ -180,7 +180,7 @@ export function TenderDetailPage() {
         {activeTab === 'summary' && <SummaryTab workspace={workspace} onWorkspaceChange={handleWorkspaceChange} />}
         {activeTab === 'requirements' && <RequirementsTab requirements={requirements} />}
         {activeTab === 'compliance' && <ComplianceMatrixTab requirements={requirements} libraryDocs={libraryDocs} />}
-        {activeTab === 'bid' && <BidDecisionTab report={bidReport} workspace={workspace} />}
+        {activeTab === 'bid' && <BidDecisionTab report={bidReport} workspace={workspace} onWorkspaceChange={handleWorkspaceChange} />}
         {activeTab === 'chat' && <ChatTab workspace={workspace} />}
       </div>
     </div>

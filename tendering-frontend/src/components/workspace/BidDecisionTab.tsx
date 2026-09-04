@@ -9,9 +9,11 @@ import type { BidDecisionReport, TenderWorkspace } from '../../types';
 export function BidDecisionTab({
   report,
   workspace,
+  onWorkspaceChange,
 }: {
   report: BidDecisionReport | null;
   workspace: TenderWorkspace;
+  onWorkspaceChange?: (patch: Partial<TenderWorkspace>) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState<'bid' | 'no_bid' | null>(null);
@@ -72,6 +74,7 @@ export function BidDecisionTab({
       }
       await updateWorkspace(workspace.id, patch);
       setConfirmed(decision);
+      onWorkspaceChange?.(patch);
       toast.success(decision === 'bid' ? 'Bid decision confirmed — stage set to Submitted' : 'No-bid decision recorded');
     } catch {
       toast.error('Failed to save decision');
