@@ -129,7 +129,6 @@ export interface Requirement {
   status: RequirementStatus;
   owner?: string;
   notes?: string;
-  source_page?: number;
   source_doc?: string;
   page?: number;
   clause?: string;

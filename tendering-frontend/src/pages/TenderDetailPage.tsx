@@ -38,17 +38,19 @@ export function TenderDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([
+    Promise.allSettled([
       getWorkspace(id),
       getRequirements(id),
       getBidDecision(id),
       getLibraryDocuments(),
-    ]).then(([ws, reqs, bid, libDocs]) => {
-      setWorkspace(ws);
-      prevStageRef.current = ws.stage;
-      setRequirements(reqs);
-      setBidReport(bid);
-      setLibraryDocs(libDocs);
+    ]).then(([wsResult, reqsResult, bidResult, libResult]) => {
+      if (wsResult.status === 'fulfilled') {
+        setWorkspace(wsResult.value);
+        prevStageRef.current = wsResult.value.stage;
+      }
+      if (reqsResult.status === 'fulfilled') setRequirements(reqsResult.value);
+      if (bidResult.status === 'fulfilled') setBidReport(bidResult.value);
+      if (libResult.status === 'fulfilled') setLibraryDocs(libResult.value);
     }).finally(() => setLoading(false));
   }, [id]);
 

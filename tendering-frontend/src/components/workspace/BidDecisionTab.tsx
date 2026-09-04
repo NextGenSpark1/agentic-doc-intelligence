@@ -66,9 +66,13 @@ export function BidDecisionTab({
   async function handleConfirm(decision: 'bid' | 'no_bid') {
     setConfirming(true);
     try {
-      await updateWorkspace(workspace.id, { bid_decision: decision });
+      const patch: Parameters<typeof updateWorkspace>[1] = { bid_decision: decision };
+      if (['new', 'analysing', 'preparing'].includes(workspace.stage)) {
+        patch.stage = decision === 'bid' ? 'submitted' : 'no_bid';
+      }
+      await updateWorkspace(workspace.id, patch);
       setConfirmed(decision);
-      toast.success(decision === 'bid' ? 'Bid decision confirmed' : 'No-bid decision recorded');
+      toast.success(decision === 'bid' ? 'Bid decision confirmed — stage set to Submitted' : 'No-bid decision recorded');
     } catch {
       toast.error('Failed to save decision');
     } finally {
