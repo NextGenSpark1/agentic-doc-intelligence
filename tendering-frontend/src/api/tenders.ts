@@ -540,9 +540,18 @@ export const updateRequirement = (
 
 export const addWorkspaceDocument = (
   workspaceId: string,
-  data: { name: string; category?: string; file_type?: string; size_bytes?: number; url?: string },
+  data: { name: string; category?: string; file_type?: string; size_bytes?: number; url?: string; storage_path?: string },
 ): Promise<WorkspaceDocument> =>
   api.post<WorkspaceDocument>(`/tendering/workspaces/${workspaceId}/documents`, data).then((response) => response.data);
+
+export const extractWorkspaceDocument = (workspaceId: string, docId: string): Promise<{ status: string }> =>
+  api.post<{ status: string }>(`/tendering/workspaces/${workspaceId}/documents/${docId}/extract`).then((r) => r.data);
+
+export const deleteWorkspaceDocument = (workspaceId: string, docId: string): Promise<void> =>
+  api.delete(`/tendering/workspaces/${workspaceId}/documents/${docId}`).then(() => undefined);
+
+export const analyseWorkspace = (workspaceId: string): Promise<{ status: string }> =>
+  api.post<{ status: string }>(`/tendering/workspaces/${workspaceId}/analyse`).then((r) => r.data);
 
 export const addLibraryDocument = (data: {
   title: string;
@@ -553,3 +562,9 @@ export const addLibraryDocument = (data: {
   url?: string;
 }): Promise<LibraryDocument> =>
   api.post<LibraryDocument>('/tendering/library', data).then((response) => response.data);
+
+export const deleteLibraryDocument = (docId: string): Promise<void> =>
+  api.delete(`/tendering/library/${docId}`).then(() => undefined);
+
+export const replaceLibraryDocument = (docId: string, data: { url: string; filename?: string }): Promise<LibraryDocument> =>
+  api.patch<LibraryDocument>(`/tendering/library/${docId}`, data).then((r) => r.data);

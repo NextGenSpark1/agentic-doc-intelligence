@@ -70,6 +70,8 @@ export type RequirementCategory =
   | 'certification'
   | 'other';
 
+export type ExtractionStatus = 'uploaded' | 'queued' | 'processing' | 'done' | 'failed';
+
 export interface WorkspaceDocument {
   id: string;
   name: string;
@@ -78,9 +80,11 @@ export interface WorkspaceDocument {
   size_kb?: number;
   size_bytes?: number;
   url?: string;
-  uploaded_at?: string;
-  verified?: boolean;
+  storage_path?: string;
+  document_id?: string;
+  extraction_status?: ExtractionStatus;
   page_count?: number;
+  uploaded_at?: string;
 }
 
 export interface TenderWorkspace {
@@ -101,6 +105,7 @@ export interface TenderWorkspace {
   requirements_partial?: number;
   requirements_gap?: number;
   description?: string;
+  ai_summary?: string;
   documents?: WorkspaceDocument[];
   team_members?: string[];
   created_at: string;
