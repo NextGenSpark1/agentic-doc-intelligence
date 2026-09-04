@@ -161,15 +161,18 @@ def list_workspace_documents(workspace_id: str) -> list[dict]:
     # Enrich with extraction_status / page_count from the core documents table.
     linked_ids = [row["document_id"] for row in rows if row.get("document_id")]
     if linked_ids:
-        core_docs = (
-            get_client()
-            .table("documents")
-            .select("document_id, extraction_status, page_count, storage_path")
-            .in_("document_id", linked_ids)
-            .execute()
-            .data
-        ) or []
-        core_map = {doc["document_id"]: doc for doc in core_docs}
+        try:
+            core_docs = (
+                get_client()
+                .table("documents")
+                .select("document_id, extraction_status, page_count, storage_path")
+                .in_("document_id", linked_ids)
+                .execute()
+                .data
+            ) or []
+            core_map = {doc["document_id"]: doc for doc in core_docs}
+        except Exception:
+            core_map = {}
         for row in rows:
             core = core_map.get(row.get("document_id", ""))
             if core:

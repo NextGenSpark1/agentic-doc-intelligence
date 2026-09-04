@@ -481,7 +481,7 @@ async def workspace_chat(
     # Retrieve relevant chunks from extracted documents
     chunks: list[dict] = []
     try:
-        embedding = await asyncio.to_thread(lambda: llm.embed([body.message])[0])
+        embedding = (await asyncio.to_thread(llm.embed, [body.message]))[0]
         chunks = await asyncio.to_thread(db.match_workspace_chunks, workspace_id, embedding, 8)
     except Exception:
         pass
