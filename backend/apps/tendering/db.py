@@ -131,7 +131,7 @@ def update_workspace(workspace_id: str, patch: dict) -> dict | None:
     allowed = {
         "title", "reference", "buyer", "category", "closing_date",
         "contract_value", "currency", "stage", "bid_decision",
-        "readiness_score", "description", "team_members",
+        "readiness_score", "description", "team_members", "ai_summary",
     }
     safe_patch = {key: value for key, value in patch.items() if key in allowed and value is not None}
     if not safe_patch:
@@ -148,7 +148,7 @@ def update_workspace(workspace_id: str, patch: dict) -> dict | None:
 
 
 def list_workspace_documents(workspace_id: str) -> list[dict]:
-    return (
+    rows = (
         get_client()
         .table("workspace_documents")
         .select("*")
@@ -157,6 +157,28 @@ def list_workspace_documents(workspace_id: str) -> list[dict]:
         .execute()
         .data
     ) or []
+
+    # Enrich with extraction_status / page_count from the core documents table.
+    linked_ids = [row["document_id"] for row in rows if row.get("document_id")]
+    if linked_ids:
+        core_docs = (
+            get_client()
+            .table("documents")
+            .select("document_id, extraction_status, page_count, storage_path")
+            .in_("document_id", linked_ids)
+            .execute()
+            .data
+        ) or []
+        core_map = {doc["document_id"]: doc for doc in core_docs}
+        for row in rows:
+            core = core_map.get(row.get("document_id", ""))
+            if core:
+                row["extraction_status"] = core.get("extraction_status", "uploaded")
+                row["page_count"] = core.get("page_count")
+            else:
+                row.setdefault("extraction_status", "uploaded")
+
+    return rows
 
 
 def list_workspace_requirements(workspace_id: str) -> list[dict]:
