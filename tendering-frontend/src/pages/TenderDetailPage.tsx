@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, FileText, Loader2,
@@ -33,6 +33,8 @@ export function TenderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('summary');
 
+  const prevStageRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!id) return;
     Promise.all([
@@ -41,9 +43,25 @@ export function TenderDetailPage() {
       getBidDecision(id),
     ]).then(([ws, reqs, bid]) => {
       setWorkspace(ws);
+      prevStageRef.current = ws.stage;
       setRequirements(reqs);
       setBidReport(bid);
     }).finally(() => setLoading(false));
+  }, [id]);
+
+  const handleWorkspaceChange = useCallback((patch: Partial<TenderWorkspace>) => {
+    setWorkspace((previous) => {
+      if (!previous) return previous;
+      const updated = { ...previous, ...patch };
+      const stageJustCompleted =
+        prevStageRef.current === 'analysing' && updated.stage === 'preparing';
+      prevStageRef.current = updated.stage;
+      if (stageJustCompleted && id) {
+        getRequirements(id).then(setRequirements);
+        getBidDecision(id).then(setBidReport);
+      }
+      return updated;
+    });
   }, [id]);
 
   if (loading) {
@@ -154,7 +172,7 @@ export function TenderDetailPage() {
 
       {/* Tab content */}
       <div className="max-w-6xl mx-auto px-6 py-6">
-        {activeTab === 'summary' && <SummaryTab workspace={workspace} />}
+        {activeTab === 'summary' && <SummaryTab workspace={workspace} onWorkspaceChange={handleWorkspaceChange} />}
         {activeTab === 'requirements' && <RequirementsTab requirements={requirements} />}
         {activeTab === 'compliance' && <ComplianceMatrixTab requirements={requirements} />}
         {activeTab === 'bid' && <BidDecisionTab report={bidReport} workspace={workspace} />}
