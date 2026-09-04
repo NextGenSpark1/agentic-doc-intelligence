@@ -1,33 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
-import { Send, Sparkles } from 'lucide-react';
+import { Send, Sparkles, FileText } from 'lucide-react';
+import { chatWithWorkspace } from '../../api/tenders';
+import type { ChatCitation } from '../../api/tenders';
 import type { TenderWorkspace } from '../../types';
 
 interface ChatMsg {
   role: 'user' | 'assistant';
   text: string;
+  citations?: ChatCitation[];
 }
 
 const STARTER: ChatMsg[] = [
   {
     role: 'assistant',
-    text: "Hi! I'm your AI assistant for this tender. I've analysed the uploaded documents and extracted all requirements. Ask me anything — about specific clauses, how to address a gap, or what a term means.",
+    text: "Hi! I'm your AI assistant for this tender. Once you've extracted at least one document, ask me anything — specific clauses, how to address a gap, what a requirement means, or how to structure your proposal.",
   },
 ];
 
-const MOCK_RESPONSES: Record<string, string> = {
-  'local workforce':
-    "The local workforce requirement (Clause 5.1.a, page 28) mandates ≥40% of total project headcount be nationals. Your current plan is at 28%. To close this gap, you could: (1) partner with a local subcontractor for civil works, (2) hire national technical graduates for support roles, or (3) revise your staffing model to move non-specialist work in-country. Option 1 is fastest before the September 15 deadline.",
-  'iso 27001':
-    "The ISO/IEC 27001 gap is significant — your certificate expired November 2025. Two paths: (1) Fast-track recertification — most auditors can complete a surveillance audit in 4-6 weeks if your ISMS is already built; or (2) propose a 'certification in progress' letter from the certifying body as interim evidence. Check Clause 7.3 wording — it may allow equivalent standards like SOC 2 Type II as an alternative.",
-  noc: "The 24/7 NOC requirement (Clause 7.1) allows for a managed service arrangement — you don't need to own the physical infrastructure. TechOps Ltd or similar ITIL-certified operators could be positioned as a named sub-contractor in Section 4 of your technical proposal. Make sure to include their organisation chart, SLA agreement, and NOC facility details as annexures.",
-  default:
-    "Based on my analysis of the tender documents, I can see this requirement is detailed in the RFP. Let me know if you'd like a deeper explanation or suggestions on how to address it in your proposal.",
-};
-
 const PROMPTS = [
-  'How do we address the local workforce gap?',
-  'What does the NOC requirement mean exactly?',
-  'Can we use an expired ISO 27001 certificate?',
+  'What are the mandatory requirements I still need to address?',
+  'How can we close the biggest compliance gaps?',
+  'Summarise the key technical requirements.',
 ];
 
 export function ChatTab({ workspace }: { workspace: TenderWorkspace }) {
@@ -38,22 +31,29 @@ export function ChatTab({ workspace }: { workspace: TenderWorkspace }) {
 
   async function handleSend() {
     if (!input.trim() || loading) return;
-    const userMsg = input.trim();
+    const userText = input.trim();
     setInput('');
-    setMessages((previous) => [...previous, { role: 'user', text: userMsg }]);
+    setMessages((previous) => [...previous, { role: 'user', text: userText }]);
     setLoading(true);
 
-    await new Promise((resolve) => setTimeout(resolve, 1200 + Math.random() * 800));
+    const history = messages
+      .filter((message) => message.role === 'user' || message.role === 'assistant')
+      .map((message) => ({ role: message.role, content: message.text }));
 
-    const lowercaseMsg = userMsg.toLowerCase();
-    const reply =
-      lowercaseMsg.includes('local') || lowercaseMsg.includes('workforce') ? MOCK_RESPONSES['local workforce'] :
-      lowercaseMsg.includes('27001') || lowercaseMsg.includes('iso 27') || lowercaseMsg.includes('security') ? MOCK_RESPONSES['iso 27001'] :
-      lowercaseMsg.includes('noc') || lowercaseMsg.includes('network operations') ? MOCK_RESPONSES['noc'] :
-      MOCK_RESPONSES['default'];
-
-    setMessages((previous) => [...previous, { role: 'assistant', text: reply }]);
-    setLoading(false);
+    try {
+      const response = await chatWithWorkspace(workspace.id, userText, history);
+      setMessages((previous) => [
+        ...previous,
+        { role: 'assistant', text: response.answer, citations: response.citations },
+      ]);
+    } catch {
+      setMessages((previous) => [
+        ...previous,
+        { role: 'assistant', text: 'Something went wrong. Make sure documents have been extracted before asking questions.' },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -61,7 +61,7 @@ export function ChatTab({ workspace }: { workspace: TenderWorkspace }) {
   }, [messages, loading]);
 
   return (
-    <div className="bg-panel border border-border rounded-xl overflow-hidden flex flex-col" style={{ height: '520px' }}>
+    <div className="bg-panel border border-border rounded-xl overflow-hidden flex flex-col" style={{ height: '560px' }}>
 
       {/* Header */}
       <div className="px-5 py-3.5 border-b border-border flex items-center gap-2 bg-panel-2 flex-shrink-0">
@@ -69,28 +69,46 @@ export function ChatTab({ workspace }: { workspace: TenderWorkspace }) {
           <Sparkles size={12} className="text-teal" />
         </div>
         <span className="text-sm font-semibold text-text">AI Tender Assistant</span>
-        <span className="ml-auto text-[11px] text-text-mute">
-          Context: {workspace.title.split('—')[0].trim()}
+        <span className="ml-auto text-[11px] text-text-mute truncate max-w-[200px]">
+          {workspace.title.split('—')[0].trim()}
         </span>
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-        {messages.map((msg, index) => (
-          <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            {msg.role === 'assistant' && (
+        {messages.map((message, index) => (
+          <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            {message.role === 'assistant' && (
               <div className="w-6 h-6 rounded-full bg-teal/10 flex items-center justify-center mr-2 mt-1 flex-shrink-0">
                 <Sparkles size={11} className="text-teal" />
               </div>
             )}
-            <div
-              className={`max-w-[80%] px-4 py-3 rounded-xl text-sm leading-relaxed ${
-                msg.role === 'user'
-                  ? 'bg-navy text-white rounded-tr-sm'
-                  : 'bg-panel-2 border border-border text-text-mid rounded-tl-sm'
-              }`}
-            >
-              {msg.text}
+            <div className="max-w-[82%] space-y-2">
+              <div
+                className={`px-4 py-3 rounded-xl text-sm leading-relaxed ${
+                  message.role === 'user'
+                    ? 'bg-navy text-white rounded-tr-sm'
+                    : 'bg-panel-2 border border-border text-text-mid rounded-tl-sm'
+                }`}
+              >
+                {message.text}
+              </div>
+
+              {/* Citations */}
+              {message.citations && message.citations.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pl-1">
+                  {message.citations.slice(0, 4).map((citation, citationIndex) => (
+                    <div
+                      key={citation.chunk_id || citationIndex}
+                      className="flex items-center gap-1 px-2 py-1 bg-panel-3 border border-border rounded-lg text-[11px] text-text-mute"
+                      title={citation.quoted_text}
+                    >
+                      <FileText size={10} />
+                      <span>p.{citation.page || '?'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -116,7 +134,7 @@ export function ChatTab({ workspace }: { workspace: TenderWorkspace }) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Quick prompts — only shown until first user message */}
+      {/* Quick prompts — only until first user message */}
       {messages.length === 1 && (
         <div className="px-5 py-3 border-t border-border flex gap-2 flex-wrap bg-panel-2 flex-shrink-0">
           {PROMPTS.map((prompt) => (

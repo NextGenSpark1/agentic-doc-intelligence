@@ -568,3 +568,24 @@ export const deleteLibraryDocument = (docId: string): Promise<void> =>
 
 export const replaceLibraryDocument = (docId: string, data: { url: string; filename?: string }): Promise<LibraryDocument> =>
   api.patch<LibraryDocument>(`/tendering/library/${docId}`, data).then((r) => r.data);
+
+export interface ChatCitation {
+  document_id: string;
+  page: number;
+  quoted_text: string;
+  chunk_id: string;
+}
+
+export interface ChatResponse {
+  answer: string;
+  citations: ChatCitation[];
+}
+
+export const chatWithWorkspace = (
+  workspaceId: string,
+  message: string,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>,
+): Promise<ChatResponse> =>
+  api
+    .post<ChatResponse>(`/tendering/workspaces/${workspaceId}/chat`, { message, history })
+    .then((r) => r.data);
