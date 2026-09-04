@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Library, Upload, Search, AlertCircle, CheckCircle2, Clock,
-  FileText, Download, Calendar, Plus, FolderOpen, X, CloudUpload,
+  FileText, Download, Calendar, Plus, FolderOpen, X, CloudUpload, Trash2,
 } from 'lucide-react';
-import { getLibraryDocuments, addLibraryDocument } from '../api/tenders';
+import { getLibraryDocuments, addLibraryDocument, deleteLibraryDocument, replaceLibraryDocument } from '../api/tenders';
 import { supabase } from '../lib/supabase';
 import { DocCategoryBadge, VerificationBadge } from '../components/Badge';
 import type { LibraryDocument, DocCategory, VerificationStatus } from '../types';
@@ -56,83 +56,218 @@ function ExpiryTag({ expiry_date }: { expiry_date?: string }) {
   );
 }
 
+// ─── Replace modal ────────────────────────────────────────────────────────────
+
+function ReplaceModal({
+  doc,
+  onReplaced,
+  onClose,
+}: {
+  doc: LibraryDocument;
+  onReplaced: (updated: LibraryDocument) => void;
+  onClose: () => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!file) { toast.error('Select a replacement file'); return; }
+    setSubmitting(true);
+    try {
+      const path = `general/${Date.now()}-${file.name}`;
+      const { error: storageError } = await supabase.storage
+        .from('library-documents')
+        .upload(path, file, { contentType: file.type, upsert: false });
+      if (storageError) throw storageError;
+      const { data: { publicUrl } } = supabase.storage.from('library-documents').getPublicUrl(path);
+      const updated = await replaceLibraryDocument(doc.doc_id, { url: publicUrl, filename: file.name });
+      onReplaced(updated);
+      toast.success('Document replaced');
+      onClose();
+    } catch {
+      toast.error('Replace failed');
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-panel rounded-xl border border-border shadow-2xl w-full max-w-sm">
+        <div className="px-6 py-5 border-b border-border">
+          <h2 className="text-base font-semibold text-text">Replace Document</h2>
+          <p className="text-xs text-text-mute mt-0.5 truncate">{doc.title}</p>
+        </div>
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+          {file ? (
+            <div className="flex items-center gap-3 px-3 py-2.5 bg-panel-2 rounded-lg border border-border">
+              <FileText size={16} className="text-teal flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-text truncate">{file.name}</p>
+                <p className="text-[11px] text-text-mute">{(file.size / 1_000_000).toFixed(1)} MB</p>
+              </div>
+              <button type="button" onClick={() => setFile(null)} className="text-text-mute hover:text-red"><X size={13} /></button>
+            </div>
+          ) : (
+            <div
+              onClick={() => inputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => { e.preventDefault(); setDragging(false); setFile(e.dataTransfer.files[0] ?? null); }}
+              className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${dragging ? 'border-teal bg-teal/5' : 'border-border hover:border-teal/50'}`}
+            >
+              <CloudUpload size={24} className="text-text-mute mx-auto mb-2" />
+              <p className="text-sm text-text-mid">Drop new file or <span className="text-teal font-medium">browse</span></p>
+              <input ref={inputRef} type="file" accept=".pdf,.docx,.xlsx" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-3 pt-1">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-text-mid hover:text-text transition-colors">Cancel</button>
+            <button
+              type="submit"
+              disabled={!file || submitting}
+              className="px-5 py-2 bg-navy hover:bg-navy-soft disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-2"
+            >
+              {submitting ? <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Uploading…</> : 'Replace'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Document card ────────────────────────────────────────────────────────────
 
-function DocCard({ doc }: { doc: LibraryDocument }) {
+function DocCard({
+  doc,
+  onDeleted,
+  onReplaced,
+}: {
+  doc: LibraryDocument;
+  onDeleted: (docId: string) => void;
+  onReplaced: (updated: LibraryDocument) => void;
+}) {
+  const [showReplace, setShowReplace] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const expired = doc.verification_status === 'expired';
   const pending = doc.verification_status === 'pending';
 
+  async function handleDelete() {
+    if (!confirm(`Delete "${doc.title}"? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      await deleteLibraryDocument(doc.doc_id);
+      onDeleted(doc.doc_id);
+      toast.success('Document deleted');
+    } catch {
+      toast.error('Delete failed');
+      setDeleting(false);
+    }
+  }
+
   return (
-    <div className={`bg-panel border rounded-xl p-5 flex flex-col transition-all hover:shadow-sm group ${
-      expired ? 'border-red/30 hover:border-red/50' :
-      pending ? 'border-amber/30 hover:border-amber/50' :
-      'border-border hover:border-teal/40'
-    }`}>
-      {/* Header */}
-      <div className="flex items-start gap-3 mb-3">
-        <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-          expired ? 'bg-red-bg' :
-          pending ? 'bg-amber-bg' :
-          'bg-green-bg'
-        }`}>
-          <FileText size={16} className={expired ? 'text-red' : pending ? 'text-amber' : 'text-green'} />
+    <>
+      <div className={`bg-panel border rounded-xl p-5 flex flex-col transition-all hover:shadow-sm group ${
+        expired ? 'border-red/30 hover:border-red/50' :
+        pending ? 'border-amber/30 hover:border-amber/50' :
+        'border-border hover:border-teal/40'
+      }`}>
+        {/* Header */}
+        <div className="flex items-start gap-3 mb-3">
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+            expired ? 'bg-red-bg' : pending ? 'bg-amber-bg' : 'bg-green-bg'
+          }`}>
+            <FileText size={16} className={expired ? 'text-red' : pending ? 'text-amber' : 'text-green'} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-semibold text-text leading-snug line-clamp-2 group-hover:text-teal transition-colors">
+              {doc.title}
+            </h3>
+            <p className="text-[11px] text-text-mute mt-0.5 truncate">{doc.filename}</p>
+          </div>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-text-mute hover:text-red hover:bg-red-bg transition-all"
+            title="Delete"
+          >
+            {deleting ? <div className="w-3.5 h-3.5 border-2 border-red/30 border-t-red rounded-full animate-spin" /> : <Trash2 size={13} />}
+          </button>
         </div>
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold text-text leading-snug line-clamp-2 group-hover:text-teal transition-colors">
-            {doc.title}
-          </h3>
-          <p className="text-[11px] text-text-mute mt-0.5 truncate">{doc.filename}</p>
+
+        {/* Badges */}
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <DocCategoryBadge category={doc.category} />
+          <VerificationBadge status={doc.verification_status} />
         </div>
-      </div>
 
-      {/* Badges */}
-      <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <DocCategoryBadge category={doc.category} />
-        <VerificationBadge status={doc.verification_status} />
-      </div>
-
-      {/* Expiry */}
-      <div className="mb-3">
-        <ExpiryTag expiry_date={doc.expiry_date} />
-      </div>
-
-      {/* Used in tenders */}
-      {doc.used_in_tenders !== undefined && doc.used_in_tenders > 0 && (
-        <div className="flex items-center gap-1.5 text-xs text-text-mute mb-3">
-          <FolderOpen size={12} />
-          Used in {doc.used_in_tenders} tender{doc.used_in_tenders !== 1 ? 's' : ''}
+        {/* Expiry */}
+        <div className="mb-3">
+          <ExpiryTag expiry_date={doc.expiry_date} />
         </div>
-      )}
 
-      {/* Tags */}
-      {(doc.tags ?? []).length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-4">
-          {(doc.tags ?? []).slice(0, 3).map((tag) => (
-            <span key={tag} className="px-1.5 py-0.5 bg-panel-3 text-text-mute text-[11px] rounded">{tag}</span>
-          ))}
-          {(doc.tags ?? []).length > 3 && (
-            <span className="px-1.5 py-0.5 bg-panel-3 text-text-mute text-[11px] rounded">+{(doc.tags ?? []).length - 3}</span>
+        {/* Used in tenders */}
+        {doc.used_in_tenders !== undefined && doc.used_in_tenders > 0 && (
+          <div className="flex items-center gap-1.5 text-xs text-text-mute mb-3">
+            <FolderOpen size={12} />
+            Used in {doc.used_in_tenders} tender{doc.used_in_tenders !== 1 ? 's' : ''}
+          </div>
+        )}
+
+        {/* Tags */}
+        {(doc.tags ?? []).length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-4">
+            {(doc.tags ?? []).slice(0, 3).map((tag) => (
+              <span key={tag} className="px-1.5 py-0.5 bg-panel-3 text-text-mute text-[11px] rounded">{tag}</span>
+            ))}
+            {(doc.tags ?? []).length > 3 && (
+              <span className="px-1.5 py-0.5 bg-panel-3 text-text-mute text-[11px] rounded">+{(doc.tags ?? []).length - 3}</span>
+            )}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-2 mt-auto">
+          {doc.url ? (
+            <a
+              href={doc.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-text-mid border border-border rounded-lg hover:border-teal hover:text-teal transition-colors"
+            >
+              <Download size={12} />
+              Download
+            </a>
+          ) : (
+            <button disabled className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-text-mute border border-border rounded-lg opacity-40 cursor-not-allowed">
+              <Download size={12} />
+              Download
+            </button>
+          )}
+          {(expired || pending) && (
+            <button
+              onClick={() => setShowReplace(true)}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-teal border border-teal rounded-lg hover:bg-teal hover:text-white transition-colors"
+            >
+              <Upload size={12} />
+              Replace
+            </button>
           )}
         </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex gap-2 mt-auto">
-        <button className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-text-mid border border-border rounded-lg hover:border-teal hover:text-teal transition-colors">
-          <Download size={12} />
-          Download
-        </button>
-        {(expired || pending) && (
-          <button
-            onClick={() => toast('Upload new version coming soon')}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-teal border border-teal rounded-lg hover:bg-teal hover:text-white transition-colors"
-          >
-            <Upload size={12} />
-            Replace
-          </button>
-        )}
       </div>
-    </div>
+
+      {showReplace && (
+        <ReplaceModal
+          doc={doc}
+          onReplaced={(updated) => { onReplaced(updated); setShowReplace(false); }}
+          onClose={() => setShowReplace(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -443,7 +578,12 @@ export function DocumentLibraryPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((document) => (
-            <DocCard key={document.doc_id} doc={document} />
+            <DocCard
+              key={document.doc_id}
+              doc={document}
+              onDeleted={(docId) => setDocs((previous) => previous.filter((doc) => doc.doc_id !== docId))}
+              onReplaced={(updated) => setDocs((previous) => previous.map((doc) => doc.doc_id === updated.doc_id ? updated : doc))}
+            />
           ))}
         </div>
       )}
