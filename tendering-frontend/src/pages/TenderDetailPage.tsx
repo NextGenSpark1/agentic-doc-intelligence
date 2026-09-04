@@ -4,7 +4,7 @@ import {
   ArrowLeft, FileText, Loader2,
   ClipboardCheck, BarChart3, ThumbsUp, MessageSquare,
 } from 'lucide-react';
-import { getWorkspace, getRequirements, getBidDecision } from '../api/tenders';
+import { getWorkspace, getRequirements, getBidDecision, getLibraryDocuments } from '../api/tenders';
 import { StageBadge, BidDecisionBadge } from '../components/Badge';
 import { SummaryTab } from '../components/workspace/SummaryTab';
 import { RequirementsTab } from '../components/workspace/RequirementsTab';
@@ -12,7 +12,7 @@ import { ComplianceMatrixTab } from '../components/workspace/ComplianceMatrixTab
 import { BidDecisionTab } from '../components/workspace/BidDecisionTab';
 import { ChatTab } from '../components/workspace/ChatTab';
 import { daysUntil } from '../lib/utils';
-import type { TenderWorkspace, Requirement, BidDecisionReport } from '../types';
+import type { TenderWorkspace, Requirement, BidDecisionReport, LibraryDocument } from '../types';
 
 type Tab = 'summary' | 'requirements' | 'compliance' | 'bid' | 'chat';
 
@@ -30,6 +30,7 @@ export function TenderDetailPage() {
   const [workspace, setWorkspace] = useState<TenderWorkspace | null>(null);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [bidReport, setBidReport] = useState<BidDecisionReport | null>(null);
+  const [libraryDocs, setLibraryDocs] = useState<LibraryDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('summary');
 
@@ -41,11 +42,13 @@ export function TenderDetailPage() {
       getWorkspace(id),
       getRequirements(id),
       getBidDecision(id),
-    ]).then(([ws, reqs, bid]) => {
+      getLibraryDocuments(),
+    ]).then(([ws, reqs, bid, libDocs]) => {
       setWorkspace(ws);
       prevStageRef.current = ws.stage;
       setRequirements(reqs);
       setBidReport(bid);
+      setLibraryDocs(libDocs);
     }).finally(() => setLoading(false));
   }, [id]);
 
@@ -174,7 +177,7 @@ export function TenderDetailPage() {
       <div className="max-w-6xl mx-auto px-6 py-6">
         {activeTab === 'summary' && <SummaryTab workspace={workspace} onWorkspaceChange={handleWorkspaceChange} />}
         {activeTab === 'requirements' && <RequirementsTab requirements={requirements} />}
-        {activeTab === 'compliance' && <ComplianceMatrixTab requirements={requirements} />}
+        {activeTab === 'compliance' && <ComplianceMatrixTab requirements={requirements} libraryDocs={libraryDocs} />}
         {activeTab === 'bid' && <BidDecisionTab report={bidReport} workspace={workspace} />}
         {activeTab === 'chat' && <ChatTab workspace={workspace} />}
       </div>

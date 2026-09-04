@@ -1,20 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import { CheckCircle2, XCircle, AlertCircle, Circle, BarChart3 } from 'lucide-react';
 import { RequirementCategoryBadge } from '../Badge';
-import type { Requirement, RequirementStatus } from '../../types';
-
-const LIBRARY_DOC_NAMES: Record<string, string> = {
-  'd-reg': 'Company Registration',
-  'd-iso9001': 'ISO 9001:2015',
-  'd-fin2025': 'Fin. Statements 2025',
-  'd-fin2024': 'Fin. Statements 2024',
-  'd-portfolio': 'Experience Portfolio',
-  'd-pmp': 'PMP Engineers',
-  'd-trc': 'TRC License',
-  'd-bankguarantee': 'Bank Guarantee',
-  'd-iso27001': 'ISO 27001 (exp.)',
-  'd-cvs': 'Key Personnel CVs',
-};
+import type { Requirement, RequirementStatus, LibraryDocument } from '../../types';
 
 const STATUS_CONFIG: Record<RequirementStatus, { icon: ReactElement; label: string; bar: string }> = {
   met: {
@@ -76,7 +63,14 @@ const SUMMARY_CARDS: {
   },
 ];
 
-export function ComplianceMatrixTab({ requirements }: { requirements: Requirement[] }) {
+export function ComplianceMatrixTab({
+  requirements,
+  libraryDocs = [],
+}: {
+  requirements: Requirement[];
+  libraryDocs?: LibraryDocument[];
+}) {
+  const libraryDocMap = Object.fromEntries(libraryDocs.map((doc) => [doc.doc_id, doc.title]));
   const [statusFilter, setStatusFilter] = useState<RequirementStatus | 'all'>('all');
 
   const counts = {
@@ -204,7 +198,7 @@ export function ComplianceMatrixTab({ requirements }: { requirements: Requiremen
                               key={docId}
                               className="text-[11px] px-2 py-0.5 bg-teal/10 text-teal rounded font-medium whitespace-nowrap"
                             >
-                              {LIBRARY_DOC_NAMES[docId] ?? docId}
+                              {libraryDocMap[docId] ?? docId}
                             </span>
                           ))}
                         </div>
