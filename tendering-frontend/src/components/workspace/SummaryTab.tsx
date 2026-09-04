@@ -1,270 +1,59 @@
-import { useState, useRef, useEffect } from 'react';
-import { FileText, Users, Upload, X, CheckCircle2, FileCode, Loader2, CloudUpload, UserPlus } from 'lucide-react';
-import type { WorkspaceStage, OrgMember } from '../../types';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  FileText, Users, Upload, X, CheckCircle2, FileCode, Loader2,
+  CloudUpload, UserPlus, Zap, Trash2, AlertCircle, Clock, Play,
+} from 'lucide-react';
+import type { WorkspaceStage, OrgMember, ExtractionStatus } from '../../types';
 import toast from 'react-hot-toast';
 import { StageBadge } from '../Badge';
 import { daysUntil, formatCurrency, formatDate, readinessColour } from '../../lib/utils';
-import { updateWorkspace, addWorkspaceDocument, fetchMyTeam } from '../../api/tenders';
+import {
+  updateWorkspace, addWorkspaceDocument, fetchMyTeam,
+  extractWorkspaceDocument, deleteWorkspaceDocument, analyseWorkspace,
+  getWorkspace,
+} from '../../api/tenders';
 import { supabase } from '../../lib/supabase';
 import type { TenderWorkspace, WorkspaceDocument } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 
-// ─── Mock extracted text per document ─────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const MOCK_EXTRACTED: Record<string, { pages: number; text: string }> = {
-  d1: {
-    pages: 47,
-    text: `REQUEST FOR PROPOSALS
-National Broadband Infrastructure — Phase 3
-Reference: ICT/INFRA/2026/047
-Ministry of ICT & Digital Economy
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SECTION 4 — ELIGIBILITY AND QUALIFICATION CRITERIA
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-4.1  Regulatory Compliance                                    [Page 22]
-─────────────────────────────────────────────────────────────────────
-4.1.3  The Tenderer SHALL hold a valid Class 1 Telecommunications
-       Operator License issued by the Telecommunications Regulatory
-       Commission (TRC). The license must be current at the time of
-       submission and remain valid throughout the contract period.
-
-       Documentary evidence: Certified copy of TRC license certificate.
-
-4.2  Quality and Management Systems                           [Page 23]
-─────────────────────────────────────────────────────────────────────
-4.2.1  The Tenderer SHALL hold a current ISO 9001:2015 Quality
-       Management System (QMS) certification issued by an accredited
-       certification body. The certificate must not have expired as of
-       the bid closing date.
-
-4.3  Technical Experience                                     [Page 25]
-─────────────────────────────────────────────────────────────────────
-4.3.1  The Tenderer SHALL demonstrate a minimum of ten (10) years of
-       continuous experience in the design, supply, installation, and
-       commissioning of large-scale telecommunications infrastructure
-       projects. Experience shall be documented through a project
-       portfolio listing comparable projects, clients, and completion
-       dates.
-
-4.3.2  At least three (3) of the documented projects shall have a
-       contract value of USD 5,000,000 or greater.
-
-4.4  Key Personnel Requirements                               [Page 26]
-─────────────────────────────────────────────────────────────────────
-4.4.1  Project Manager
-       • PMP® certification from the Project Management Institute (PMI)
-         or equivalent, currently valid
-       • Minimum eight (8) years of experience managing telecoms
-         infrastructure projects
-       • Curriculum vitae and certification copies to be submitted
-         with the bid
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SECTION 5 — SOCIAL AND LEGAL REQUIREMENTS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-5.1  Local Content Requirements                               [Page 28]
-─────────────────────────────────────────────────────────────────────
-5.1.a  The Successful Tenderer SHALL ensure that a minimum of forty
-       percent (40%) of total project headcount consists of nationals
-       or permanent residents. The workforce composition plan must be
-       submitted with the bid and updated quarterly during execution.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SECTION 6 — FINANCIAL REQUIREMENTS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-6.1  Financial Capacity                                       [Page 30]
-─────────────────────────────────────────────────────────────────────
-       The Tenderer SHALL demonstrate annual turnover of no less than
-       USD 25,000,000 (twenty-five million US dollars) for each of the
-       three (3) preceding financial years. Audited financial statements
-       for each year must be submitted.
-
-6.2  Performance Security                                     [Page 31]
-─────────────────────────────────────────────────────────────────────
-       The Successful Tenderer shall furnish a Performance Bond equal
-       to five percent (5%) of the total contract value within fourteen
-       (14) days of contract signing. The bond shall be issued by a
-       reputable bank and remain valid until project completion.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SECTION 7 — TECHNICAL REQUIREMENTS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-7.1  Network Operations Centre (NOC)                          [Page 34]
-─────────────────────────────────────────────────────────────────────
-       The Tenderer SHALL operate or have direct access to a 24/7
-       Network Operations Centre (NOC) with:
-       • SLA-backed fault response time of ≤15 minutes
-       • Real-time monitoring of all network nodes
-       • Escalation procedures and dedicated NOC hotline
-
-7.3  Information Security                                     [Page 35]
-─────────────────────────────────────────────────────────────────────
-       The Tenderer SHALL hold a current ISO/IEC 27001 Information
-       Security Management System (ISMS) certification, or an
-       equivalent standard acceptable to the Ministry. The certificate
-       shall be valid at bid closing and throughout the contract.
-
-8.4  Equipment Warranty                                       [Page 38]
-─────────────────────────────────────────────────────────────────────
-       [DESIRABLE] All supplied equipment shall carry a minimum five
-       (5) year manufacturer's warranty. The Tenderer shall maintain
-       an in-country spare parts inventory sufficient for at least
-       thirty (30) days of uninterrupted operations.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-END OF EXTRACTED TEXT — Page 47 of 47
-Extracted by LandingAI ADE · Confidence: 99.2%
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-  },
-  d2: {
-    pages: 24,
-    text: `TECHNICAL SPECIFICATIONS ANNEX
-ICT/INFRA/2026/047 — National Broadband Infrastructure Phase 3
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PART A — FIBRE OPTIC BACKBONE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-A.1  Cable Specifications
-─────────────────────────────────────────────────────────────────────
-     Fibre type:     Single-mode G.652D compliant (ITU-T)
-     Capacity:       Minimum 96 fibre strands per duct
-     Route length:   Approximately 2,400 km across 47 districts
-     Burial depth:   ≥1.2 m in agricultural zones; ≥1.5 m at road crossings
-
-A.2  Transmission Equipment
-─────────────────────────────────────────────────────────────────────
-     Technology:     DWDM (Dense Wavelength Division Multiplexing)
-     Capacity:       100 Gbps per wavelength, minimum 80 wavelengths
-     Latency:        ≤5 ms end-to-end across national backbone
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PART B — LAST-MILE CONNECTIVITY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-B.1  District Connection Points
-─────────────────────────────────────────────────────────────────────
-     ┌─────────────────────┬───────────────┬──────────────────────┐
-     │ Zone                │ Districts     │ Min. Bandwidth (Gbps)│
-     ├─────────────────────┼───────────────┼──────────────────────┤
-     │ Northern Region     │ 12            │ 10                   │
-     │ Central Region      │ 18            │ 20                   │
-     │ Southern Region     │ 17            │ 10                   │
-     └─────────────────────┴───────────────┴──────────────────────┘
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-END OF EXTRACTED TEXT — Page 24 of 24
-Extracted by LandingAI ADE · Confidence: 98.7%
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-  },
-  d3: {
-    pages: 8,
-    text: `BILL OF QUANTITIES — ANNEX C
-ICT/INFRA/2026/047
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SECTION 1 — CIVIL WORKS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-┌──────┬────────────────────────────────────┬──────┬─────────┬──────────────┐
-│ Item │ Description                        │ Unit │  Qty    │ Unit Rate    │
-├──────┼────────────────────────────────────┼──────┼─────────┼──────────────┤
-│ 1.1  │ Trench excavation (soft soil)      │ km   │   800   │ [Tenderer]   │
-│ 1.2  │ Trench excavation (rocky terrain)  │ km   │   200   │ [Tenderer]   │
-│ 1.3  │ HDPE duct installation (100mm)     │ km   │ 2,400   │ [Tenderer]   │
-│ 1.4  │ Cable jointing chambers            │ No.  │   960   │ [Tenderer]   │
-│ 1.5  │ Road crossing (directional drill)  │ No.  │   340   │ [Tenderer]   │
-└──────┴────────────────────────────────────┴──────┴─────────┴──────────────┘
-
-SECTION 2 — FIBRE CABLE SUPPLY & INSTALLATION
-
-┌──────┬────────────────────────────────────┬──────┬─────────┬──────────────┐
-│ 2.1  │ 96-core single-mode fibre cable    │ km   │ 2,400   │ [Tenderer]   │
-│ 2.2  │ Fibre splicing (fusion)            │ No.  │  4,800  │ [Tenderer]   │
-│ 2.3  │ OTDR acceptance testing            │ km   │ 2,400   │ [Tenderer]   │
-└──────┴────────────────────────────────────┴──────┴─────────┴──────────────┘
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-END OF EXTRACTED TEXT — Page 8 of 8
-Extracted by LandingAI ADE · Confidence: 97.4%
-(Tables reconstructed from Excel — 3 worksheets merged)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-  },
-  d4: {
-    pages: 38,
-    text: `REQUEST FOR PROPOSALS
-Hospital Management Information System — 12 Facilities
-Reference: MOH/IT/2026/031
-Ministry of Health
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SECTION 2 — TECHNICAL REQUIREMENTS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-2.1  Interoperability Standards                               [Page 4]
-─────────────────────────────────────────────────────────────────────
-     The HMIS SHALL implement HL7 FHIR Release 4 (R4) compliant APIs
-     for all clinical data exchange. Non-compliant systems will not be
-     considered. Evidence of FHIR R4 certification or successful
-     third-party conformance testing must be included in the bid.
-
-2.3  Implementation References                                [Page 9]
-─────────────────────────────────────────────────────────────────────
-     The Tenderer SHALL provide a minimum of three (3) reference
-     letters from public health sector clients for whom comparable
-     HMIS implementations have been completed within the last five (5)
-     years.
-
-SECTION 3 — DATA GOVERNANCE                                  [Page 12]
-─────────────────────────────────────────────────────────────────────
-3.4  Data Residency
-     All patient records and personal health information SHALL be
-     stored exclusively within the national data centre infrastructure
-     approved by the Ministry. Storage on overseas or unregulated
-     cloud platforms is prohibited.
-
-SECTION 5 — SERVICE LEVELS                                   [Page 18]
-─────────────────────────────────────────────────────────────────────
-5.2  Support and Maintenance
-     The Tenderer SHALL provide 24/7 technical support with a maximum
-     four (4) hour on-site response time for Priority 1 incidents
-     at any of the twelve (12) facilities.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-END OF EXTRACTED TEXT — Page 38 of 38
-Extracted by LandingAI ADE · Confidence: 98.1%
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-  },
-};
-
-const FALLBACK_EXTRACTED = {
-  pages: 12,
-  text: `Document content extracted successfully.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-EXTRACTED TEXT PREVIEW
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-This document has been processed by LandingAI ADE.
-All text, tables, and structured content have been
-preserved for AI analysis.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Extracted by LandingAI ADE · Confidence: 96.8%
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-};
-
-// ─── Upload Modal ─────────────────────────────────────────────────────────────
-
-const ACCEPTED = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+const ACCEPTED = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+];
 const ACCEPTED_EXT = '.pdf,.docx,.xlsx';
 
-type UploadStage = 'idle' | 'uploading' | 'extracting' | 'done';
+function extLabel(name: string) {
+  return name.split('.').pop()?.toUpperCase() ?? 'FILE';
+}
+
+function extColour(ext: string) {
+  return ext === 'PDF' ? 'bg-red-bg text-red' :
+    ext === 'XLSX' ? 'bg-green-bg text-green' :
+    ext === 'DOCX' ? 'bg-teal/10 text-teal' : 'bg-panel-3 text-text-mute';
+}
+
+// ─── Extraction status badge ───────────────────────────────────────────────────
+
+function ExtractionBadge({ status }: { status?: ExtractionStatus }) {
+  if (!status || status === 'uploaded') {
+    return <span className="text-[10px] text-text-mute font-medium">Not extracted</span>;
+  }
+  if (status === 'queued') {
+    return <span className="flex items-center gap-1 text-[10px] text-amber font-medium"><Clock size={9} />Queued</span>;
+  }
+  if (status === 'processing') {
+    return <span className="flex items-center gap-1 text-[10px] text-teal font-medium"><Loader2 size={9} className="animate-spin" />Extracting…</span>;
+  }
+  if (status === 'done') {
+    return <span className="flex items-center gap-1 text-[10px] text-green font-medium"><CheckCircle2 size={9} />Extracted</span>;
+  }
+  return <span className="flex items-center gap-1 text-[10px] text-red font-medium"><AlertCircle size={9} />Failed</span>;
+}
+
+// ─── Upload Modal ─────────────────────────────────────────────────────────────
 
 function UploadModal({
   workspaceId,
@@ -277,33 +66,31 @@ function UploadModal({
 }) {
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
-  const [stage, setStage] = useState<UploadStage>('idle');
+  const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function addFiles(incoming: FileList | null) {
     if (!incoming) return;
-    const valid = Array.from(incoming).filter((file) => ACCEPTED.includes(file.type) || file.name.match(/\.(pdf|docx|xlsx)$/i));
+    const valid = Array.from(incoming).filter(
+      (file) => ACCEPTED.includes(file.type) || file.name.match(/\.(pdf|docx|xlsx)$/i),
+    );
     setFiles((previous) => {
       const names = new Set(previous.map((file) => file.name));
       return [...previous, ...valid.filter((file) => !names.has(file.name))];
     });
   }
 
-  function removeFile(name: string) {
-    setFiles((previous) => previous.filter((file) => file.name !== name));
-  }
-
   async function handleUpload() {
     if (!files.length) return;
-    setStage('uploading');
+    setUploading(true);
     const uploaded: WorkspaceDocument[] = [];
     for (const file of files) {
-      const path = `${workspaceId}/${Date.now()}-${file.name}`;
+      const storagePath = `${workspaceId}/${Date.now()}-${file.name}`;
       const { error: storageError } = await supabase.storage
         .from('tender-documents')
-        .upload(path, file, { contentType: file.type, upsert: false });
+        .upload(storagePath, file, { contentType: file.type, upsert: false });
       if (storageError) { toast.error(`Failed to upload ${file.name}`); continue; }
-      const { data: { publicUrl } } = supabase.storage.from('tender-documents').getPublicUrl(path);
+      const { data: { publicUrl } } = supabase.storage.from('tender-documents').getPublicUrl(storagePath);
       try {
         const doc = await addWorkspaceDocument(workspaceId, {
           name: file.name,
@@ -311,37 +98,29 @@ function UploadModal({
           file_type: file.name.split('.').pop()?.toLowerCase() ?? '',
           size_bytes: file.size,
           url: publicUrl,
+          storage_path: storagePath,
         });
         uploaded.push(doc);
       } catch { toast.error(`Failed to register ${file.name}`); }
     }
-    setStage('extracting');
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    setStage('done');
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    setUploading(false);
     if (uploaded.length) {
       onUploaded(uploaded);
-      toast.success(`${uploaded.length} document${uploaded.length > 1 ? 's' : ''} uploaded — AI analysis queued`);
+      toast.success(`${uploaded.length} document${uploaded.length > 1 ? 's' : ''} uploaded — click Extract to process`);
     }
     onClose();
   }
 
-  const ext = (name: string) => name.split('.').pop()?.toUpperCase() ?? 'FILE';
-  const extColour = (extension: string) =>
-    extension === 'PDF' ? 'bg-red-bg text-red' :
-    extension === 'XLSX' ? 'bg-green-bg text-green' : 'bg-teal/10 text-teal';
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={stage === 'idle' ? onClose : undefined} />
-
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={uploading ? undefined : onClose} />
       <div className="relative bg-panel rounded-xl border border-border shadow-2xl w-full max-w-lg">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
             <h2 className="text-sm font-semibold text-text">Upload Tender Documents</h2>
-            <p className="text-xs text-text-mute mt-0.5">PDF, DOCX, XLSX — ADE will extract text automatically</p>
+            <p className="text-xs text-text-mute mt-0.5">PDF, DOCX, XLSX — click Extract after upload to run ADE</p>
           </div>
-          {stage === 'idle' && (
+          {!uploading && (
             <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-panel-2 text-text-mute hover:text-text transition-colors">
               <X size={15} />
             </button>
@@ -349,9 +128,13 @@ function UploadModal({
         </div>
 
         <div className="px-6 py-5 space-y-4">
-          {stage === 'idle' ? (
+          {uploading ? (
+            <div className="py-8 text-center space-y-3">
+              <Loader2 size={32} className="text-teal mx-auto animate-spin" />
+              <p className="text-sm font-semibold text-text">Uploading to Supabase Storage…</p>
+            </div>
+          ) : (
             <>
-              {/* Drop zone */}
               <div
                 onClick={() => inputRef.current?.click()}
                 onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -364,22 +147,23 @@ function UploadModal({
                 <CloudUpload size={28} className={`mx-auto mb-2 ${dragging ? 'text-teal' : 'text-text-mute'}`} />
                 <p className="text-sm font-medium text-text">Drop files here or click to browse</p>
                 <p className="text-xs text-text-mute mt-1">PDF, DOCX, XLSX supported</p>
-                <input ref={inputRef} type="file" multiple accept={ACCEPTED_EXT} className="hidden" onChange={(e) => addFiles(e.target.files)} />
+                <input ref={inputRef} type="file" multiple accept={ACCEPTED_EXT} className="hidden"
+                  onChange={(e) => addFiles(e.target.files)} />
               </div>
 
-              {/* File list */}
               {files.length > 0 && (
                 <div className="space-y-2 max-h-40 overflow-y-auto">
                   {files.map((file) => (
                     <div key={file.name} className="flex items-center gap-3 px-3 py-2 bg-panel-2 rounded-lg border border-border">
-                      <div className={`w-7 h-7 rounded flex items-center justify-center text-[9px] font-bold flex-shrink-0 ${extColour(ext(file.name))}`}>
-                        {ext(file.name)}
+                      <div className={`w-7 h-7 rounded flex items-center justify-center text-[9px] font-bold flex-shrink-0 ${extColour(extLabel(file.name))}`}>
+                        {extLabel(file.name)}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-text truncate">{file.name}</p>
                         <p className="text-[11px] text-text-mute">{(file.size / 1_000_000).toFixed(1)} MB</p>
                       </div>
-                      <button onClick={() => removeFile(file.name)} className="text-text-mute hover:text-red transition-colors">
+                      <button onClick={() => setFiles((prev) => prev.filter((f) => f.name !== file.name))}
+                        className="text-text-mute hover:text-red transition-colors">
                         <X size={13} />
                       </button>
                     </div>
@@ -394,27 +178,10 @@ function UploadModal({
                   disabled={!files.length}
                   className="px-5 py-2 bg-navy hover:bg-navy-soft disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-2"
                 >
-                  <Upload size={13} />
-                  Upload & Analyse
+                  <Upload size={13} /> Upload
                 </button>
               </div>
             </>
-          ) : (
-            <div className="py-8 text-center space-y-3">
-              {stage === 'done' ? (
-                <CheckCircle2 size={32} className="text-green mx-auto" />
-              ) : (
-                <Loader2 size={32} className="text-teal mx-auto animate-spin" />
-              )}
-              <p className="text-sm font-semibold text-text">
-                {stage === 'uploading' && 'Uploading to Supabase Storage…'}
-                {stage === 'extracting' && 'LandingAI ADE extracting text & structure…'}
-                {stage === 'done' && 'Complete — queuing AI analysis'}
-              </p>
-              <p className="text-xs text-text-mute">
-                {stage === 'extracting' && 'Tables, clause numbers, and nested content are being preserved'}
-              </p>
-            </div>
           )}
         </div>
       </div>
@@ -422,65 +189,62 @@ function UploadModal({
   );
 }
 
-// ─── Document Viewer Modal ─────────────────────────────────────────────────────
+// ─── Document viewer ───────────────────────────────────────────────────────────
 
 function DocumentViewerModal({ doc, onClose }: { doc: WorkspaceDocument; onClose: () => void }) {
-  const extracted = MOCK_EXTRACTED[doc.id] ?? FALLBACK_EXTRACTED;
-  const ext = doc.name.split('.').pop()?.toUpperCase() ?? 'FILE';
-  const extColour =
-    ext === 'PDF' ? 'bg-red-bg text-red' :
-    ext === 'XLSX' ? 'bg-green-bg text-green' :
-    ext === 'DOCX' ? 'bg-teal/10 text-teal' : 'bg-panel-3 text-text-mute';
+  const ext = extLabel(doc.name);
+  const colour = extColour(ext);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-
-      <div className="relative bg-panel rounded-xl border border-border shadow-2xl w-full max-w-3xl flex flex-col max-h-[85vh]">
-
-        {/* Header */}
-        <div className="flex items-start gap-3 px-5 py-4 border-b border-border flex-shrink-0">
-          <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${extColour}`}>
+      <div className="relative bg-panel rounded-xl border border-border shadow-2xl w-full max-w-lg">
+        <div className="flex items-start gap-3 px-5 py-4 border-b border-border">
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${colour}`}>
             {ext}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-text truncate">{doc.name}</p>
             <p className="text-xs text-text-mute mt-0.5">
-              {((doc.size_bytes ?? 0) / 1_000_000).toFixed(1)} MB · {extracted.pages} pages ·
-              Uploaded {formatDate(doc.uploaded_at ?? '', { day: 'numeric', month: 'short', year: 'numeric' })}
+              {((doc.size_bytes ?? 0) / 1_000_000).toFixed(1)} MB
+              {doc.page_count ? ` · ${doc.page_count} pages` : ''}
+              {doc.uploaded_at ? ` · ${formatDate(doc.uploaded_at, { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
             </p>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <span className="flex items-center gap-1 text-[11px] text-green font-medium">
-              <CheckCircle2 size={12} />
-              ADE Extracted
-            </span>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-panel-2 text-text-mute hover:text-text transition-colors">
-              <X size={16} />
-            </button>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-panel-2 text-text-mute hover:text-text transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="px-5 py-5 space-y-3">
+          <div className="flex items-center gap-2 py-2.5 px-3 rounded-lg bg-panel-2 border border-border">
+            <FileCode size={13} className="text-teal flex-shrink-0" />
+            <ExtractionBadge status={doc.extraction_status} />
           </div>
-        </div>
 
-        {/* ADE badge */}
-        <div className="px-5 py-2.5 border-b border-border bg-teal/5 flex items-center gap-2 flex-shrink-0">
-          <FileCode size={13} className="text-teal" />
-          <p className="text-xs text-teal font-medium">
-            Extracted by LandingAI ADE — structure, tables, and clause numbering preserved
-          </p>
-        </div>
-
-        {/* Extracted text */}
-        <div className="flex-1 overflow-y-auto p-5">
-          <pre className="text-[12px] font-mono text-text-mid leading-relaxed whitespace-pre-wrap bg-canvas-deep rounded-lg p-4 border border-border">
-            {extracted.text}
-          </pre>
+          {doc.extraction_status === 'done' && doc.url ? (
+            <a
+              href={doc.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full py-2.5 bg-teal/10 hover:bg-teal/15 text-teal text-sm font-medium rounded-lg transition-colors"
+            >
+              <FileText size={14} /> Open document
+            </a>
+          ) : doc.extraction_status !== 'done' ? (
+            <p className="text-xs text-text-mute text-center py-4">
+              {doc.extraction_status === 'processing' || doc.extraction_status === 'queued'
+                ? 'Extraction in progress — check back shortly.'
+                : 'Extract this document to view its content.'}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Summary Tab ──────────────────────────────────────────────────────────────
+// ─── Stage flow ───────────────────────────────────────────────────────────────
 
 const STAGE_FLOW: { value: WorkspaceStage; label: string }[] = [
   { value: 'new', label: 'New' },
@@ -492,7 +256,15 @@ const STAGE_FLOW: { value: WorkspaceStage; label: string }[] = [
   { value: 'no_bid', label: 'No Bid' },
 ];
 
-export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
+// ─── Summary Tab ──────────────────────────────────────────────────────────────
+
+export function SummaryTab({
+  workspace,
+  onWorkspaceChange,
+}: {
+  workspace: TenderWorkspace;
+  onWorkspaceChange?: (patch: Partial<TenderWorkspace>) => void;
+}) {
   const { orgCtx } = useAuth();
   const role = orgCtx?.role;
   const canManageTeam = role === 'org_admin' || role === 'supervisor';
@@ -506,8 +278,39 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
   const [assignableMembers, setAssignableMembers] = useState<OrgMember[]>([]);
   const [showAddDropdown, setShowAddDropdown] = useState(false);
   const [addingMember, setAddingMember] = useState(false);
+  const [extractingIds, setExtractingIds] = useState<Set<string>>(new Set());
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [runningAnalysis, setRunningAnalysis] = useState(false);
+
   const days = daysUntil(workspace.closing_date);
   const isActive = ['new', 'analysing', 'preparing'].includes(workspace.stage);
+
+  // Poll for doc extraction status and workspace stage when anything is in-flight.
+  const hasInFlight = documents.some((doc) =>
+    doc.extraction_status === 'queued' || doc.extraction_status === 'processing',
+  );
+  const isAnalysing = currentStage === 'analysing';
+
+  const refreshWorkspace = useCallback(async () => {
+    try {
+      const updated = await getWorkspace(workspace.id);
+      setDocuments(updated.documents ?? []);
+      if (updated.stage !== currentStage) {
+        setCurrentStage(updated.stage);
+        onWorkspaceChange?.({ stage: updated.stage, ai_summary: updated.ai_summary });
+        if (updated.stage === 'preparing') {
+          toast.success('Analysis complete — requirements extracted');
+          setRunningAnalysis(false);
+        }
+      }
+    } catch { /* silent — next poll will retry */ }
+  }, [workspace.id, currentStage, onWorkspaceChange]);
+
+  useEffect(() => {
+    if (!hasInFlight && !isAnalysing) return;
+    const interval = setInterval(refreshWorkspace, 4000);
+    return () => clearInterval(interval);
+  }, [hasInFlight, isAnalysing, refreshWorkspace]);
 
   useEffect(() => {
     if (!canManageTeam) return;
@@ -522,6 +325,51 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
 
   function getInitials(displayName: string): string {
     return displayName.split(' ').map((part) => part[0]).join('').toUpperCase().slice(0, 2);
+  }
+
+  async function handleExtract(doc: WorkspaceDocument) {
+    if (!doc.document_id) {
+      toast.error('This document has no storage path — re-upload it');
+      return;
+    }
+    setExtractingIds((prev) => new Set(prev).add(doc.id));
+    setDocuments((prev) => prev.map((d) => d.id === doc.id ? { ...d, extraction_status: 'queued' } : d));
+    try {
+      await extractWorkspaceDocument(workspace.id, doc.id);
+    } catch {
+      toast.error(`Failed to queue extraction for ${doc.name}`);
+      setDocuments((prev) => prev.map((d) => d.id === doc.id ? { ...d, extraction_status: 'uploaded' } : d));
+    } finally {
+      setExtractingIds((prev) => { const next = new Set(prev); next.delete(doc.id); return next; });
+    }
+  }
+
+  async function handleDelete(doc: WorkspaceDocument, event: React.MouseEvent) {
+    event.stopPropagation();
+    setDeletingIds((prev) => new Set(prev).add(doc.id));
+    try {
+      await deleteWorkspaceDocument(workspace.id, doc.id);
+      setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+    } catch {
+      toast.error(`Failed to delete ${doc.name}`);
+    } finally {
+      setDeletingIds((prev) => { const next = new Set(prev); next.delete(doc.id); return next; });
+    }
+  }
+
+  async function handleRunAnalysis() {
+    const hasDone = documents.some((doc) => doc.extraction_status === 'done');
+    if (!hasDone) { toast.error('Extract at least one document first'); return; }
+    setRunningAnalysis(true);
+    try {
+      await analyseWorkspace(workspace.id);
+      setCurrentStage('analysing');
+      onWorkspaceChange?.({ stage: 'analysing' });
+      toast.success('Analysis started — requirements will appear shortly');
+    } catch {
+      toast.error('Failed to start analysis');
+      setRunningAnalysis(false);
+    }
   }
 
   async function handleAddMember(memberId: string) {
@@ -540,7 +388,7 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
 
   async function handleRemoveMember(memberId: string) {
     try {
-      const newIds = currentTeamIds.filter((identifier) => identifier !== memberId);
+      const newIds = currentTeamIds.filter((id) => id !== memberId);
       await updateWorkspace(workspace.id, { team_members: newIds });
       setCurrentTeamIds(newIds);
     } catch {
@@ -548,22 +396,23 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
     }
   }
 
-  const availableToAdd = assignableMembers.filter((member) => !currentTeamIds.includes(member.user_id));
-
   async function handleStageChange(newStage: TenderWorkspace['stage']) {
     if (newStage === currentStage) return;
     setUpdatingStage(true);
     try {
       await updateWorkspace(workspace.id, { stage: newStage });
       setCurrentStage(newStage);
-      toast.success(`Stage updated to ${newStage}`);
+      onWorkspaceChange?.({ stage: newStage });
     } catch {
       toast.error('Failed to update stage');
     } finally {
       setUpdatingStage(false);
     }
   }
-  const { bar, text } = readinessColour(workspace.readiness_score);
+
+  const availableToAdd = assignableMembers.filter((member) => !currentTeamIds.includes(member.user_id));
+  const { bar, text: scoreText } = readinessColour(workspace.readiness_score);
+  const canRunAnalysis = documents.some((doc) => doc.extraction_status === 'done') && !isAnalysing && !runningAnalysis;
 
   const details = [
     { label: 'Reference', value: workspace.reference || '—' },
@@ -580,9 +429,10 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
     <>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-        {/* Left — details + documents */}
+        {/* Left — details + summary + documents */}
         <div className="lg:col-span-2 space-y-5">
 
+          {/* Tender details */}
           <div className="bg-panel border border-border rounded-xl p-5">
             <h3 className="text-sm font-semibold text-text mb-4">Tender Details</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -601,52 +451,108 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
             )}
           </div>
 
+          {/* AI Summary */}
+          {workspace.ai_summary && (
+            <div className="bg-panel border border-border rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <FileCode size={14} className="text-teal" />
+                <h3 className="text-sm font-semibold text-text">AI Summary</h3>
+              </div>
+              <p className="text-sm text-text-mid leading-relaxed whitespace-pre-line">{workspace.ai_summary}</p>
+            </div>
+          )}
+
+          {/* Tender Documents */}
           <div className="bg-panel border border-border rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-text">Tender Documents</h3>
-              <button
-                onClick={() => setShowUpload(true)}
-                className="flex items-center gap-1.5 text-xs text-teal hover:text-teal-soft font-medium transition-colors"
-              >
-                <Upload size={12} /> Upload
-              </button>
+              <div className="flex items-center gap-3">
+                {/* Run Analysis */}
+                <button
+                  onClick={handleRunAnalysis}
+                  disabled={!canRunAnalysis}
+                  title={canRunAnalysis ? 'Extract requirements, summarise, and score readiness' : 'Extract at least one document first'}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-navy hover:bg-navy-soft text-white"
+                >
+                  {runningAnalysis || isAnalysing
+                    ? <><Loader2 size={11} className="animate-spin" /> Analysing…</>
+                    : <><Play size={11} /> Run Analysis</>}
+                </button>
+                <button
+                  onClick={() => setShowUpload(true)}
+                  className="flex items-center gap-1.5 text-xs text-teal hover:text-teal-soft font-medium transition-colors"
+                >
+                  <Upload size={12} /> Upload
+                </button>
+              </div>
             </div>
+
             {documents.length === 0 ? (
               <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
                 <Upload size={20} className="text-text-mute mx-auto mb-2" />
-                <p className="text-sm text-text-mute">Drop tender documents here</p>
+                <p className="text-sm text-text-mute">Upload tender documents to get started</p>
                 <p className="text-xs text-text-mute mt-0.5">PDF, DOCX, XLSX supported</p>
               </div>
             ) : (
               <div className="space-y-2">
-                {documents.map((document) => {
-                  const fileExtension = document.name.split('.').pop()?.toUpperCase() ?? '';
-                  const fileExtensionColour =
-                    fileExtension === 'PDF' ? 'bg-red-bg text-red' :
-                    fileExtension === 'XLSX' ? 'bg-green-bg text-green' :
-                    fileExtension === 'DOCX' ? 'bg-teal/10 text-teal' : 'bg-panel-3 text-text-mute';
+                {documents.map((doc) => {
+                  const ext = extLabel(doc.name);
+                  const colour = extColour(ext);
+                  const isExtracting = extractingIds.has(doc.id);
+                  const isDeleting = deletingIds.has(doc.id);
+                  const canExtract = doc.document_id && (doc.extraction_status === 'uploaded' || doc.extraction_status === 'failed');
+
                   return (
                     <div
-                      key={document.id}
-                      onClick={() => setViewingDoc(document)}
-                      className="flex items-center justify-between py-2.5 px-3 bg-panel-2 rounded-lg border border-border hover:border-teal cursor-pointer transition-all group"
+                      key={doc.id}
+                      className="flex items-center justify-between py-2.5 px-3 bg-panel-2 rounded-lg border border-border hover:border-teal/40 transition-all group"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 text-[9px] font-bold ${fileExtensionColour}`}>
-                          {fileExtension}
+                      {/* Left: icon + name + status */}
+                      <div
+                        className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
+                        onClick={() => setViewingDoc(doc)}
+                      >
+                        <div className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 text-[9px] font-bold ${colour}`}>
+                          {ext}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs font-medium text-text truncate group-hover:text-teal transition-colors">{document.name}</p>
-                          <p className="text-[11px] text-text-mute">
-                            {((document.size_bytes ?? 0) / 1_000_000).toFixed(1)} MB · {formatDate(document.uploaded_at ?? '', { day: 'numeric', month: 'short' })}
-                          </p>
+                          <p className="text-xs font-medium text-text truncate group-hover:text-teal transition-colors">{doc.name}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <ExtractionBadge status={doc.extraction_status} />
+                            {doc.page_count ? <span className="text-[10px] text-text-mute">{doc.page_count}pp</span> : null}
+                            <span className="text-[10px] text-text-mute">
+                              {((doc.size_bytes ?? 0) / 1_000_000).toFixed(1)} MB
+                            </span>
+                          </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 ml-3 flex-shrink-0">
-                        <span className="text-[10px] text-green font-medium hidden group-hover:flex items-center gap-1">
-                          <CheckCircle2 size={10} /> ADE extracted
-                        </span>
-                        <FileText size={14} className="text-text-mute group-hover:text-teal transition-colors" />
+
+                      {/* Right: actions */}
+                      <div className="flex items-center gap-1.5 ml-3 flex-shrink-0">
+                        {canExtract && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleExtract(doc); }}
+                            disabled={isExtracting}
+                            title="Extract text with LandingAI ADE"
+                            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-teal hover:bg-teal/10 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            {isExtracting
+                              ? <Loader2 size={10} className="animate-spin" />
+                              : <Zap size={10} />}
+                            Extract
+                          </button>
+                        )}
+                        {(doc.extraction_status === 'queued' || doc.extraction_status === 'processing') && (
+                          <Loader2 size={12} className="text-teal animate-spin" />
+                        )}
+                        <button
+                          onClick={(e) => handleDelete(doc, e)}
+                          disabled={isDeleting}
+                          title="Delete document"
+                          className="p-1.5 text-text-mute hover:text-red opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-bg disabled:opacity-30"
+                        >
+                          {isDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                        </button>
                       </div>
                     </div>
                   );
@@ -659,10 +565,11 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
         {/* Right — readiness + team + stage */}
         <div className="space-y-5">
 
+          {/* Readiness */}
           <div className="bg-panel border border-border rounded-xl p-5">
             <h3 className="text-sm font-semibold text-text mb-4">Readiness Score</h3>
             <div className="flex items-end gap-3 mb-4">
-              <span className={`text-5xl font-bold leading-none ${text}`}>{workspace.readiness_score}</span>
+              <span className={`text-5xl font-bold leading-none ${scoreText}`}>{workspace.readiness_score}</span>
               <span className="text-xl text-text-mute mb-1">/ 100</span>
             </div>
             <div className="w-full h-3 bg-canvas-deep rounded-full overflow-hidden mb-4">
@@ -670,20 +577,21 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
             </div>
             <div className="grid grid-cols-3 gap-2 text-center">
               <div className="bg-green-bg rounded-lg py-2">
-                <p className="text-lg font-bold text-green">{workspace.requirements_met}</p>
+                <p className="text-lg font-bold text-green">{workspace.requirements_met ?? 0}</p>
                 <p className="text-[11px] text-text-mute">Met</p>
               </div>
               <div className="bg-amber-bg rounded-lg py-2">
-                <p className="text-lg font-bold text-amber">{workspace.requirements_partial}</p>
+                <p className="text-lg font-bold text-amber">{workspace.requirements_partial ?? 0}</p>
                 <p className="text-[11px] text-text-mute">Partial</p>
               </div>
               <div className="bg-red-bg rounded-lg py-2">
-                <p className="text-lg font-bold text-red">{workspace.requirements_gap}</p>
+                <p className="text-lg font-bold text-red">{workspace.requirements_gap ?? 0}</p>
                 <p className="text-[11px] text-text-mute">Gap</p>
               </div>
             </div>
           </div>
 
+          {/* Team */}
           <div className="bg-panel border border-border rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -710,7 +618,7 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
                             className="w-full flex items-center gap-2 px-3 py-2 text-xs text-text-mid hover:bg-panel-2 transition-colors first:rounded-t-lg last:rounded-b-lg"
                           >
                             <div className="w-5 h-5 rounded-full bg-teal/20 text-teal flex items-center justify-center text-[9px] font-bold flex-shrink-0">
-                              {displayName.split(' ').map((part: string) => part[0]).join('').toUpperCase().slice(0, 2)}
+                              {displayName.split(' ').map((p: string) => p[0]).join('').toUpperCase().slice(0, 2)}
                             </div>
                             <span className="truncate">{displayName}</span>
                           </button>
@@ -748,15 +656,16 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
             )}
           </div>
 
+          {/* Stage */}
           <div className="bg-panel border border-border rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-text">Stage</h3>
-              {updatingStage && <Loader2 size={13} className="animate-spin text-text-mute" />}
+              {(updatingStage || isAnalysing) && <Loader2 size={13} className="animate-spin text-text-mute" />}
             </div>
             <StageBadge stage={currentStage} />
             <p className="text-xs text-text-mute mt-2 mb-4 leading-relaxed">
-              {currentStage === 'new' && 'Upload tender documents to begin AI analysis.'}
-              {currentStage === 'analysing' && 'AI is extracting and categorising requirements.'}
+              {currentStage === 'new' && 'Upload and extract documents, then run analysis.'}
+              {currentStage === 'analysing' && 'AI is extracting and categorising requirements…'}
               {currentStage === 'preparing' && 'Requirements mapped. Preparing bid response.'}
               {currentStage === 'submitted' && 'Bid submitted. Awaiting evaluation.'}
               {currentStage === 'awarded' && 'Bid was awarded.'}
@@ -768,7 +677,7 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
                 <button
                   key={value}
                   onClick={() => handleStageChange(value)}
-                  disabled={updatingStage}
+                  disabled={updatingStage || isAnalysing}
                   className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors text-left ${
                     value === currentStage
                       ? 'bg-navy text-white'
@@ -781,16 +690,15 @@ export function SummaryTab({ workspace }: { workspace: TenderWorkspace }) {
               ))}
             </div>
           </div>
+
         </div>
       </div>
 
-      {viewingDoc && (
-        <DocumentViewerModal doc={viewingDoc} onClose={() => setViewingDoc(null)} />
-      )}
+      {viewingDoc && <DocumentViewerModal doc={viewingDoc} onClose={() => setViewingDoc(null)} />}
       {showUpload && (
         <UploadModal
           workspaceId={workspace.id}
-          onUploaded={(newDocs) => setDocuments((previous) => [...previous, ...newDocs])}
+          onUploaded={(newDocs) => setDocuments((prev) => [...prev, ...newDocs])}
           onClose={() => setShowUpload(false)}
         />
       )}
