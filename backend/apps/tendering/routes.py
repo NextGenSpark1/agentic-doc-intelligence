@@ -126,6 +126,11 @@ class CreateLibraryDocumentIn(BaseModel):
     url: str = ""
 
 
+class WorkspaceChatIn(BaseModel):
+    message: str
+    history: list[dict] = []
+
+
 # ── Dashboard stats ────────────────────────────────────────────────────────────
 
 @router.get("/my-team")
@@ -456,3 +461,84 @@ async def delete_library_document(
     if not any(d["doc_id"] == doc_id for d in docs):
         raise HTTPException(404, "Document not found")
     await asyncio.to_thread(db.delete_library_document, doc_id)
+
+
+# ── Workspace AI chat ───────────────────────────────────────────────────────────
+
+@router.post("/workspaces/{workspace_id}/chat")
+async def workspace_chat(
+    workspace_id: str,
+    body: WorkspaceChatIn,
+    user: dict = Depends(get_current_user),
+):
+    from backend.core import llm
+
+    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
+    if not workspace or workspace["org_id"] != org_id:
+        raise HTTPException(404, "Workspace not found")
+
+    # Retrieve relevant chunks from extracted documents
+    chunks: list[dict] = []
+    try:
+        embedding = await asyncio.to_thread(lambda: llm.embed([body.message])[0])
+        chunks = await asyncio.to_thread(db.match_workspace_chunks, workspace_id, embedding, 8)
+    except Exception:
+        pass
+
+    if not chunks:
+        return {
+            "answer": (
+                "No extracted document content found yet. "
+                "Upload RFP documents, click Extract on each, then ask me anything."
+            ),
+            "citations": [],
+        }
+
+    doc_context = "\n\n".join(f"[{i + 1}] {c.get('text', '')}" for i, c in enumerate(chunks))
+
+    # Include a brief requirements summary so the LLM knows the current state
+    requirements = await asyncio.to_thread(db.list_workspace_requirements, workspace_id)
+    critical_gaps = [req for req in requirements if req.get("status") == "gap" and req.get("mandatory")]
+    gap_lines = "\n".join(f"  - {req.get('description', '')}" for req in critical_gaps[:10])
+    gap_section = f"\nCRITICAL MANDATORY GAPS:\n{gap_lines}\n" if gap_lines else ""
+
+    system_prompt = (
+        f"You are an AI tender assistant for: {workspace.get('title', '')}.\n"
+        f"Buyer: {workspace.get('buyer', '')}. Closing: {workspace.get('closing_date', '')}. "
+        f"Readiness: {workspace.get('readiness_score', 0)}%.\n"
+        f"{gap_section}"
+        "Answer questions about the tender, its requirements, and how to address gaps. "
+        "Cite document excerpts inline as [1], [2] etc. "
+        "Be concise and practical. If something isn't supported by the excerpts, say so clearly.\n\n"
+        f"RELEVANT DOCUMENT EXCERPTS:\n{doc_context}"
+    )
+
+    recent_history = [
+        {"role": m["role"], "content": str(m.get("content", ""))}
+        for m in (body.history or [])[-6:]
+        if m.get("role") in ("user", "assistant")
+    ]
+
+    try:
+        answer = llm.complete(
+            tier="reasoning",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                *recent_history,
+                {"role": "user", "content": body.message},
+            ],
+        )
+    except Exception:
+        answer = "The AI assistant is temporarily unavailable. Check that the LLM provider is configured."
+
+    citations = [
+        {
+            "document_id": c.get("document_id", ""),
+            "page": c.get("page") or 0,
+            "quoted_text": (c.get("text") or "")[:200],
+            "chunk_id": c.get("chunk_id", ""),
+        }
+        for c in chunks
+    ]
+    return {"answer": answer, "citations": citations}

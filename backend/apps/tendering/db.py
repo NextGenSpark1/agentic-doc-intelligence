@@ -402,6 +402,19 @@ def list_core_documents_for_workspace(workspace_id: str) -> list[dict]:
     ) or []
 
 
+def match_workspace_chunks(workspace_id: str, query_embedding: list[float], top_k: int = 8) -> list[dict]:
+    return (
+        get_client()
+        .rpc("match_workspace_chunks", {
+            "p_workspace_id": workspace_id,
+            "p_query_embedding": query_embedding,
+            "p_match_count": top_k,
+        })
+        .execute()
+        .data
+    ) or []
+
+
 def delete_workspace_requirements(workspace_id: str, pending_only: bool = False) -> None:
     """Delete requirements for a workspace. If pending_only, only deletes unchecked ones."""
     query = get_client().table("workspace_requirements").delete().eq("workspace_id", workspace_id)
