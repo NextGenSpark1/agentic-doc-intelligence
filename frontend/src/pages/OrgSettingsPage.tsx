@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, Users, Mail, Building2, Shield, User, Clock } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
 import { fetchOrgMembers, inviteMember, removeMember, fetchPendingInvitations, cancelInvitation, resendInvitation, changeMemberRole, leaveOrg } from '../api'
 import type { OrgMember, PendingInvitation } from '../types'
@@ -59,14 +60,12 @@ export default function OrgSettingsPage() {
   const isOrgAdmin = role === 'org_admin'
   const canInvite = role === 'org_admin' || role === 'supervisor'
 
-  const [members, setMembers] = useState<OrgMember[]>([])
-  const [membersLoading, setMembersLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [editingRole, setEditingRole] = useState<Record<string, string>>({})
   const [savingRole, setSavingRole] = useState<string | null>(null)
   const [leaving, setLeaving] = useState(false)
 
-  const [pendingInvites, setPendingInvites] = useState<PendingInvitation[]>([])
   const [cancellingToken, setCancellingToken] = useState<string | null>(null)
   const [resendingToken, setResendingToken] = useState<string | null>(null)
   const [resendResult, setResendResult] = useState<Record<string, boolean>>({})
@@ -81,18 +80,18 @@ export default function OrgSettingsPage() {
 
   const config = ROLE_CONFIG[role] ?? ROLE_CONFIG.member
 
-  useEffect(() => {
-    if (!orgCtx?.org_id) return
-    fetchOrgMembers(orgCtx.org_id)
-      .then(d => setMembers(d.members))
-      .catch(() => {})
-      .finally(() => setMembersLoading(false))
-    if (canInvite) {
-      fetchPendingInvitations(orgCtx.org_id)
-        .then(setPendingInvites)
-        .catch(() => {})
-    }
-  }, [orgCtx?.org_id, canInvite])
+  const { data: membersData, isLoading: membersLoading } = useQuery({
+    queryKey: ['org-members', orgCtx?.org_id],
+    queryFn: () => fetchOrgMembers(orgCtx!.org_id!),
+    enabled: !!orgCtx?.org_id,
+  })
+  const members: OrgMember[] = membersData?.members ?? []
+
+  const { data: pendingInvites = [] } = useQuery({
+    queryKey: ['pending-invites', orgCtx?.org_id],
+    queryFn: () => fetchPendingInvitations(orgCtx!.org_id!),
+    enabled: !!orgCtx?.org_id && canInvite,
+  })
 
   async function handleInvite() {
     if (!inviteEmail || !orgCtx?.org_id) return
@@ -100,11 +99,11 @@ export default function OrgSettingsPage() {
     setInviteError(null)
     setInviteLink(null)
     try {
-      const res = await inviteMember(orgCtx.org_id, inviteEmail, inviteRole, inviteName || undefined)
-      setInviteLink(res.invite_link)
+      const result = await inviteMember(orgCtx.org_id, inviteEmail, inviteRole, inviteName || undefined)
+      setInviteLink(result.invite_link)
       setInviteEmail('')
       setInviteName('')
-      if (orgCtx?.org_id) fetchPendingInvitations(orgCtx.org_id).then(setPendingInvites).catch(() => {})
+      queryClient.invalidateQueries({ queryKey: ['pending-invites', orgCtx.org_id] })
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Failed to send invite'
       setInviteError(msg)
@@ -127,14 +126,16 @@ export default function OrgSettingsPage() {
     }
   }
 
-  async function handleRoleSave(m: OrgMember) {
-    const newRole = editingRole[m.user_id]
+  async function handleRoleSave(member: OrgMember) {
+    const newRole = editingRole[member.user_id]
     if (!newRole || !orgCtx?.org_id) return
-    setSavingRole(m.user_id)
+    setSavingRole(member.user_id)
     try {
-      await changeMemberRole(orgCtx.org_id, m.user_id, newRole)
-      setMembers(prev => prev.map(x => x.user_id === m.user_id ? { ...x, role: newRole as OrgMember['role'] } : x))
-      setEditingRole(prev => { const n = { ...prev }; delete n[m.user_id]; return n })
+      await changeMemberRole(orgCtx.org_id, member.user_id, newRole)
+      queryClient.setQueryData<{ members: OrgMember[] }>(['org-members', orgCtx.org_id], (previous) =>
+        previous ? { ...previous, members: previous.members.map(existingMember => existingMember.user_id === member.user_id ? { ...existingMember, role: newRole as OrgMember['role'] } : existingMember) } : previous
+      )
+      setEditingRole(previous => { const next = { ...previous }; delete next[member.user_id]; return next })
     } catch { alert('Failed to update role') }
     finally { setSavingRole(null) }
   }
@@ -144,7 +145,9 @@ export default function OrgSettingsPage() {
     setCancellingToken(token)
     try {
       await cancelInvitation(orgCtx.org_id, token)
-      setPendingInvites(prev => prev.filter(i => i.token !== token))
+      queryClient.setQueryData<PendingInvitation[]>(['pending-invites', orgCtx.org_id], (previous) =>
+        (previous ?? []).filter(invitation => invitation.token !== token)
+      )
     } catch { alert('Failed to cancel invitation') }
     finally { setCancellingToken(null) }
   }
@@ -154,19 +157,21 @@ export default function OrgSettingsPage() {
     setResendingToken(token)
     try {
       await resendInvitation(orgCtx.org_id, token)
-      setResendResult(prev => ({ ...prev, [token]: true }))
-      setTimeout(() => setResendResult(prev => { const n = { ...prev }; delete n[token]; return n }), 3000)
+      setResendResult(previous => ({ ...previous, [token]: true }))
+      setTimeout(() => setResendResult(previous => { const next = { ...previous }; delete next[token]; return next }), 3000)
     } catch { alert('Failed to resend invitation') }
     finally { setResendingToken(null) }
   }
 
-  async function handleRemove(m: OrgMember) {
+  async function handleRemove(member: OrgMember) {
     if (!orgCtx?.org_id) return
-    if (!window.confirm(`Remove ${m.full_name || m.email} from the organisation?`)) return
-    setRemovingId(m.user_id)
+    if (!window.confirm(`Remove ${member.full_name || member.email} from the organisation?`)) return
+    setRemovingId(member.user_id)
     try {
-      await removeMember(orgCtx.org_id, m.user_id)
-      setMembers(prev => prev.filter(x => x.user_id !== m.user_id))
+      await removeMember(orgCtx.org_id, member.user_id)
+      queryClient.setQueryData<{ members: OrgMember[] }>(['org-members', orgCtx.org_id], (previous) =>
+        previous ? { ...previous, members: previous.members.filter(existingMember => existingMember.user_id !== member.user_id) } : previous
+      )
     } catch {
       alert('Failed to remove member')
     } finally {

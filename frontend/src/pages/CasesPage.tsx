@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { FolderOpen, Activity, Clock, Archive, Plus } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Case, CasesListResponse } from '../types'
 import { fetchCases, deleteCase } from '../api'
 import { useAuth } from '../context/AuthContext'
@@ -52,10 +53,8 @@ function CasesTableSkeleton() {
 
 export default function CasesPage() {
   const { orgCtx } = useAuth()
+  const queryClient = useQueryClient()
   const isSuspended = orgCtx?.org_status === 'suspended'
-  const [data, setData] = useState<CasesListResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState('all')
   const [searchParams] = useSearchParams()
@@ -68,22 +67,10 @@ export default function CasesPage() {
     setSearchQuery(urlQuery)
   }, [urlQuery])
 
-  async function loadCases() {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await fetchCases()
-      setData(result)
-    } catch {
-      setError('Failed to load cases. The backend may be unavailable — try refreshing.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadCases()
-  }, [])
+  const { data, isLoading: loading, isError } = useQuery({
+    queryKey: ['cases'],
+    queryFn: fetchCases,
+  })
 
   // Auto-dismiss success banner
   useEffect(() => {
@@ -96,12 +83,16 @@ export default function CasesPage() {
 
   async function handleDelete(caseId: string) {
     await deleteCase(caseId)
-    setData(prev => prev ? { ...prev, cases: prev.cases.filter(c => c.case_id !== caseId) } : prev)
+    queryClient.setQueryData<CasesListResponse>(['cases'], (previous) =>
+      previous ? { ...previous, cases: previous.cases.filter(existingCase => existingCase.case_id !== caseId) } : previous
+    )
   }
 
   async function handleBulkDelete(caseIds: string[]) {
-    await Promise.allSettled(caseIds.map(id => deleteCase(id)))
-    setData(prev => prev ? { ...prev, cases: prev.cases.filter(c => !caseIds.includes(c.case_id)) } : prev)
+    await Promise.allSettled(caseIds.map(caseId => deleteCase(caseId)))
+    queryClient.setQueryData<CasesListResponse>(['cases'], (previous) =>
+      previous ? { ...previous, cases: previous.cases.filter(existingCase => !caseIds.includes(existingCase.case_id)) } : previous
+    )
   }
 
   // Client-side filtering
@@ -144,9 +135,9 @@ export default function CasesPage() {
           <span>Your data is read-only. Contact your platform administrator to restore access.</span>
         </div>
       )}
-      {error && (
+      {isError && (
         <div className="bg-red-bg border border-red/20 text-red text-sm px-4 py-3 rounded-lg">
-          {error}
+          Failed to load cases. The backend may be unavailable — try refreshing.
         </div>
       )}
       {successMsg && (
@@ -230,10 +221,12 @@ export default function CasesPage() {
           onDelete={handleDelete}
           onBulkDelete={handleBulkDelete}
           onStatusChange={(caseId, newStatus) =>
-            setData(prev => prev ? {
-              ...prev,
-              cases: prev.cases.map(c => c.case_id === caseId ? { ...c, status: newStatus } : c)
-            } : prev)
+            queryClient.setQueryData<CasesListResponse>(['cases'], (previous) =>
+              previous ? {
+                ...previous,
+                cases: previous.cases.map(existingCase => existingCase.case_id === caseId ? { ...existingCase, status: newStatus } : existingCase)
+              } : previous
+            )
           }
         />
       )}
@@ -244,7 +237,7 @@ export default function CasesPage() {
         onClose={() => setModalOpen(false)}
         onSuccess={() => {
           setSuccessMsg('Case created successfully.')
-          loadCases()
+          queryClient.invalidateQueries({ queryKey: ['cases'] })
         }}
       />
     </div>
