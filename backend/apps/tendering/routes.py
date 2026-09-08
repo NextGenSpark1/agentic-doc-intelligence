@@ -38,8 +38,6 @@ def _get_tendering_membership(user: dict) -> dict:
 
     Returns 404 (not 403) for missing membership so the frontend mock-fallback catches it.
     """
-    if _is_platform_admin(user):
-        raise HTTPException(404, "Platform admins don't have a tendering workspace")
     membership = get_user_membership(user["user_id"], platform="tendering")
     if not membership:
         raise HTTPException(404, "No tendering organisation membership")
