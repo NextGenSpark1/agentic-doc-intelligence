@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Copy, Check, ChevronDown, ChevronUp, Loader2, Mail, RefreshCw, X } from 'lucide-react';
 import { getAllOrgs, createOrg, updateOrg, deleteOrg, getPendingInvitations, resendInvitation, cancelInvitation } from '../api/orgs';
@@ -16,8 +17,7 @@ const PLAN_BADGE: Record<string, string> = {
 export function PlatformAdminPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [orgs, setOrgs] = useState<Organisation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: '', plan: 'trial', adminEmail: '', adminName: '' });
@@ -38,18 +38,22 @@ export function PlatformAdminPage() {
   useEffect(() => {
     if (!user || !PLATFORM_ADMIN_EMAILS.includes(user.email ?? '')) {
       navigate('/');
-      return;
     }
-    getAllOrgs().then(setOrgs).finally(() => setLoading(false));
   }, [user, navigate]);
+
+  const { data: orgs = [], isLoading: loading } = useQuery({
+    queryKey: ['platform-orgs'],
+    queryFn: getAllOrgs,
+    enabled: !!user && PLATFORM_ADMIN_EMAILS.includes(user.email ?? ''),
+  });
 
   async function handleCreate() {
     if (!form.name || !form.adminEmail) return;
     setCreating(true);
     try {
       const result = await createOrg(form.name, form.plan, form.adminEmail, form.adminName || undefined);
-      setOrgs(previous => [{ ...result, member_count: 0, workspace_count: 0 }, ...previous]);
       if (result.invite_link) setLastInviteLink(result.invite_link);
+      queryClient.invalidateQueries({ queryKey: ['platform-orgs'] });
       setShowCreate(false);
       setForm({ name: '', plan: 'trial', adminEmail: '', adminName: '' });
     } catch {
@@ -65,9 +69,11 @@ export function PlatformAdminPage() {
     setSavingPlan(organisation.org_id);
     try {
       const updated = await updateOrg(organisation.org_id, { plan: newPlan });
-      setOrgs(previous => previous.map(existingOrg =>
-        existingOrg.org_id === organisation.org_id ? { ...existingOrg, plan: updated.plan ?? newPlan } : existingOrg
-      ));
+      queryClient.setQueryData<Organisation[]>(['platform-orgs'], (previous = []) =>
+        previous.map(existingOrg =>
+          existingOrg.org_id === organisation.org_id ? { ...existingOrg, plan: updated.plan ?? newPlan } : existingOrg
+        )
+      );
       setEditingPlan(previous => { const next = { ...previous }; delete next[organisation.org_id]; return next; });
     } catch {
       alert('Failed to update plan');
@@ -83,9 +89,11 @@ export function PlatformAdminPage() {
     setTogglingStatus(organisation.org_id);
     try {
       const updated = await updateOrg(organisation.org_id, { status: newStatus });
-      setOrgs(previous => previous.map(existingOrg =>
-        existingOrg.org_id === organisation.org_id ? { ...existingOrg, status: updated.status ?? newStatus } : existingOrg
-      ));
+      queryClient.setQueryData<Organisation[]>(['platform-orgs'], (previous = []) =>
+        previous.map(existingOrg =>
+          existingOrg.org_id === organisation.org_id ? { ...existingOrg, status: updated.status ?? newStatus } : existingOrg
+        )
+      );
     } catch {
       alert('Failed to update status');
     } finally {
@@ -98,7 +106,9 @@ export function PlatformAdminPage() {
     setDeletingOrg(organisation.org_id);
     try {
       await deleteOrg(organisation.org_id);
-      setOrgs(previous => previous.filter(existingOrg => existingOrg.org_id !== organisation.org_id));
+      queryClient.setQueryData<Organisation[]>(['platform-orgs'], (previous = []) =>
+        previous.filter(existingOrg => existingOrg.org_id !== organisation.org_id)
+      );
     } catch {
       alert('Failed to delete organisation');
     } finally {

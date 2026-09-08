@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { platformListOrgs, platformCreateOrg, platformDeleteOrg, platformUpdateOrg, fetchPendingInvitations, resendInvitation, cancelInvitation } from '../api'
 import type { Organisation } from '../types'
 import type { PendingInvitation } from '../api'
@@ -21,8 +22,7 @@ function planStyle(plan: string) {
 export default function PlatformAdminPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [orgs, setOrgs] = useState<Organisation[]>([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
 
   // create
   const [showCreate, setShowCreate] = useState(false)
@@ -45,18 +45,22 @@ export default function PlatformAdminPage() {
   useEffect(() => {
     if (!user || !PLATFORM_ADMIN_EMAILS.includes(user.email ?? '')) {
       navigate('/')
-      return
     }
-    platformListOrgs().then(d => setOrgs(d.orgs)).finally(() => setLoading(false))
   }, [user, navigate])
+
+  const { data: orgs = [], isLoading: loading } = useQuery({
+    queryKey: ['platform-orgs'],
+    queryFn: () => platformListOrgs().then(response => response.orgs),
+    enabled: !!user && PLATFORM_ADMIN_EMAILS.includes(user.email ?? ''),
+  })
 
   async function handleCreate() {
     if (!form.name || !form.adminEmail) return
     setCreating(true)
     try {
       const result = await platformCreateOrg(form.name, form.plan, form.adminEmail, form.adminName || undefined)
-      setOrgs(prev => [{ ...result.org, member_count: 0, case_count: 0 }, ...prev])
       setLastInviteLink(result.invite_link)
+      queryClient.invalidateQueries({ queryKey: ['platform-orgs'] })
       setShowCreate(false)
       setForm({ name: '', plan: 'trial', adminEmail: '', adminName: '' })
     } catch {
@@ -72,8 +76,10 @@ export default function PlatformAdminPage() {
     setSavingPlan(org.org_id)
     try {
       const updated = await platformUpdateOrg(org.org_id, { plan: newPlan })
-      setOrgs(prev => prev.map(o => o.org_id === org.org_id ? { ...o, plan: updated.plan ?? newPlan } : o))
-      setEditingPlan(prev => { const n = { ...prev }; delete n[org.org_id]; return n })
+      queryClient.setQueryData<Organisation[]>(['platform-orgs'], (previous = []) =>
+        previous.map(existingOrg => existingOrg.org_id === org.org_id ? { ...existingOrg, plan: updated.plan ?? newPlan } : existingOrg)
+      )
+      setEditingPlan(previous => { const next = { ...previous }; delete next[org.org_id]; return next })
     } catch {
       alert('Failed to update plan')
     } finally {
@@ -88,7 +94,9 @@ export default function PlatformAdminPage() {
     setTogglingStatus(org.org_id)
     try {
       const updated = await platformUpdateOrg(org.org_id, { status: newStatus })
-      setOrgs(prev => prev.map(o => o.org_id === org.org_id ? { ...o, status: updated.status ?? newStatus } : o))
+      queryClient.setQueryData<Organisation[]>(['platform-orgs'], (previous = []) =>
+        previous.map(existingOrg => existingOrg.org_id === org.org_id ? { ...existingOrg, status: updated.status ?? newStatus } : existingOrg)
+      )
     } catch {
       alert('Failed to update status')
     } finally {
@@ -101,7 +109,9 @@ export default function PlatformAdminPage() {
     setDeletingOrg(org.org_id)
     try {
       await platformDeleteOrg(org.org_id)
-      setOrgs(previous => previous.filter(existingOrg => existingOrg.org_id !== org.org_id))
+      queryClient.setQueryData<Organisation[]>(['platform-orgs'], (previous = []) =>
+        previous.filter(existingOrg => existingOrg.org_id !== org.org_id)
+      )
     } catch {
       alert('Failed to delete organisation')
     } finally {

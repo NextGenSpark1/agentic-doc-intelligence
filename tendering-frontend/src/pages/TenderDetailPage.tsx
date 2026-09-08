@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, FileText, Loader2,
   ClipboardCheck, BarChart3, ThumbsUp, MessageSquare,
@@ -27,32 +28,39 @@ const TABS: { id: Tab; label: string; icon: typeof FileText }[] = [
 export function TenderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [workspace, setWorkspace] = useState<TenderWorkspace | null>(null);
-  const [requirements, setRequirements] = useState<Requirement[]>([]);
-  const [bidReport, setBidReport] = useState<BidDecisionReport | null>(null);
-  const [libraryDocs, setLibraryDocs] = useState<LibraryDocument[]>([]);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('summary');
-
   const prevStageRef = useRef<string | null>(null);
 
+  const { data: fetchedWorkspace, isLoading: loadingWorkspace } = useQuery({
+    queryKey: ['workspace', id],
+    queryFn: () => getWorkspace(id!),
+    enabled: !!id,
+  });
+  const { data: requirements = [], isLoading: loadingRequirements } = useQuery({
+    queryKey: ['requirements', id],
+    queryFn: () => getRequirements(id!),
+    enabled: !!id,
+  });
+  const { data: bidReport = null, isLoading: loadingBid } = useQuery({
+    queryKey: ['bid-report', id],
+    queryFn: () => getBidDecision(id!).catch(() => null),
+    enabled: !!id,
+  });
+  const { data: libraryDocs = [] } = useQuery({
+    queryKey: ['library-docs'],
+    queryFn: getLibraryDocuments,
+  });
+
+  const loading = loadingWorkspace || loadingRequirements || loadingBid;
+
   useEffect(() => {
-    if (!id) return;
-    Promise.allSettled([
-      getWorkspace(id),
-      getRequirements(id),
-      getBidDecision(id),
-      getLibraryDocuments(),
-    ]).then(([wsResult, reqsResult, bidResult, libResult]) => {
-      if (wsResult.status === 'fulfilled') {
-        setWorkspace(wsResult.value);
-        prevStageRef.current = wsResult.value.stage;
-      }
-      if (reqsResult.status === 'fulfilled') setRequirements(reqsResult.value);
-      if (bidResult.status === 'fulfilled') setBidReport(bidResult.value);
-      if (libResult.status === 'fulfilled') setLibraryDocs(libResult.value);
-    }).finally(() => setLoading(false));
-  }, [id]);
+    if (fetchedWorkspace && !workspace) {
+      setWorkspace(fetchedWorkspace);
+      prevStageRef.current = fetchedWorkspace.stage;
+    }
+  }, [fetchedWorkspace, workspace]);
 
   const handleWorkspaceChange = useCallback((patch: Partial<TenderWorkspace>) => {
     setWorkspace((previous) => {
@@ -62,12 +70,12 @@ export function TenderDetailPage() {
         prevStageRef.current === 'analysing' && updated.stage === 'preparing';
       prevStageRef.current = updated.stage;
       if (stageJustCompleted && id) {
-        getRequirements(id).then(setRequirements);
-        getBidDecision(id).then(setBidReport);
+        queryClient.invalidateQueries({ queryKey: ['requirements', id] });
+        queryClient.invalidateQueries({ queryKey: ['bid-report', id] });
       }
       return updated;
     });
-  }, [id]);
+  }, [id, queryClient]);
 
   if (loading) {
     return (

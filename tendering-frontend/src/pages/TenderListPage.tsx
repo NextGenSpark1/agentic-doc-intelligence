@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, CalendarDays, ArrowRight } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getWorkspaces, createWorkspace } from '../api/tenders';
 import { StageBadge, BidDecisionBadge } from '../components/Badge';
 import { daysUntil, formatCurrency } from '../lib/utils';
@@ -19,7 +20,7 @@ const STAGE_FILTERS: { label: string; value: WorkspaceStage | 'all' }[] = [
 
 // ─── Create Workspace Modal ───────────────────────────────────────────────────
 
-function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
+function CreateWorkspaceModal({ onCreated, onClose }: { onCreated: () => void; onClose: () => void }) {
   const navigate = useNavigate();
   const [form, setForm] = useState({
     title: '',
@@ -50,6 +51,7 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
         currency: form.currency,
       });
       toast.success('Workspace created');
+      onCreated();
       onClose();
       navigate(`/tenders/${workspace.id}`);
     } catch {
@@ -294,15 +296,15 @@ function WorkspaceCard({ workspace }: { workspace: TenderWorkspace }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function TenderListPage() {
-  const [workspaces, setWorkspaces] = useState<TenderWorkspace[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState<WorkspaceStage | 'all'>('all');
   const [showCreate, setShowCreate] = useState(false);
 
-  useEffect(() => {
-    getWorkspaces().then(setWorkspaces).finally(() => setLoading(false));
-  }, []);
+  const { data: workspaces = [], isLoading: loading } = useQuery({
+    queryKey: ['workspaces'],
+    queryFn: getWorkspaces,
+  });
 
   const filtered = workspaces.filter((workspace) => {
     const searchQuery = search.toLowerCase();
@@ -384,7 +386,12 @@ export function TenderListPage() {
       )}
 
       {/* Modal */}
-      {showCreate && <CreateWorkspaceModal onClose={() => setShowCreate(false)} />}
+      {showCreate && (
+        <CreateWorkspaceModal
+          onCreated={() => queryClient.invalidateQueries({ queryKey: ['workspaces'] })}
+          onClose={() => setShowCreate(false)}
+        />
+      )}
     </div>
   );
 }

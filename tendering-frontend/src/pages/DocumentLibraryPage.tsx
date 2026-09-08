@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Library, Upload, Search, AlertCircle, CheckCircle2, Clock,
   FileText, Download, Calendar, Plus, FolderOpen, X, CloudUpload, Trash2,
@@ -64,7 +65,7 @@ function ReplaceModal({
   onClose,
 }: {
   doc: LibraryDocument;
-  onReplaced: (updated: LibraryDocument) => void;
+  onReplaced: () => void;
   onClose: () => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
@@ -83,8 +84,8 @@ function ReplaceModal({
         .upload(path, file, { contentType: file.type, upsert: false });
       if (storageError) throw storageError;
       const { data: { publicUrl } } = supabase.storage.from('library-documents').getPublicUrl(path);
-      const updated = await replaceLibraryDocument(doc.doc_id, { url: publicUrl, filename: file.name });
-      onReplaced(updated);
+      await replaceLibraryDocument(doc.doc_id, { url: publicUrl, filename: file.name });
+      onReplaced();
       toast.success('Document replaced');
       onClose();
     } catch {
@@ -148,8 +149,8 @@ function DocCard({
   onReplaced,
 }: {
   doc: LibraryDocument;
-  onDeleted: (docId: string) => void;
-  onReplaced: (updated: LibraryDocument) => void;
+  onDeleted: () => void;
+  onReplaced: () => void;
 }) {
   const [showReplace, setShowReplace] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -161,7 +162,7 @@ function DocCard({
     setDeleting(true);
     try {
       await deleteLibraryDocument(doc.doc_id);
-      onDeleted(doc.doc_id);
+      onDeleted();
       toast.success('Document deleted');
     } catch {
       toast.error('Delete failed');
@@ -263,7 +264,7 @@ function DocCard({
       {showReplace && (
         <ReplaceModal
           doc={doc}
-          onReplaced={(updated) => { onReplaced(updated); setShowReplace(false); }}
+          onReplaced={() => { onReplaced(); setShowReplace(false); }}
           onClose={() => setShowReplace(false)}
         />
       )}
@@ -273,7 +274,7 @@ function DocCard({
 
 // ─── Upload modal ─────────────────────────────────────────────────────────────
 
-function UploadModal({ onAdded, onClose }: { onAdded: (doc: LibraryDocument) => void; onClose: () => void }) {
+function UploadModal({ onAdded, onClose }: { onAdded: () => void; onClose: () => void }) {
   const [form, setForm] = useState({ title: '', category: 'certification' as DocCategory, expiry_date: '' });
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -297,7 +298,7 @@ function UploadModal({ onAdded, onClose }: { onAdded: (doc: LibraryDocument) => 
         .upload(path, file, { contentType: file.type, upsert: false });
       if (storageError) throw storageError;
       const { data: { publicUrl } } = supabase.storage.from('library-documents').getPublicUrl(path);
-      const doc = await addLibraryDocument({
+      await addLibraryDocument({
         title: form.title,
         filename: file.name,
         category: form.category,
@@ -305,7 +306,7 @@ function UploadModal({ onAdded, onClose }: { onAdded: (doc: LibraryDocument) => 
         expiry_date: form.expiry_date || undefined,
         url: publicUrl,
       });
-      onAdded(doc);
+      onAdded();
       toast.success('Document added to library');
       onClose();
     } catch {
@@ -418,16 +419,16 @@ function UploadModal({ onAdded, onClose }: { onAdded: (doc: LibraryDocument) => 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function DocumentLibraryPage() {
-  const [docs, setDocs] = useState<LibraryDocument[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<DocCategory | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<VerificationStatus | 'all'>('all');
   const [showUpload, setShowUpload] = useState(false);
 
-  useEffect(() => {
-    getLibraryDocuments().then(setDocs).finally(() => setLoading(false));
-  }, []);
+  const { data: docs = [], isLoading: loading } = useQuery({
+    queryKey: ['library-docs'],
+    queryFn: getLibraryDocuments,
+  });
 
   const filtered = docs.filter((document) => {
     const searchQuery = search.toLowerCase();
@@ -581,8 +582,8 @@ export function DocumentLibraryPage() {
             <DocCard
               key={document.doc_id}
               doc={document}
-              onDeleted={(docId) => setDocs((previous) => previous.filter((doc) => doc.doc_id !== docId))}
-              onReplaced={(updated) => setDocs((previous) => previous.map((doc) => doc.doc_id === updated.doc_id ? updated : doc))}
+              onDeleted={() => queryClient.invalidateQueries({ queryKey: ['library-docs'] })}
+              onReplaced={() => queryClient.invalidateQueries({ queryKey: ['library-docs'] })}
             />
           ))}
         </div>
@@ -590,7 +591,7 @@ export function DocumentLibraryPage() {
 
       {showUpload && (
         <UploadModal
-          onAdded={(doc) => setDocs((previous) => [doc, ...previous])}
+          onAdded={() => queryClient.invalidateQueries({ queryKey: ['library-docs'] })}
           onClose={() => setShowUpload(false)}
         />
       )}
