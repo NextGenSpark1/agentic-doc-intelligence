@@ -169,7 +169,7 @@ export function PlatformAdminPage() {
   };
 
   return (
-    <div className="min-h-screen bg-canvas">
+    <div className="min-h-screen bg-canvas pt-13">
       {/* Header */}
       <div className="bg-navy-deep h-13 flex items-center px-6 justify-between">
         <div className="flex items-center gap-3">
