@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, FolderOpen, Library, LogOut, Settings, ShieldCheck, Building2, Users } from 'lucide-react';
 import { useAuth, PLATFORM_ADMIN_EMAILS } from '../context/AuthContext';
 
@@ -12,6 +12,8 @@ const NAV_LINKS = [
 export function Navbar() {
   const { user, signOut, orgCtx } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const isAdminPage = pathname === '/admin';
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -122,23 +124,25 @@ export function Navbar() {
         </div>
       </div>
 
-      <nav className="bg-navy flex items-center px-6 gap-1 border-b border-white/10">
-        {NAV_LINKS.map(({ to, label, icon: Icon, exact }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={exact}
-            className={({ isActive }) =>
-              `flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
-                isActive ? 'text-white border-teal' : 'text-white/60 border-transparent hover:text-white/90'
-              }`
-            }
-          >
-            <Icon size={15} />
-            {label}
-          </NavLink>
-        ))}
-      </nav>
+      {!isAdminPage && (
+        <nav className="bg-navy flex items-center px-6 gap-1 border-b border-white/10">
+          {NAV_LINKS.map(({ to, label, icon: Icon, exact }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={exact}
+              className={({ isActive }) =>
+                `flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                  isActive ? 'text-white border-teal' : 'text-white/60 border-transparent hover:text-white/90'
+                }`
+              }
+            >
+              <Icon size={15} />
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+      )}
     </header>
   );
 }
