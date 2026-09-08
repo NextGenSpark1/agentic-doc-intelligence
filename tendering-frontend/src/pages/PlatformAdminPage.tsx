@@ -170,23 +170,13 @@ export function PlatformAdminPage() {
 
   return (
     <div className="min-h-screen bg-canvas pt-13">
-      {/* Header */}
-      <div className="bg-navy-deep h-13 flex items-center px-6 justify-between">
-        <div className="flex items-center gap-3">
-          <img src="/NG logo.jpeg" alt="NextGen Spark" className="w-7 h-7 rounded-md object-contain bg-white p-0.5 shrink-0" />
-          <span className="text-white font-semibold text-sm tracking-wide">NextGen Spark</span>
-          <span className="text-white/30 text-sm">·</span>
-          <span className="text-white/60 text-xs font-semibold uppercase tracking-widest">Platform Admin</span>
-        </div>
+      <div className="max-w-4xl mx-auto px-6 py-8">
         <button
           onClick={() => navigate('/dashboard')}
-          className="text-white/60 hover:text-white text-xs transition-colors"
+          className="flex items-center gap-1.5 text-xs text-text-mute hover:text-teal transition-colors mb-5"
         >
-          ← Back to Dashboard
+          ← Dashboard
         </button>
-      </div>
-
-      <div className="max-w-4xl mx-auto px-6 py-10">
         <div className="flex items-center justify-between mb-7">
           <div>
             <h1 className="text-xl font-bold text-text">Organisations</h1>
