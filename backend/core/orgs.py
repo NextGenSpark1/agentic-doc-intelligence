@@ -190,9 +190,10 @@ async def get_my_org(user: dict = Depends(get_current_user), platform: str = Dep
 
 @router.get("/orgs/{org_id}/members")
 async def list_members(org_id: str, user: dict = Depends(get_current_user)):
-    m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
-    if not m or m["org_id"] != org_id:
-        raise HTTPException(403, "access denied")
+    if not _is_platform_admin(user):
+        m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+        if not m or m["org_id"] != org_id:
+            raise HTTPException(403, "access denied")
     members = await asyncio.to_thread(db.list_org_members, org_id)
     return {"members": members}
 
@@ -241,18 +242,20 @@ async def invite_member(org_id: str, body: InviteBody, user: dict = Depends(get_
 
 @router.get("/orgs/{org_id}/invitations")
 async def list_invitations(org_id: str, user: dict = Depends(get_current_user)):
-    m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
-    if not m or m["org_id"] != org_id or m["role"] not in ("org_admin", "supervisor"):
-        raise HTTPException(403, "access denied")
+    if not _is_platform_admin(user):
+        m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+        if not m or m["org_id"] != org_id or m["role"] not in ("org_admin", "supervisor"):
+            raise HTTPException(403, "access denied")
     invites = await asyncio.to_thread(db.list_pending_invitations, org_id)
     return {"invitations": invites}
 
 
 @router.delete("/orgs/{org_id}/invitations/{token}", status_code=204)
 async def cancel_invitation(org_id: str, token: str, user: dict = Depends(get_current_user)):
-    m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
-    if not m or m["org_id"] != org_id or m["role"] != "org_admin":
-        raise HTTPException(403, "Only org admin can cancel invitations")
+    if not _is_platform_admin(user):
+        m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+        if not m or m["org_id"] != org_id or m["role"] != "org_admin":
+            raise HTTPException(403, "Only org admin can cancel invitations")
     invite = await asyncio.to_thread(db.get_invitation_by_token, token)
     if not invite or invite["org_id"] != org_id:
         raise HTTPException(404, "Invitation not found")
@@ -261,9 +264,10 @@ async def cancel_invitation(org_id: str, token: str, user: dict = Depends(get_cu
 
 @router.post("/orgs/{org_id}/invitations/{token}/resend", status_code=200)
 async def resend_invitation(org_id: str, token: str, user: dict = Depends(get_current_user)):
-    m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
-    if not m or m["org_id"] != org_id or m["role"] not in ("org_admin", "supervisor"):
-        raise HTTPException(403, "access denied")
+    if not _is_platform_admin(user):
+        m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+        if not m or m["org_id"] != org_id or m["role"] not in ("org_admin", "supervisor"):
+            raise HTTPException(403, "access denied")
     invite = await asyncio.to_thread(db.get_invitation_by_token, token)
     if not invite or invite["org_id"] != org_id:
         raise HTTPException(404, "Invitation not found")
