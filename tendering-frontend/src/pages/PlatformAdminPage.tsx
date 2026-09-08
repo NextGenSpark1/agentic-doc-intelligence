@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Copy, Check, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
-import { getAllOrgs, createOrg, updateOrg, deleteOrg } from '../api/orgs';
-import type { Organisation } from '../types';
+import { Plus, Copy, Check, ChevronDown, ChevronUp, Loader2, Mail, RefreshCw, X } from 'lucide-react';
+import { getAllOrgs, createOrg, updateOrg, deleteOrg, getPendingInvitations, resendInvitation, cancelInvitation } from '../api/orgs';
+import type { Organisation, PendingInvitation } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { PLATFORM_ADMIN_EMAILS } from '../context/AuthContext';
+import toast from 'react-hot-toast';
 
 const PLAN_BADGE: Record<string, string> = {
   trial: 'text-amber-700 bg-amber-50 border-amber-200',
@@ -29,6 +30,10 @@ export function PlatformAdminPage() {
   const [savingPlan, setSavingPlan] = useState<string | null>(null);
   const [togglingStatus, setTogglingStatus] = useState<string | null>(null);
   const [deletingOrg, setDeletingOrg] = useState<string | null>(null);
+  const [orgInvitations, setOrgInvitations] = useState<Record<string, PendingInvitation[]>>({});
+  const [loadingInvitations, setLoadingInvitations] = useState<Record<string, boolean>>({});
+  const [resendingToken, setResendingToken] = useState<string | null>(null);
+  const [cancelingToken, setCancelingToken] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user || !PLATFORM_ADMIN_EMAILS.includes(user.email ?? '')) {
@@ -98,6 +103,49 @@ export function PlatformAdminPage() {
       alert('Failed to delete organisation');
     } finally {
       setDeletingOrg(null);
+    }
+  }
+
+  function handleToggleExpand(orgId: string) {
+    if (expandedOrg === orgId) {
+      setExpandedOrg(null);
+      return;
+    }
+    setExpandedOrg(orgId);
+    if (!orgInvitations[orgId]) {
+      setLoadingInvitations(previous => ({ ...previous, [orgId]: true }));
+      getPendingInvitations(orgId)
+        .then(invitations => setOrgInvitations(previous => ({ ...previous, [orgId]: invitations })))
+        .catch(() => {})
+        .finally(() => setLoadingInvitations(previous => ({ ...previous, [orgId]: false })));
+    }
+  }
+
+  async function handleResendInvitation(orgId: string, token: string) {
+    setResendingToken(token);
+    try {
+      await resendInvitation(orgId, token);
+      toast.success('Invitation resent');
+    } catch {
+      toast.error('Failed to resend invitation');
+    } finally {
+      setResendingToken(null);
+    }
+  }
+
+  async function handleCancelInvitation(orgId: string, token: string) {
+    if (!window.confirm('Cancel this invitation?')) return;
+    setCancelingToken(token);
+    try {
+      await cancelInvitation(orgId, token);
+      setOrgInvitations(previous => ({
+        ...previous,
+        [orgId]: (previous[orgId] ?? []).filter(invitation => invitation.token !== token),
+      }));
+    } catch {
+      toast.error('Failed to cancel invitation');
+    } finally {
+      setCancelingToken(null);
     }
   }
 
@@ -230,7 +278,7 @@ export function PlatformAdminPage() {
 
                     <div className="flex items-center gap-2 shrink-0">
                       <button
-                        onClick={() => setExpandedOrg(isExpanded ? null : organisation.org_id)}
+                        onClick={() => handleToggleExpand(organisation.org_id)}
                         className="flex items-center gap-1 text-xs text-text-mute border border-border rounded-lg px-2.5 py-1.5 hover:border-border-strong hover:text-text transition-colors"
                       >
                         {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
@@ -258,31 +306,78 @@ export function PlatformAdminPage() {
                   </div>
 
                   {isExpanded && (
-                    <div className="border-t border-border bg-canvas px-5 py-4">
-                      <p className="text-[10px] font-semibold text-text-mute uppercase tracking-widest mb-3">Members</p>
-                      {!organisation.members || organisation.members.length === 0 ? (
-                        <p className="text-sm text-text-mute">No members loaded. Expand from org member list.</p>
-                      ) : (
-                        <div className="flex flex-col gap-2">
-                          {organisation.members.map(member => (
-                            <div key={member.user_id} className="flex items-center gap-3">
-                              <div className="w-7 h-7 rounded-full bg-navy/10 flex items-center justify-center text-[10px] font-bold text-navy shrink-0">
-                                {(member.full_name || member.email).slice(0, 2).toUpperCase()}
+                    <div className="border-t border-border bg-canvas px-5 py-4 space-y-5">
+                      {/* Members */}
+                      <div>
+                        <p className="text-[10px] font-semibold text-text-mute uppercase tracking-widest mb-3">Members</p>
+                        {!organisation.members || organisation.members.length === 0 ? (
+                          <p className="text-sm text-text-mute">No members yet.</p>
+                        ) : (
+                          <div className="flex flex-col gap-2">
+                            {organisation.members.map(member => (
+                              <div key={member.user_id} className="flex items-center gap-3">
+                                <div className="w-7 h-7 rounded-full bg-navy/10 flex items-center justify-center text-[10px] font-bold text-navy shrink-0">
+                                  {(member.full_name || member.email).slice(0, 2).toUpperCase()}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-text truncate">{member.full_name || member.email}</p>
+                                  {member.full_name && <p className="text-xs text-text-mute">{member.email}</p>}
+                                </div>
+                                <span className={`text-[10px] font-semibold border rounded-full px-2 py-0.5 shrink-0 ${ROLE_COLORS[member.role] ?? ''}`}>
+                                  {ROLE_LABELS[member.role] ?? member.role}
+                                </span>
+                                <p className="text-[11px] text-text-mute shrink-0">
+                                  {new Date(member.joined_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </p>
                               </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-text truncate">{member.full_name || member.email}</p>
-                                {member.full_name && <p className="text-xs text-text-mute">{member.email}</p>}
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Pending Invitations */}
+                      <div>
+                        <p className="text-[10px] font-semibold text-text-mute uppercase tracking-widest mb-3">Pending Invitations</p>
+                        {loadingInvitations[organisation.org_id] ? (
+                          <div className="flex items-center gap-2 text-sm text-text-mute">
+                            <Loader2 size={13} className="animate-spin" /> Loading…
+                          </div>
+                        ) : (orgInvitations[organisation.org_id] ?? []).length === 0 ? (
+                          <p className="text-sm text-text-mute">No pending invitations.</p>
+                        ) : (
+                          <div className="flex flex-col gap-2">
+                            {(orgInvitations[organisation.org_id] ?? []).map(invitation => (
+                              <div key={invitation.token} className="flex items-center gap-3">
+                                <div className="w-7 h-7 rounded-full bg-teal/10 flex items-center justify-center flex-shrink-0">
+                                  <Mail size={12} className="text-teal" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-text truncate">{invitation.email}</p>
+                                  <p className="text-xs text-text-mute">
+                                    {invitation.role} · expires {new Date(invitation.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => handleResendInvitation(organisation.org_id, invitation.token)}
+                                  disabled={resendingToken === invitation.token}
+                                  className="flex items-center gap-1 text-xs font-medium text-teal border border-teal/30 rounded-lg px-2.5 py-1 hover:bg-teal/5 transition-colors disabled:opacity-40"
+                                >
+                                  {resendingToken === invitation.token ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                                  Resend
+                                </button>
+                                <button
+                                  onClick={() => handleCancelInvitation(organisation.org_id, invitation.token)}
+                                  disabled={cancelingToken === invitation.token}
+                                  className="flex items-center gap-1 text-xs font-medium text-red/70 border border-red/20 rounded-lg px-2.5 py-1 hover:text-red hover:border-red/40 transition-colors disabled:opacity-40"
+                                >
+                                  {cancelingToken === invitation.token ? <Loader2 size={11} className="animate-spin" /> : <X size={11} />}
+                                  Cancel
+                                </button>
                               </div>
-                              <span className={`text-[10px] font-semibold border rounded-full px-2 py-0.5 shrink-0 ${ROLE_COLORS[member.role] ?? ''}`}>
-                                {ROLE_LABELS[member.role] ?? member.role}
-                              </span>
-                              <p className="text-[11px] text-text-mute shrink-0">
-                                {new Date(member.joined_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { platformListOrgs, platformCreateOrg, platformDeleteOrg, platformUpdateOrg } from '../api'
+import { platformListOrgs, platformCreateOrg, platformDeleteOrg, platformUpdateOrg, fetchPendingInvitations, resendInvitation, cancelInvitation } from '../api'
 import type { Organisation } from '../types'
+import type { PendingInvitation } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 const PLATFORM_ADMIN_EMAILS = ['nextgenspark2025@gmail.com', 'hello@nextgenspark.solutions']
@@ -36,6 +37,10 @@ export default function PlatformAdminPage() {
   const [savingPlan, setSavingPlan] = useState<string | null>(null)
   const [togglingStatus, setTogglingStatus] = useState<string | null>(null)
   const [deletingOrg, setDeletingOrg] = useState<string | null>(null)
+  const [orgInvitations, setOrgInvitations] = useState<Record<string, PendingInvitation[]>>({})
+  const [loadingInvitations, setLoadingInvitations] = useState<Record<string, boolean>>({})
+  const [resendingToken, setResendingToken] = useState<string | null>(null)
+  const [cancelingToken, setCancelingToken] = useState<string | null>(null)
 
   useEffect(() => {
     if (!user || !PLATFORM_ADMIN_EMAILS.includes(user.email ?? '')) {
@@ -96,11 +101,53 @@ export default function PlatformAdminPage() {
     setDeletingOrg(org.org_id)
     try {
       await platformDeleteOrg(org.org_id)
-      setOrgs(prev => prev.filter(o => o.org_id !== org.org_id))
+      setOrgs(previous => previous.filter(existingOrg => existingOrg.org_id !== org.org_id))
     } catch {
       alert('Failed to delete organisation')
     } finally {
       setDeletingOrg(null)
+    }
+  }
+
+  function handleToggleExpand(orgId: string) {
+    if (expandedOrg === orgId) {
+      setExpandedOrg(null)
+      return
+    }
+    setExpandedOrg(orgId)
+    if (!orgInvitations[orgId]) {
+      setLoadingInvitations(previous => ({ ...previous, [orgId]: true }))
+      fetchPendingInvitations(orgId)
+        .then(invitations => setOrgInvitations(previous => ({ ...previous, [orgId]: invitations })))
+        .catch(() => {})
+        .finally(() => setLoadingInvitations(previous => ({ ...previous, [orgId]: false })))
+    }
+  }
+
+  async function handleResendInvitation(orgId: string, token: string) {
+    setResendingToken(token)
+    try {
+      await resendInvitation(orgId, token)
+    } catch {
+      alert('Failed to resend invitation')
+    } finally {
+      setResendingToken(null)
+    }
+  }
+
+  async function handleCancelInvitation(orgId: string, token: string) {
+    if (!window.confirm('Cancel this invitation?')) return
+    setCancelingToken(token)
+    try {
+      await cancelInvitation(orgId, token)
+      setOrgInvitations(previous => ({
+        ...previous,
+        [orgId]: (previous[orgId] ?? []).filter(invitation => invitation.token !== token),
+      }))
+    } catch {
+      alert('Failed to cancel invitation')
+    } finally {
+      setCancelingToken(null)
     }
   }
 
@@ -229,7 +276,7 @@ export default function PlatformAdminPage() {
                     <div style={{ display: 'flex', gap: 6 }}>
                       {/* Expand members */}
                       <button
-                        onClick={() => setExpandedOrg(isExpanded ? null : org.org_id)}
+                        onClick={() => handleToggleExpand(org.org_id)}
                         style={{ background: 'none', border: '1px solid #E2E8F0', borderRadius: 8, padding: '6px 12px', color: '#64748B', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                       >
                         {isExpanded ? 'Hide' : 'Members'}
@@ -260,33 +307,76 @@ export default function PlatformAdminPage() {
                     </div>
                   </div>
 
-                  {/* Expanded members panel */}
+                  {/* Expanded panel */}
                   {isExpanded && (
-                    <div style={{ borderTop: '1px solid #F1F5F9', background: '#F8FAFC', padding: '16px 24px' }}>
-                      <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>Members</p>
-                      {!org.members || org.members.length === 0 ? (
-                        <p style={{ fontSize: 13, color: '#94A3B8' }}>No members yet.</p>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {org.members.map(m => (
-                            <div key={m.user_id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#475569', flexShrink: 0 }}>
-                                {(m.full_name || m.email).slice(0, 2).toUpperCase()}
+                    <div style={{ borderTop: '1px solid #F1F5F9', background: '#F8FAFC', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+                      {/* Members section */}
+                      <div>
+                        <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>Members</p>
+                        {!org.members || org.members.length === 0 ? (
+                          <p style={{ fontSize: 13, color: '#94A3B8' }}>No members yet.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {org.members.map(member => (
+                              <div key={member.user_id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#475569', flexShrink: 0 }}>
+                                  {(member.full_name || member.email).slice(0, 2).toUpperCase()}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <p style={{ fontSize: 13, fontWeight: 600, color: '#0F172A', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.full_name || member.email}</p>
+                                  {member.full_name && <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>{member.email}</p>}
+                                </div>
+                                <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '2px 8px', border: '1px solid', ...({ org_admin: { color: '#0D9488', background: '#F0FDFA', borderColor: '#99F6E4' }, supervisor: { color: '#4F46E5', background: '#EEF2FF', borderColor: '#C7D2FE' }, member: { color: '#64748B', background: '#F8FAFC', borderColor: '#E2E8F0' } }[member.role] ?? {}) }}>
+                                  {member.role === 'org_admin' ? 'Org Admin' : member.role === 'supervisor' ? 'Supervisor' : 'Member'}
+                                </span>
+                                <p style={{ fontSize: 11, color: '#94A3B8', margin: 0, flexShrink: 0 }}>
+                                  Joined {new Date(member.joined_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </p>
                               </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <p style={{ fontSize: 13, fontWeight: 600, color: '#0F172A', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.full_name || m.email}</p>
-                                {m.full_name && <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>{m.email}</p>}
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Pending Invitations section */}
+                      <div>
+                        <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>Pending Invitations</p>
+                        {loadingInvitations[org.org_id] ? (
+                          <p style={{ fontSize: 13, color: '#94A3B8' }}>Loading…</p>
+                        ) : (orgInvitations[org.org_id] ?? []).length === 0 ? (
+                          <p style={{ fontSize: 13, color: '#94A3B8' }}>No pending invitations.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {(orgInvitations[org.org_id] ?? []).map(invitation => (
+                              <div key={invitation.token} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#F0FDFA', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  <span style={{ fontSize: 12, color: '#0D9488' }}>✉</span>
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <p style={{ fontSize: 13, fontWeight: 600, color: '#0F172A', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{invitation.email}</p>
+                                  <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>
+                                    {invitation.role} · expires {new Date(invitation.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => handleResendInvitation(org.org_id, invitation.token)}
+                                  disabled={resendingToken === invitation.token}
+                                  style={{ background: 'none', border: '1px solid #99F6E4', borderRadius: 8, padding: '5px 10px', color: '#0D9488', fontSize: 11, fontWeight: 600, cursor: 'pointer', opacity: resendingToken === invitation.token ? 0.5 : 1 }}
+                                >
+                                  {resendingToken === invitation.token ? '…' : 'Resend'}
+                                </button>
+                                <button
+                                  onClick={() => handleCancelInvitation(org.org_id, invitation.token)}
+                                  disabled={cancelingToken === invitation.token}
+                                  style={{ background: 'none', border: '1px solid #FCA5A5', borderRadius: 8, padding: '5px 10px', color: '#DC2626', fontSize: 11, fontWeight: 600, cursor: 'pointer', opacity: cancelingToken === invitation.token ? 0.5 : 1 }}
+                                >
+                                  {cancelingToken === invitation.token ? '…' : 'Cancel'}
+                                </button>
                               </div>
-                              <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '2px 8px', border: '1px solid', ...({ org_admin: { color: '#0D9488', background: '#F0FDFA', borderColor: '#99F6E4' }, supervisor: { color: '#4F46E5', background: '#EEF2FF', borderColor: '#C7D2FE' }, member: { color: '#64748B', background: '#F8FAFC', borderColor: '#E2E8F0' } }[m.role] ?? {}) }}>
-                                {m.role === 'org_admin' ? 'Org Admin' : m.role === 'supervisor' ? 'Supervisor' : 'Member'}
-                              </span>
-                              <p style={{ fontSize: 11, color: '#94A3B8', margin: 0, flexShrink: 0 }}>
-                                Joined {new Date(m.joined_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

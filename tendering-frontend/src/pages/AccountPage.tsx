@@ -19,6 +19,7 @@ export function AccountPage() {
   const [confirmPw, setConfirmPw] = useState('');
   const [savingPw, setSavingPw] = useState(false);
   const [pwError, setPwError] = useState('');
+  const [sendingReset, setSendingReset] = useState(false);
 
   async function handleSaveProfile(e: React.FormEvent) {
     e.preventDefault();
@@ -27,6 +28,16 @@ export function AccountPage() {
     setSavingProfile(false);
     if (error) toast.error(error.message);
     else toast.success('Profile updated');
+  }
+
+  async function handleSendPasswordReset() {
+    setSendingReset(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setSendingReset(false);
+    if (error) toast.error(error.message);
+    else toast.success('Password reset email sent — check your inbox');
   }
 
   async function handleChangePassword(e: React.FormEvent) {
@@ -109,9 +120,19 @@ export function AccountPage() {
 
       {/* Change password */}
       <div className="bg-panel border border-border rounded-xl p-6">
-        <div className="flex items-center gap-2 mb-5">
-          <Lock size={15} className="text-teal" />
-          <h2 className="text-sm font-semibold text-text">Change Password</h2>
+        <div className="flex items-center justify-between gap-2 mb-5">
+          <div className="flex items-center gap-2">
+            <Lock size={15} className="text-teal" />
+            <h2 className="text-sm font-semibold text-text">Change Password</h2>
+          </div>
+          <button
+            type="button"
+            onClick={handleSendPasswordReset}
+            disabled={sendingReset}
+            className="text-xs text-text-mute hover:text-teal transition-colors disabled:opacity-50"
+          >
+            {sendingReset ? 'Sending…' : 'Forgot / never set a password?'}
+          </button>
         </div>
 
         <form onSubmit={handleChangePassword} className="space-y-4">

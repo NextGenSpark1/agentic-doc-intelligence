@@ -115,6 +115,8 @@ export default function AccountPage() {
   const [passError, setPassError] = useState<string | null>(null)
   const [passSaving, setPassSaving] = useState(false)
   const [passStatus, setPassStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [sendingReset, setSendingReset] = useState(false)
+  const [resetStatus, setResetStatus] = useState<'idle' | 'success' | 'error'>('idle')
 
   // danger zone
   const [confirmSignOutAll, setConfirmSignOutAll] = useState(false)
@@ -137,6 +139,23 @@ export default function AccountPage() {
     } finally {
       setProfileSaving(false)
       setTimeout(() => setProfileStatus('idle'), 3000)
+    }
+  }
+
+  async function handleSendPasswordReset() {
+    setSendingReset(true)
+    setResetStatus('idle')
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(user!.email!, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+      if (error) throw error
+      setResetStatus('success')
+    } catch {
+      setResetStatus('error')
+    } finally {
+      setSendingReset(false)
+      setTimeout(() => setResetStatus('idle'), 4000)
     }
   }
 
@@ -242,6 +261,16 @@ export default function AccountPage() {
       {/* ── Section 2: Change Password (email users only) ───────────────────── */}
       {isEmailProvider && (
         <Card title="Change Password">
+          <button
+            type="button"
+            onClick={handleSendPasswordReset}
+            disabled={sendingReset}
+            className="w-fit text-xs text-text-mute hover:text-teal transition-colors disabled:opacity-50 -mt-2"
+          >
+            {sendingReset ? 'Sending reset email…' : 'Forgot or never set a password? Send reset email'}
+          </button>
+          {resetStatus === 'success' && <span className="text-xs text-green -mt-2">Reset email sent — check your inbox</span>}
+          {resetStatus === 'error' && <span className="text-xs text-red -mt-2">Failed to send — try again</span>}
           {passError && (
             <p className="text-xs text-red bg-red-bg border border-red/20 rounded-lg px-3 py-2">{passError}</p>
           )}
