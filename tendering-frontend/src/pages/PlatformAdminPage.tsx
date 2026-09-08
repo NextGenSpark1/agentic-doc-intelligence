@@ -179,10 +179,10 @@ export function PlatformAdminPage() {
           <span className="text-white/60 text-xs font-semibold uppercase tracking-widest">Platform Admin</span>
         </div>
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/dashboard')}
           className="text-white/60 hover:text-white text-xs transition-colors"
         >
-          ← Back to app
+          ← Back to Dashboard
         </button>
       </div>
 
