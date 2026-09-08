@@ -169,4 +169,5 @@ export interface LibraryDocument {
   verification_status: VerificationStatus;
   tags?: string[];
   used_in_tenders?: number;
+  url?: string;
 }
