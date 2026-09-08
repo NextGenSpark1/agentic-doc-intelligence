@@ -13,7 +13,7 @@ import { ComplianceMatrixTab } from '../components/workspace/ComplianceMatrixTab
 import { BidDecisionTab } from '../components/workspace/BidDecisionTab';
 import { ChatTab } from '../components/workspace/ChatTab';
 import { daysUntil } from '../lib/utils';
-import type { TenderWorkspace, Requirement, BidDecisionReport, LibraryDocument } from '../types';
+import type { TenderWorkspace } from '../types';
 
 type Tab = 'summary' | 'requirements' | 'compliance' | 'bid' | 'chat';
 
