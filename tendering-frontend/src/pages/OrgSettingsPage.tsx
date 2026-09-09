@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { ArrowLeft, Users, Mail, Building2, Shield, User, Clock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -53,7 +54,6 @@ export function OrgSettingsPage() {
   const [pendingInvites, setPendingInvites] = useState<PendingInvitation[]>([]);
   const [cancellingToken, setCancellingToken] = useState<string | null>(null);
   const [resendingToken, setResendingToken] = useState<string | null>(null);
-  const [resendResult, setResendResult] = useState<Record<string, boolean>>({});
 
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('member');
@@ -88,7 +88,11 @@ export function OrgSettingsPage() {
     setInviteLink(null);
     try {
       const result = await inviteMember(orgCtx.org_id, inviteEmail, inviteRole as OrgRole, inviteName || undefined);
-      setInviteLink(result.invite_link);
+      if (result.email_sent) {
+        toast.success('Invitation sent');
+      } else {
+        setInviteLink(result.invite_link);
+      }
       setInviteEmail('');
       setInviteName('');
       getPendingInvitations(orgCtx.org_id).then(setPendingInvites).catch(() => {});
@@ -145,10 +149,12 @@ export function OrgSettingsPage() {
     setResendingToken(inviteToken);
     try {
       await resendInvitation(orgCtx.org_id, inviteToken);
-      setResendResult(previous => ({ ...previous, [inviteToken]: true }));
-      setTimeout(() => setResendResult(previous => { const next = { ...previous }; delete next[inviteToken]; return next; }), 3000);
-    } catch { alert('Failed to resend invitation'); }
-    finally { setResendingToken(null); }
+      toast.success('Invitation resent');
+    } catch {
+      toast.error('Failed to resend invitation');
+    } finally {
+      setResendingToken(null);
+    }
   }
 
   async function handleRemove(member: OrgMember) {
@@ -280,10 +286,19 @@ export function OrgSettingsPage() {
           icon={<Clock size={13} className="text-text-mute" />}
         >
           <div className="flex flex-col -mt-2">
-            {pendingInvites.map(invite => (
+            {pendingInvites.map(invite => {
+              const isExpired = new Date(invite.expires_at) < new Date();
+              return (
               <div key={invite.token} className="flex items-center gap-3 py-2.5 border-b border-border last:border-0">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-text truncate">{invite.email}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-text truncate">{invite.email}</p>
+                    {isExpired && (
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-red bg-red-bg border border-red/20 rounded-full px-2 py-0.5 shrink-0">
+                        Expired
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-text-mute">
                     {ROLE_LABELS[invite.role] ?? invite.role} · Expires{' '}
                     {new Date(invite.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
@@ -297,7 +312,7 @@ export function OrgSettingsPage() {
                   disabled={resendingToken === invite.token}
                   className="text-xs font-medium text-teal border border-teal/30 rounded-lg px-2.5 py-1 hover:bg-teal/10 transition-colors shrink-0 disabled:opacity-40"
                 >
-                  {resendResult[invite.token] ? 'Sent!' : resendingToken === invite.token ? '…' : 'Resend'}
+                  {resendingToken === invite.token ? '…' : 'Resend'}
                 </button>
                 {isOrgAdmin && (
                   <button
@@ -309,7 +324,8 @@ export function OrgSettingsPage() {
                   </button>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
       )}

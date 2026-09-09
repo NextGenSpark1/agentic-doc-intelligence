@@ -52,7 +52,11 @@ export function PlatformAdminPage() {
     setCreating(true);
     try {
       const result = await createOrg(form.name, form.plan, form.adminEmail, form.adminName || undefined);
-      if (result.invite_link) setLastInviteLink(result.invite_link);
+      if (result.email_sent) {
+        toast.success(`Invitation sent to ${form.adminEmail}`);
+      } else if (result.invite_link) {
+        setLastInviteLink(result.invite_link);
+      }
       queryClient.invalidateQueries({ queryKey: ['platform-orgs'] });
       setShowCreate(false);
       setForm({ name: '', plan: 'trial', adminEmail: '', adminName: '' });
@@ -346,13 +350,22 @@ export function PlatformAdminPage() {
                           <p className="text-sm text-text-mute">No pending invitations.</p>
                         ) : (
                           <div className="flex flex-col gap-2">
-                            {(orgInvitations[organisation.org_id] ?? []).map(invitation => (
+                            {(orgInvitations[organisation.org_id] ?? []).map(invitation => {
+                              const isExpired = new Date(invitation.expires_at) < new Date();
+                              return (
                               <div key={invitation.token} className="flex items-center gap-3">
                                 <div className="w-7 h-7 rounded-full bg-teal/10 flex items-center justify-center flex-shrink-0">
                                   <Mail size={12} className="text-teal" />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-text truncate">{invitation.email}</p>
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-sm font-medium text-text truncate">{invitation.email}</p>
+                                    {isExpired && (
+                                      <span className="text-[10px] font-bold uppercase tracking-wide text-red bg-red-bg border border-red/20 rounded-full px-2 py-0.5 shrink-0">
+                                        Expired
+                                      </span>
+                                    )}
+                                  </div>
                                   <p className="text-xs text-text-mute">
                                     {invitation.role} · expires {new Date(invitation.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                                   </p>
@@ -374,7 +387,8 @@ export function PlatformAdminPage() {
                                   Cancel
                                 </button>
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>

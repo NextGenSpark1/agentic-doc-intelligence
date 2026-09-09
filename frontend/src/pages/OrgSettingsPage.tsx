@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import { ArrowLeft, Users, Mail, Building2, Shield, User, Clock } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
@@ -68,7 +69,6 @@ export default function OrgSettingsPage() {
 
   const [cancellingToken, setCancellingToken] = useState<string | null>(null)
   const [resendingToken, setResendingToken] = useState<string | null>(null)
-  const [resendResult, setResendResult] = useState<Record<string, boolean>>({})
 
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('member')
@@ -100,7 +100,11 @@ export default function OrgSettingsPage() {
     setInviteLink(null)
     try {
       const result = await inviteMember(orgCtx.org_id, inviteEmail, inviteRole, inviteName || undefined)
-      setInviteLink(result.invite_link)
+      if (result.email_sent) {
+        toast.success('Invitation sent')
+      } else {
+        setInviteLink(result.invite_link)
+      }
       setInviteEmail('')
       setInviteName('')
       queryClient.invalidateQueries({ queryKey: ['pending-invites', orgCtx.org_id] })
@@ -157,9 +161,10 @@ export default function OrgSettingsPage() {
     setResendingToken(token)
     try {
       await resendInvitation(orgCtx.org_id, token)
-      setResendResult(previous => ({ ...previous, [token]: true }))
-      setTimeout(() => setResendResult(previous => { const next = { ...previous }; delete next[token]; return next }), 3000)
-    } catch { alert('Failed to resend invitation') }
+      toast.success('Invitation resent')
+    } catch {
+      toast.error('Failed to resend invitation')
+    }
     finally { setResendingToken(null) }
   }
 
@@ -295,10 +300,19 @@ export default function OrgSettingsPage() {
       {canInvite && pendingInvites.length > 0 && (
         <Card title={`Pending Invitations · ${pendingInvites.length}`} icon={<Clock size={13} className="text-text-mute" />}>
           <div className="flex flex-col -mt-2">
-            {pendingInvites.map(inv => (
+            {pendingInvites.map(inv => {
+              const isExpired = new Date(inv.expires_at) < new Date()
+              return (
               <div key={inv.token} className="flex items-center gap-3 py-2.5 border-b border-border last:border-0">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-text truncate">{inv.email}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-text truncate">{inv.email}</p>
+                    {isExpired && (
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-red bg-red-bg border border-red/20 rounded-full px-2 py-0.5 shrink-0">
+                        Expired
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-text-mute">
                     {ROLE_LABELS[inv.role] ?? inv.role} · Expires {new Date(inv.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                   </p>
@@ -311,7 +325,7 @@ export default function OrgSettingsPage() {
                   disabled={resendingToken === inv.token}
                   className="text-xs font-medium text-teal border border-teal/30 rounded-lg px-2.5 py-1 hover:bg-teal/10 transition-colors shrink-0 disabled:opacity-40"
                 >
-                  {resendResult[inv.token] ? 'Sent!' : resendingToken === inv.token ? '…' : 'Resend'}
+                  {resendingToken === inv.token ? '…' : 'Resend'}
                 </button>
                 {isOrgAdmin && (
                   <button
@@ -323,7 +337,8 @@ export default function OrgSettingsPage() {
                   </button>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
       )}

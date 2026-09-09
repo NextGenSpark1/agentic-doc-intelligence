@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { platformListOrgs, platformCreateOrg, platformDeleteOrg, platformUpdateOrg, fetchPendingInvitations, resendInvitation, cancelInvitation } from '../api'
 import type { Organisation } from '../types'
@@ -59,7 +60,11 @@ export default function PlatformAdminPage() {
     setCreating(true)
     try {
       const result = await platformCreateOrg(form.name, form.plan, form.adminEmail, form.adminName || undefined)
-      setLastInviteLink(result.invite_link)
+      if (result.email_sent) {
+        toast.success(`Invitation sent to ${form.adminEmail}`)
+      } else if (result.invite_link) {
+        setLastInviteLink(result.invite_link)
+      }
       queryClient.invalidateQueries({ queryKey: ['platform-orgs'] })
       setShowCreate(false)
       setForm({ name: '', plan: 'trial', adminEmail: '', adminName: '' })
@@ -138,8 +143,9 @@ export default function PlatformAdminPage() {
     setResendingToken(token)
     try {
       await resendInvitation(orgId, token)
+      toast.success('Invitation resent')
     } catch {
-      alert('Failed to resend invitation')
+      toast.error('Failed to resend invitation')
     } finally {
       setResendingToken(null)
     }
@@ -353,13 +359,20 @@ export default function PlatformAdminPage() {
                           <p style={{ fontSize: 13, color: '#94A3B8' }}>No pending invitations.</p>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            {(orgInvitations[org.org_id] ?? []).map(invitation => (
+                            {(orgInvitations[org.org_id] ?? []).map(invitation => {
+                              const isExpired = new Date(invitation.expires_at) < new Date();
+                              return (
                               <div key={invitation.token} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#F0FDFA', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                   <span style={{ fontSize: 12, color: '#0D9488' }}>✉</span>
                                 </div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                  <p style={{ fontSize: 13, fontWeight: 600, color: '#0F172A', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{invitation.email}</p>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <p style={{ fontSize: 13, fontWeight: 600, color: '#0F172A', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{invitation.email}</p>
+                                    {isExpired && (
+                                      <span style={{ fontSize: 10, fontWeight: 700, color: '#DC2626', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 999, padding: '1px 7px', textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>Expired</span>
+                                    )}
+                                  </div>
                                   <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>
                                     {invitation.role} · expires {new Date(invitation.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                                   </p>
@@ -379,7 +392,8 @@ export default function PlatformAdminPage() {
                                   {cancelingToken === invitation.token ? '…' : 'Cancel'}
                                 </button>
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>
