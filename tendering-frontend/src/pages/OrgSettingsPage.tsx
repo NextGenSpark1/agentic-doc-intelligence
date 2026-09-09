@@ -300,7 +300,7 @@ export function OrgSettingsPage() {
                     )}
                   </div>
                   <p className="text-xs text-text-mute">
-                    {ROLE_LABELS[invite.role] ?? invite.role} · Expires{' '}
+                    {ROLE_LABELS[invite.role] ?? invite.role} · {isExpired ? 'Expired' : 'Expires'}{' '}
                     {new Date(invite.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                   </p>
                 </div>

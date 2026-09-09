@@ -367,7 +367,7 @@ export function PlatformAdminPage() {
                                     )}
                                   </div>
                                   <p className="text-xs text-text-mute">
-                                    {invitation.role} · expires {new Date(invitation.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                    {invitation.role} · {isExpired ? 'expired' : 'expires'} {new Date(invitation.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                                   </p>
                                 </div>
                                 <button

@@ -314,7 +314,7 @@ export default function OrgSettingsPage() {
                     )}
                   </div>
                   <p className="text-xs text-text-mute">
-                    {ROLE_LABELS[inv.role] ?? inv.role} · Expires {new Date(inv.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    {ROLE_LABELS[inv.role] ?? inv.role} · {isExpired ? 'Expired' : 'Expires'} {new Date(inv.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                   </p>
                 </div>
                 <span className={`text-[10px] font-semibold border rounded-full px-2 py-0.5 shrink-0 ${ROLE_COLORS[inv.role] ?? ''}`}>
