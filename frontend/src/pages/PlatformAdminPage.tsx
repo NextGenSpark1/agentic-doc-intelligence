@@ -165,19 +165,15 @@ export default function PlatformAdminPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#F8FAFC' }}>
-      {/* Header */}
-      <div style={{ background: '#0F172A', padding: '0 32px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ color: '#fff', fontWeight: 800, fontSize: 15 }}>NextGen Spark</span>
-          <span style={{ color: '#64748B', fontSize: 12 }}>·</span>
-          <span style={{ color: '#94A3B8', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Platform Admin</span>
-        </div>
-        <button onClick={() => navigate('/')} style={{ color: '#94A3B8', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13 }}>
-          ← Back to app
+      <div style={{ maxWidth: 960, margin: '0 auto', padding: '32px 24px' }}>
+        <button
+          onClick={() => navigate('/cases')}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#94A3B8', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, marginBottom: 20, padding: 0 }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = '#0D9488')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = '#94A3B8')}
+        >
+          ← Cases
         </button>
-      </div>
-
-      <div style={{ maxWidth: 960, margin: '0 auto', padding: '40px 24px' }}>
         {/* Page title row */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
           <div>
