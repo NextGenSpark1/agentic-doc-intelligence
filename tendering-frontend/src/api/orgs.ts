@@ -78,7 +78,7 @@ export async function getAllOrgs(): Promise<Organisation[]> {
 
 export async function createOrg(name: string, plan: string, adminEmail: string, adminName?: string) {
   const { data } = await api.post('/platform/orgs', { name, plan, admin_email: adminEmail, admin_name: adminName });
-  return data as Organisation & { invite_link?: string };
+  return data as Organisation & { invite_link?: string; email_sent?: boolean };
 }
 
 export async function updateOrg(orgId: string, patch: { plan?: string; status?: string; name?: string }) {

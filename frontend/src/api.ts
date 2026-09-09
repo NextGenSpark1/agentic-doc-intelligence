@@ -265,7 +265,7 @@ export async function platformListOrgs(): Promise<{ orgs: Organisation[] }> {
   return res.data
 }
 
-export async function platformCreateOrg(name: string, plan: string, adminEmail: string, adminName?: string): Promise<{ org: Organisation; invite_link: string; invite_token: string }> {
+export async function platformCreateOrg(name: string, plan: string, adminEmail: string, adminName?: string): Promise<{ org: Organisation; invite_link: string; invite_token: string; email_sent: boolean }> {
   const res = await client.post('/platform/orgs', { name, plan, admin_email: adminEmail, admin_name: adminName })
   return res.data
 }
