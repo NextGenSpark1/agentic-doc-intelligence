@@ -489,6 +489,13 @@ export function DocumentLibraryPage() {
   const { data: docs = [], isLoading: loading } = useQuery({
     queryKey: ['library-docs'],
     queryFn: getLibraryDocuments,
+    refetchInterval: (query) => {
+      const data = query.state.data ?? [];
+      const hasInProgress = data.some(
+        (doc) => doc.extraction_status === 'queued' || doc.extraction_status === 'processing',
+      );
+      return hasInProgress ? 4000 : false;
+    },
   });
 
   const filtered = docs.filter((document) => {
