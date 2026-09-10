@@ -573,6 +573,9 @@ export const deleteLibraryDocument = (docId: string): Promise<void> =>
 export const replaceLibraryDocument = (docId: string, data: { url: string; filename?: string }): Promise<LibraryDocument> =>
   api.patch<LibraryDocument>(`/tendering/library/${docId}`, data).then((r) => r.data);
 
+export const extractLibraryDocument = (docId: string): Promise<{ status: string }> =>
+  api.post<{ status: string }>(`/tendering/library/${docId}/extract`).then((r) => r.data);
+
 export interface ChatCitation {
   document_id: string;
   page: number;

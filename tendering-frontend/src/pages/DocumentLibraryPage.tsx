@@ -2,9 +2,9 @@ import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Library, Upload, Search, AlertCircle, CheckCircle2, Clock,
-  FileText, Download, Calendar, Plus, FolderOpen, X, CloudUpload, Trash2,
+  FileText, Download, Calendar, Plus, FolderOpen, X, CloudUpload, Trash2, Cpu,
 } from 'lucide-react';
-import { getLibraryDocuments, addLibraryDocument, deleteLibraryDocument, replaceLibraryDocument } from '../api/tenders';
+import { getLibraryDocuments, addLibraryDocument, deleteLibraryDocument, replaceLibraryDocument, extractLibraryDocument } from '../api/tenders';
 import { supabase } from '../lib/supabase';
 import { DocCategoryBadge, VerificationBadge } from '../components/Badge';
 import type { LibraryDocument, DocCategory, VerificationStatus } from '../types';
@@ -143,19 +143,49 @@ function ReplaceModal({
 
 // ─── Document card ────────────────────────────────────────────────────────────
 
+function ExtractionStatusBadge({ status }: { status?: string | null }) {
+  if (!status || status === 'uploaded') return (
+    <span className="flex items-center gap-1 text-[11px] text-text-mute">
+      <Cpu size={11} /> Not indexed
+    </span>
+  );
+  if (status === 'queued' || status === 'processing') return (
+    <span className="flex items-center gap-1 text-[11px] text-amber font-medium">
+      <div className="w-2.5 h-2.5 border border-amber/60 border-t-amber rounded-full animate-spin" />
+      Indexing…
+    </span>
+  );
+  if (status === 'done') return (
+    <span className="flex items-center gap-1 text-[11px] text-green font-medium">
+      <CheckCircle2 size={11} /> Indexed
+    </span>
+  );
+  if (status === 'failed') return (
+    <span className="flex items-center gap-1 text-[11px] text-red font-medium">
+      <AlertCircle size={11} /> Index failed
+    </span>
+  );
+  return null;
+}
+
 function DocCard({
   doc,
   onDeleted,
   onReplaced,
+  onExtracted,
 }: {
   doc: LibraryDocument;
   onDeleted: () => void;
   onReplaced: () => void;
+  onExtracted: () => void;
 }) {
   const [showReplace, setShowReplace] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const expired = doc.verification_status === 'expired';
   const pending = doc.verification_status === 'pending';
+  const canExtract = !doc.extraction_status || doc.extraction_status === 'uploaded' || doc.extraction_status === 'failed';
+  const isIndexing = doc.extraction_status === 'queued' || doc.extraction_status === 'processing';
 
   async function handleDelete() {
     if (!confirm(`Delete "${doc.title}"? This cannot be undone.`)) return;
@@ -167,6 +197,18 @@ function DocCard({
     } catch {
       toast.error('Delete failed');
       setDeleting(false);
+    }
+  }
+
+  async function handleExtract() {
+    setExtracting(true);
+    try {
+      await extractLibraryDocument(doc.doc_id);
+      toast.success('Extraction queued — document will be indexed shortly');
+      onExtracted();
+    } catch {
+      toast.error('Could not start extraction');
+      setExtracting(false);
     }
   }
 
@@ -231,8 +273,13 @@ function DocCard({
           </div>
         )}
 
+        {/* Extraction status */}
+        <div className="mb-3">
+          <ExtractionStatusBadge status={doc.extraction_status} />
+        </div>
+
         {/* Actions */}
-        <div className="flex gap-2 mt-auto">
+        <div className="flex gap-2 mt-auto flex-wrap">
           {doc.url ? (
             <a
               href={doc.url}
@@ -256,6 +303,18 @@ function DocCard({
             >
               <Upload size={12} />
               Replace
+            </button>
+          )}
+          {(canExtract || isIndexing) && (
+            <button
+              onClick={handleExtract}
+              disabled={extracting || isIndexing}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium border rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed border-navy text-navy hover:bg-navy hover:text-white"
+            >
+              {extracting || isIndexing
+                ? <><div className="w-2.5 h-2.5 border border-current/40 border-t-current rounded-full animate-spin" />Indexing…</>
+                : <><Cpu size={12} />{doc.extraction_status === 'failed' ? 'Retry' : 'Extract'}</>
+              }
             </button>
           )}
         </div>
@@ -585,6 +644,7 @@ export function DocumentLibraryPage() {
               doc={document}
               onDeleted={() => queryClient.invalidateQueries({ queryKey: ['library-docs'] })}
               onReplaced={() => queryClient.invalidateQueries({ queryKey: ['library-docs'] })}
+              onExtracted={() => queryClient.invalidateQueries({ queryKey: ['library-docs'] })}
             />
           ))}
         </div>

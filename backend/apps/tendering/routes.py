@@ -473,7 +473,6 @@ async def update_library_document(
 @router.post("/library", status_code=201)
 async def add_library_document(
     body: CreateLibraryDocumentIn,
-    background_tasks: BackgroundTasks,
     user: dict = Depends(get_current_user),
 ):
     org_id = await asyncio.to_thread(_get_tendering_org_id, user)
@@ -481,7 +480,7 @@ async def add_library_document(
     library_doc = await asyncio.to_thread(db.create_library_document, org_id, data)
 
     if body.storage_path:
-        supplier_doc = await asyncio.to_thread(db.create_supplier_document, org_id, {
+        await asyncio.to_thread(db.create_supplier_document, org_id, {
             "title": body.title,
             "doc_type": body.category,
             "storage_path": body.storage_path,
@@ -490,10 +489,41 @@ async def add_library_document(
             "expiry_date": data.get("expiry_date"),
             "library_doc_id": str(library_doc["doc_id"]),
         })
-        from .pipeline.vault import process_supplier_document
-        background_tasks.add_task(process_supplier_document, supplier_doc["supplier_document_id"])
+        # Extraction is triggered manually by the user clicking Extract on the doc card.
 
     return library_doc
+
+
+@router.post("/library/{doc_id}/extract", status_code=202)
+async def extract_library_document(
+    doc_id: str,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(get_current_user),
+):
+    """Trigger ADE extraction + embedding for a library document.
+
+    Returns 202 immediately; vault processing runs in the background.
+    The supplier_document row must already exist (created on upload via storage_path).
+    """
+    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    docs = await asyncio.to_thread(db.list_library_documents, org_id)
+    if not any(d["doc_id"] == doc_id for d in docs):
+        raise HTTPException(404, "Document not found")
+
+    supplier_doc = await asyncio.to_thread(db.get_supplier_document_by_library_doc, doc_id)
+    if not supplier_doc:
+        raise HTTPException(409, "No vault entry for this document — re-upload to enable extraction")
+
+    if supplier_doc.get("extraction_status") == "processing":
+        raise HTTPException(409, "Extraction already in progress")
+
+    supplier_document_id = supplier_doc["supplier_document_id"]
+    await asyncio.to_thread(
+        db.update_supplier_document, supplier_document_id, {"extraction_status": "queued"}
+    )
+    from .pipeline.vault import process_supplier_document
+    background_tasks.add_task(process_supplier_document, supplier_document_id)
+    return {"status": "queued", "supplier_document_id": supplier_document_id}
 
 
 @router.delete("/library/{doc_id}", status_code=204)

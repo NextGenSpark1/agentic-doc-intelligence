@@ -170,4 +170,5 @@ export interface LibraryDocument {
   tags?: string[];
   used_in_tenders?: number;
   url?: string;
+  extraction_status?: ExtractionStatus | null;
 }

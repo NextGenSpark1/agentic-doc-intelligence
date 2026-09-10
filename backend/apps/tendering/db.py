@@ -351,7 +351,7 @@ def update_library_document(doc_id: str, patch: dict) -> dict | None:
 
 
 def list_library_documents(org_id: str) -> list[dict]:
-    return (
+    docs = (
         get_client()
         .table("library_documents")
         .select("*")
@@ -360,6 +360,25 @@ def list_library_documents(org_id: str) -> list[dict]:
         .execute()
         .data
     ) or []
+    if not docs:
+        return docs
+    doc_ids = [str(doc["doc_id"]) for doc in docs]
+    try:
+        supplier_rows = (
+            get_client()
+            .table("supplier_documents")
+            .select("library_doc_id, supplier_document_id, extraction_status")
+            .in_("library_doc_id", doc_ids)
+            .execute()
+            .data
+        ) or []
+        supplier_map = {str(row["library_doc_id"]): row for row in supplier_rows}
+    except Exception:
+        supplier_map = {}
+    for doc in docs:
+        supplier = supplier_map.get(str(doc["doc_id"]))
+        doc["extraction_status"] = supplier["extraction_status"] if supplier else None
+    return docs
 
 
 # ─────────────────────── Pipeline support ────────────────────────────────────
@@ -511,6 +530,20 @@ def create_supplier_document(org_id: str, data: dict) -> dict:
         .data
     )
     return row[0]
+
+
+def get_supplier_document_by_library_doc(library_doc_id: str) -> dict | None:
+    rows = (
+        get_client()
+        .table("supplier_documents")
+        .select("*")
+        .eq("library_doc_id", library_doc_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None
 
 
 def get_supplier_document(supplier_document_id: str) -> dict | None:
