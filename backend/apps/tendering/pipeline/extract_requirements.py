@@ -16,7 +16,10 @@ from datetime import datetime, timezone
 
 from backend.core.text_utils import strip_html as _strip_html
 
-_BATCH_CHAR_BUDGET = 12_000
+# 12k produced 15+ fragmented batches for a typical 30-page tender, meaning cross-section
+# references ("as per section 2") were extracted without their context. 80k fits most tenders
+# in 1–2 batches and stays inside Groq's 128k context window.
+_BATCH_CHAR_BUDGET = 80_000
 _MAX_CHUNK_CHARS = 4_000
 
 _OBLIGATION_RE = re.compile(
