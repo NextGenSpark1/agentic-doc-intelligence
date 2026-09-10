@@ -28,6 +28,18 @@ def _enrich_workspaces(workspaces: list[dict]) -> list[dict]:
     return workspaces
 
 
+def list_all_tendering_workspaces() -> list[dict]:
+    workspaces = (
+        get_client()
+        .table("tender_workspaces")
+        .select("*")
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    ) or []
+    return _enrich_workspaces(workspaces)
+
+
 def list_tendering_workspaces(org_id: str) -> list[dict]:
     workspaces = (
         get_client()
