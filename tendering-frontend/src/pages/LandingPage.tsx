@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth, PLATFORM_ADMIN_EMAILS } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { FileText, CheckSquare, ThumbsUp, Library, MessageSquare, Users, ArrowRight } from 'lucide-react';
 import { RequestAccessModal } from '../components/RequestAccessModal';
 
@@ -67,7 +67,6 @@ const CONTROLLED_ENV_ITEMS = [
 
 export function LandingPage() {
   const { user } = useAuth();
-  const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(user?.email ?? '');
   const isAuthenticated = !!user;
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -87,7 +86,7 @@ export function LandingPage() {
           </div>
           {isAuthenticated ? (
             <Link
-              to={isPlatformAdmin ? '/admin' : '/dashboard'}
+              to="/dashboard"
               className="inline-flex items-center gap-2 bg-teal hover:bg-teal-soft text-white font-semibold text-sm px-5 py-2 rounded-lg transition-colors"
             >
               Go to Dashboard <ArrowRight size={14} />
@@ -157,7 +156,7 @@ export function LandingPage() {
             <div className="flex items-center gap-4 flex-wrap">
               {isAuthenticated ? (
                 <Link
-                  to={isPlatformAdmin ? '/admin' : '/dashboard'}
+                  to="/dashboard"
                   className="inline-flex items-center gap-2 bg-teal hover:bg-teal-soft text-white font-semibold px-8 py-3.5 rounded-xl text-sm transition-colors"
                   style={{ boxShadow: '0 8px 32px rgba(21,88,212,0.30)' }}
                 >
@@ -312,7 +311,7 @@ export function LandingPage() {
             Sign in to your workspace and start turning tender documents into winning bids.
           </p>
           <Link
-            to={isAuthenticated ? (isPlatformAdmin ? '/admin' : '/dashboard') : '/login'}
+            to={isAuthenticated ? '/dashboard' : '/login'}
             className="inline-flex items-center gap-2 bg-teal hover:bg-teal-soft text-white font-semibold px-10 py-4 rounded-xl text-sm transition-colors"
             style={{ boxShadow: '0 12px 40px rgba(21,88,212,0.35)' }}
           >

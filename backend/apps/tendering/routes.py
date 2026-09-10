@@ -204,7 +204,8 @@ async def list_workspaces(user: dict = Depends(get_current_user)):
 @router.post("/workspaces", status_code=201)
 async def create_workspace(body: CreateWorkspaceIn, user: dict = Depends(get_current_user)):
     org_id = await asyncio.to_thread(_get_tendering_org_id, user)
-    workspace = await asyncio.to_thread(db.create_workspace, org_id, body.model_dump(), user["user_id"])
+    # mode='json' serialises date/datetime fields to ISO strings before Supabase sees them.
+    workspace = await asyncio.to_thread(db.create_workspace, org_id, body.model_dump(mode='json'), user["user_id"])
     return workspace
 
 
@@ -233,7 +234,7 @@ async def update_workspace(
     if not workspace or workspace["org_id"] != org_id:
         raise HTTPException(404, "Workspace not found")
     updated = await asyncio.to_thread(
-        db.update_workspace, workspace_id, body.model_dump(exclude_none=True)
+        db.update_workspace, workspace_id, body.model_dump(exclude_none=True, mode='json')
     )
     if not updated:
         raise HTTPException(500, "Update failed")
