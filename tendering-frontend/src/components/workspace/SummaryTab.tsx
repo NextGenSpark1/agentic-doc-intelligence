@@ -208,7 +208,8 @@ function DocumentViewerModal({
   const colour = extColour(ext);
   const isPdf = doc.name.toLowerCase().endsWith('.pdf');
   const isDone = doc.extraction_status === 'done';
-  const [activeTab, setActiveTab] = useState<'preview' | 'extracted'>(isDone && doc.url ? 'preview' : 'extracted');
+  const isInProgress = doc.extraction_status === 'queued' || doc.extraction_status === 'processing';
+  const [activeTab, setActiveTab] = useState<'preview' | 'extracted'>('preview');
   const [loadingText, setLoadingText] = useState(false);
   const [extractedText, setExtractedText] = useState<string | null>(null);
 
@@ -241,74 +242,67 @@ function DocumentViewerModal({
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <ExtractionBadge status={doc.extraction_status} />
-            {doc.url && (
-              <a href={doc.url} target="_blank" rel="noopener noreferrer"
-                className="p-1.5 rounded-lg hover:bg-panel-2 text-text-mute hover:text-teal transition-colors" title="Open in new tab">
-                <FileText size={14} />
-              </a>
-            )}
             <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-panel-2 text-text-mute hover:text-text transition-colors">
               <X size={16} />
             </button>
           </div>
         </div>
 
-        {/* Tabs — only show when extracted */}
-        {isDone && (
-          <div className="flex border-b border-border flex-shrink-0">
-            <button
-              onClick={() => setActiveTab('preview')}
-              className={`px-5 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${activeTab === 'preview' ? 'border-teal text-teal' : 'border-transparent text-text-mute hover:text-text'}`}
-            >
-              Preview
-            </button>
-            <button
-              onClick={() => setActiveTab('extracted')}
-              className={`px-5 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${activeTab === 'extracted' ? 'border-teal text-teal' : 'border-transparent text-text-mute hover:text-text'}`}
-            >
-              Extracted Text
-            </button>
-          </div>
-        )}
+        {/* Tabs — always visible */}
+        <div className="flex border-b border-border flex-shrink-0">
+          <button
+            onClick={() => setActiveTab('preview')}
+            className={`px-5 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${activeTab === 'preview' ? 'border-teal text-teal' : 'border-transparent text-text-mute hover:text-text'}`}
+          >
+            Preview
+          </button>
+          <button
+            onClick={() => setActiveTab('extracted')}
+            className={`px-5 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${activeTab === 'extracted' ? 'border-teal text-teal' : 'border-transparent text-text-mute hover:text-text'}`}
+          >
+            Extracted Text
+          </button>
+        </div>
 
         {/* Body */}
         <div className="flex-1 overflow-hidden">
-          {!isDone ? (
-            <div className="h-full flex flex-col items-center justify-center gap-4 px-6">
-              {(doc.extraction_status === 'queued' || doc.extraction_status === 'processing') ? (
-                <><Loader2 size={20} className="animate-spin text-teal" /><p className="text-sm text-text-mute">Extraction in progress — check back shortly.</p></>
-              ) : (
-                <>
-                  <p className="text-sm text-text-mute">This document hasn't been extracted yet.</p>
-                  {onExtract && (
-                    <button onClick={onExtract} disabled={isExtracting}
-                      className="flex items-center gap-2 px-4 py-2 bg-teal/10 hover:bg-teal/15 text-teal text-sm font-medium rounded-lg transition-colors disabled:opacity-50">
-                      {isExtracting ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
-                      {isExtracting ? 'Queuing extraction…' : 'Extract document'}
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          ) : activeTab === 'preview' ? (
-            <div className="h-full">
-              {doc.url && isPdf ? (
-                <iframe src={doc.url} className="w-full h-full rounded-b-xl" title={doc.name} />
-              ) : doc.url ? (
-                <div className="h-full flex flex-col items-center justify-center gap-3">
-                  <p className="text-sm text-text-mute">Preview not available for this file type.</p>
-                  <a href={doc.url} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-4 py-2 bg-teal/10 hover:bg-teal/15 text-teal text-sm font-medium rounded-lg transition-colors">
-                    <FileText size={13} /> Open file
-                  </a>
-                </div>
-              ) : (
-                <p className="text-sm text-text-mute text-center pt-12">No URL available.</p>
-              )}
-            </div>
+          {activeTab === 'preview' ? (
+            isDone && doc.url && isPdf ? (
+              <iframe src={doc.url} className="w-full h-full rounded-b-xl" title={doc.name} />
+            ) : isDone && doc.url ? (
+              <div className="h-full flex flex-col items-center justify-center gap-3">
+                <p className="text-sm text-text-mute">Preview not available for this file type.</p>
+                <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-4 py-2 bg-teal/10 hover:bg-teal/15 text-teal text-sm font-medium rounded-lg transition-colors">
+                  <FileText size={13} /> Open file
+                </a>
+              </div>
+            ) : isInProgress ? (
+              <div className="h-full flex flex-col items-center justify-center gap-3">
+                <Loader2 size={20} className="animate-spin text-teal" />
+                <p className="text-sm text-text-mute">Extraction in progress — check back shortly.</p>
+              </div>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center gap-4">
+                <p className="text-sm text-text-mute">
+                  {doc.extraction_status === 'failed' ? 'Extraction failed — try again.' : 'Extract this document to preview it.'}
+                </p>
+                {onExtract && (
+                  <button onClick={onExtract} disabled={isExtracting}
+                    className="flex items-center gap-2 px-4 py-2 bg-teal/10 hover:bg-teal/15 text-teal text-sm font-medium rounded-lg transition-colors disabled:opacity-50">
+                    {isExtracting ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+                    {isExtracting ? 'Queuing extraction…' : 'Extract document'}
+                  </button>
+                )}
+              </div>
+            )
           ) : (
             <div className="h-full overflow-y-auto p-5 bg-canvas-deep rounded-b-xl">
-              {loadingText ? (
+              {!isDone ? (
+                <p className="text-xs text-text-mute text-center pt-12">
+                  {isInProgress ? 'Extraction in progress…' : 'Extract the document first to see the text.'}
+                </p>
+              ) : loadingText ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 size={16} className="animate-spin text-teal" />
                 </div>
@@ -531,15 +525,17 @@ export function SummaryTab({
           </div>
 
           {/* AI Summary */}
-          {workspace.ai_summary && (
-            <div className="bg-panel border border-border rounded-xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <FileCode size={14} className="text-teal" />
-                <h3 className="text-sm font-semibold text-text">AI Summary</h3>
-              </div>
-              <p className="text-sm text-text-mid leading-relaxed whitespace-pre-line">{workspace.ai_summary}</p>
+          <div className="bg-panel border border-border rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <FileCode size={14} className="text-teal" />
+              <h3 className="text-sm font-semibold text-text">AI Summary</h3>
             </div>
-          )}
+            {workspace.ai_summary ? (
+              <p className="text-sm text-text-mid leading-relaxed whitespace-pre-line">{workspace.ai_summary}</p>
+            ) : (
+              <p className="text-sm text-text-mute italic">No summary yet — extract documents and run analysis to generate one.</p>
+            )}
+          </div>
 
           {/* Tender Documents */}
           <div className="bg-panel border border-border rounded-xl p-5">
@@ -681,14 +677,16 @@ export function SummaryTab({
                 <div className="relative">
                   <button
                     onClick={() => setShowAddDropdown(!showAddDropdown)}
-                    disabled={addingMember || availableToAdd.length === 0}
+                    disabled={addingMember}
                     className="flex items-center gap-1 text-xs text-teal hover:text-teal-soft font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <UserPlus size={12} /> Add
                   </button>
-                  {showAddDropdown && availableToAdd.length > 0 && (
+                  {showAddDropdown && (
                     <div className="absolute right-0 top-full mt-1 bg-panel border border-border rounded-lg shadow-xl z-10 min-w-[168px]">
-                      {availableToAdd.map((member) => {
+                      {availableToAdd.length === 0 ? (
+                        <p className="px-3 py-2.5 text-xs text-text-mute italic">No members in this organisation</p>
+                      ) : availableToAdd.map((member) => {
                         const displayName = member.full_name ?? member.email;
                         return (
                           <button
@@ -702,7 +700,8 @@ export function SummaryTab({
                             <span className="truncate">{displayName}</span>
                           </button>
                         );
-                      })}
+                      })
+                      }
                     </div>
                   )}
                 </div>
