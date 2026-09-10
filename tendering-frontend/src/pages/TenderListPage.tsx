@@ -29,7 +29,7 @@ function CreateWorkspaceModal({ onCreated, onClose }: { onCreated: () => void; o
     category: '',
     closing_date: '',
     contract_value: '',
-    currency: 'USD',
+    currency: 'MYR',
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -159,10 +159,34 @@ function CreateWorkspaceModal({ onCreated, onClose }: { onCreated: () => void; o
                   onChange={handleChange}
                   className="px-2 py-2 text-sm bg-canvas border border-border rounded-lg outline-none focus:border-teal transition-colors"
                 >
+                  <option>MYR</option>
                   <option>USD</option>
                   <option>EUR</option>
                   <option>GBP</option>
                   <option>AED</option>
+                  <option>SAR</option>
+                  <option>QAR</option>
+                  <option>KWD</option>
+                  <option>BHD</option>
+                  <option>OMR</option>
+                  <option>SGD</option>
+                  <option>IDR</option>
+                  <option>THB</option>
+                  <option>PHP</option>
+                  <option>VND</option>
+                  <option>INR</option>
+                  <option>PKR</option>
+                  <option>BDT</option>
+                  <option>CNY</option>
+                  <option>JPY</option>
+                  <option>KRW</option>
+                  <option>AUD</option>
+                  <option>CAD</option>
+                  <option>CHF</option>
+                  <option>TRY</option>
+                  <option>ZAR</option>
+                  <option>NGN</option>
+                  <option>EGP</option>
                 </select>
                 <input
                   name="contract_value"
