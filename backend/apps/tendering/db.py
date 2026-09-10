@@ -461,7 +461,7 @@ def upsert_evidence_link(data: dict) -> dict | None:
         return (
             get_client()
             .table("evidence_links")
-            .upsert(data, on_conflict="req_id,doc_id")
+            .upsert(data, on_conflict="req_id,supplier_document_id")
             .execute()
             .data[0]
         )
@@ -487,3 +487,70 @@ def get_extraction_by_document(document_id: str) -> dict | None:
 def list_chunks(document_id: str) -> list[dict]:
     from backend.core.db_core import list_chunks as _core_list
     return _core_list(document_id)
+
+
+# ─────────────────────── Vault (supplier document store) ─────────────────────
+
+def create_supplier_document(org_id: str, data: dict) -> dict:
+    row = (
+        get_client()
+        .table("supplier_documents")
+        .insert({
+            "org_id": org_id,
+            "title": data.get("title", ""),
+            "doc_type": data.get("doc_type") or data.get("category") or "other",
+            "storage_path": data.get("storage_path", ""),
+            "filename": data.get("filename", ""),
+            "issued_date": data.get("issued_date") or data.get("issue_date"),
+            "expiry_date": data.get("expiry_date"),
+            "version": data.get("version", 1),
+            "library_doc_id": data.get("library_doc_id"),
+            "extraction_status": "uploaded",
+        })
+        .execute()
+        .data
+    )
+    return row[0]
+
+
+def get_supplier_document(supplier_document_id: str) -> dict | None:
+    rows = (
+        get_client()
+        .table("supplier_documents")
+        .select("*")
+        .eq("supplier_document_id", supplier_document_id)
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None
+
+
+def update_supplier_document(supplier_document_id: str, patch: dict) -> dict | None:
+    row = (
+        get_client()
+        .table("supplier_documents")
+        .update(patch)
+        .eq("supplier_document_id", supplier_document_id)
+        .execute()
+        .data
+    )
+    return row[0] if row else None
+
+
+def match_supplier_docs(org_id: str, query_embedding: list[float], top_k: int = 12) -> list[dict]:
+    return (
+        get_client()
+        .rpc("match_supplier_chunks", {
+            "p_org_id": org_id,
+            "p_query_embedding": query_embedding,
+            "p_match_count": top_k,
+        })
+        .execute()
+        .data
+    ) or []
+
+
+def insert_supplier_chunks(rows: list[dict]) -> None:
+    if not rows:
+        return
+    get_client().table("supplier_document_chunks").insert(rows).execute()

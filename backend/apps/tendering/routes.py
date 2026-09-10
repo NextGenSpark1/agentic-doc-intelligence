@@ -122,6 +122,7 @@ class CreateLibraryDocumentIn(BaseModel):
     expiry_date: Optional[date] = None
     tags: list[str] = []
     url: str = ""
+    storage_path: str = ""  # path within library-documents Supabase Storage bucket
 
 
 class WorkspaceChatIn(BaseModel):
@@ -472,10 +473,27 @@ async def update_library_document(
 @router.post("/library", status_code=201)
 async def add_library_document(
     body: CreateLibraryDocumentIn,
+    background_tasks: BackgroundTasks,
     user: dict = Depends(get_current_user),
 ):
     org_id = await asyncio.to_thread(_get_tendering_org_id, user)
-    return await asyncio.to_thread(db.create_library_document, org_id, body.model_dump())
+    data = body.model_dump(mode='json')
+    library_doc = await asyncio.to_thread(db.create_library_document, org_id, data)
+
+    if body.storage_path:
+        supplier_doc = await asyncio.to_thread(db.create_supplier_document, org_id, {
+            "title": body.title,
+            "doc_type": body.category,
+            "storage_path": body.storage_path,
+            "filename": body.filename,
+            "issued_date": data.get("issue_date"),
+            "expiry_date": data.get("expiry_date"),
+            "library_doc_id": str(library_doc["doc_id"]),
+        })
+        from .pipeline.vault import process_supplier_document
+        background_tasks.add_task(process_supplier_document, supplier_doc["supplier_document_id"])
+
+    return library_doc
 
 
 @router.delete("/library/{doc_id}", status_code=204)

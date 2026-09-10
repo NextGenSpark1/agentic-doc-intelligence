@@ -563,6 +563,7 @@ export const addLibraryDocument = (data: {
   file_type?: string;
   expiry_date?: string;
   url?: string;
+  storage_path?: string;
 }): Promise<LibraryDocument> =>
   api.post<LibraryDocument>('/tendering/library', data).then((response) => response.data);
 

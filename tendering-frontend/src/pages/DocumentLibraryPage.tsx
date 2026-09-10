@@ -305,6 +305,7 @@ function UploadModal({ onAdded, onClose }: { onAdded: () => void; onClose: () =>
         file_type: file.name.split('.').pop()?.toLowerCase() ?? '',
         expiry_date: form.expiry_date || undefined,
         url: publicUrl,
+        storage_path: path,
       });
       onAdded();
       toast.success('Document added to library');

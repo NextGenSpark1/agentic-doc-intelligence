@@ -19,7 +19,6 @@ are deliberately conservative — a similarity floor, a confidence floor, and ev
 """
 from __future__ import annotations
 
-import uuid
 from datetime import date, datetime, timezone
 
 from backend.core.text_utils import strip_html as _strip_html
@@ -125,7 +124,8 @@ def validate_matches(raw: object, candidate_index: dict[str, dict],
 
         kept.append({
             "supplier_document_id": doc_id,
-            "match_score": score,
+            "doc_id": candidate.get("library_doc_id"),  # FK to library_documents
+            "score": score,
             "rationale": rationale,
             "matched_chunk_id": candidate.get("chunk_id"),
             "source": "llm",
@@ -166,18 +166,17 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
     from .. import db
     from ..prompts import EVIDENCE_MATCHING
 
-    tender = db.get_tender(tender_id) or {}
+    tender = db.get_tendering_workspace(tender_id) or {}
     org_id = tender.get("org_id")
     if not org_id:
         # Without an org there is no vault to match against, and no isolation boundary either.
-        db.write_tender_audit(tender_id, "system", "evidence_matching_skipped",
-                              {"reason": "tender has no org_id"})
+        db.write_workspace_audit(tender_id, "system", "evidence_matching_skipped",
+                                 {"reason": "tender has no org_id"})
         return {"proposed": 0, "skipped": 0, "ungrounded_dropped": 0, "requirements_matched": 0}
 
     requirements = [
-        r for r in db.list_requirements(tender_id)
-        if r.get("human_review_status") != "dismissed"
-        and (requirement_ids is None or r["requirement_id"] in requirement_ids)
+        r for r in db.list_workspace_requirements_raw(tender_id)
+        if (requirement_ids is None or r["req_id"] in requirement_ids)
     ]
 
     proposed = skipped = ungrounded = matched_requirements = no_candidates = 0
@@ -192,9 +191,9 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
             query_vec = llm.embed([_match_query(requirement)])[0]
             rows = db.match_supplier_docs(org_id, query_vec, _CANDIDATE_POOL)
         except Exception as exc:
-            db.write_tender_audit(tender_id, "system", "evidence_retrieval_failed",
-                                  {"requirement_id": requirement["requirement_id"],
-                                   "error": f"{type(exc).__name__}: {exc}"[:300]})
+            db.write_workspace_audit(tender_id, "system", "evidence_retrieval_failed",
+                                     {"req_id": requirement["req_id"],
+                                      "error": f"{type(exc).__name__}: {exc}"[:300]})
             continue
 
         candidates = shortlist_candidates(rows)
@@ -216,11 +215,19 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
         if matches:
             matched_requirements += 1
         for m in matches:
+            if not m.get("doc_id"):
+                # No library document linked to this vault doc — can't create an evidence link.
+                skipped += 1
+                continue
             created = db.upsert_evidence_link({
-                **m,
-                "evidence_link_id": f"EVL-{uuid.uuid4().hex[:8].upper()}",
-                "requirement_id": requirement["requirement_id"],
+                "req_id": requirement["req_id"],
+                "doc_id": m["doc_id"],
+                "workspace_id": tender_id,
                 "org_id": org_id,
+                "score": m["score"],
+                "rationale": m["rationale"],
+                "matched_chunk_id": m.get("matched_chunk_id") or "",
+                "source": m.get("source", "llm"),
                 "human_review_status": "pending",
                 "created_at": datetime.now(timezone.utc).isoformat(),
             })
@@ -239,7 +246,7 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
     }
     # `requirements_without_candidates` is the number that matters operationally: it is the
     # gap between what the tender demands and what the vault holds.
-    db.write_tender_audit(tender_id, "system", "evidence_matching_completed", result)
+    db.write_workspace_audit(tender_id, "system", "evidence_matching_completed", result)
     return result
 
 
