@@ -347,11 +347,11 @@ export function SummaryTab({
   const canManageTeam = role === 'org_admin' || role === 'supervisor' || role === 'platform_admin';
 
   const [viewingDocId, setViewingDocId] = useState<string | null>(null);
-  const viewingDoc = viewingDocId ? (documents.find((document) => document.id === viewingDocId) ?? null) : null;
   const [showUpload, setShowUpload] = useState(false);
   const [currentStage, setCurrentStage] = useState(workspace.stage);
   const [updatingStage, setUpdatingStage] = useState(false);
   const [documents, setDocuments] = useState<WorkspaceDocument[]>(workspace.documents ?? []);
+  const viewingDoc = viewingDocId ? (documents.find((document) => document.id === viewingDocId) ?? null) : null;
   const [currentTeamIds, setCurrentTeamIds] = useState<string[]>(workspace.team_members ?? []);
   const [assignableMembers, setAssignableMembers] = useState<OrgMember[]>([]);
   const [showAddDropdown, setShowAddDropdown] = useState(false);
