@@ -338,6 +338,34 @@ async def delete_workspace_document(
     await asyncio.to_thread(db.delete_workspace_document, doc_id)
 
 
+@router.get("/workspaces/{workspace_id}/documents/{doc_id}/extraction")
+async def get_document_extraction(
+    workspace_id: str,
+    doc_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Return the ADE-extracted markdown for a workspace document."""
+    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
+    if not workspace or workspace["org_id"] != org_id:
+        raise HTTPException(404, "Workspace not found")
+
+    workspace_doc = await asyncio.to_thread(db.get_workspace_document, doc_id)
+    if not workspace_doc or workspace_doc["workspace_id"] != workspace_id:
+        raise HTTPException(404, "Document not found")
+
+    core_document_id = workspace_doc.get("document_id")
+    if not core_document_id:
+        raise HTTPException(404, "Document not found")
+
+    extraction = await asyncio.to_thread(db.get_extraction_by_document, core_document_id)
+    if not extraction:
+        raise HTTPException(404, "Extraction not available — run Extract first")
+
+    markdown = (extraction.get("extracted_json") or {}).get("markdown") or ""
+    return {"markdown": markdown}
+
+
 @router.post("/workspaces/{workspace_id}/analyse", status_code=202)
 async def analyse_workspace(
     workspace_id: str,

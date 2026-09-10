@@ -10,7 +10,7 @@ import { daysUntil, formatCurrency, formatDate, readinessColour } from '../../li
 import {
   updateWorkspace, addWorkspaceDocument, fetchMyTeam,
   extractWorkspaceDocument, deleteWorkspaceDocument, analyseWorkspace,
-  getWorkspace,
+  getWorkspace, getDocumentExtraction,
 } from '../../api/tenders';
 import { supabase } from '../../lib/supabase';
 import type { TenderWorkspace, WorkspaceDocument } from '../../types';
@@ -191,14 +191,41 @@ function UploadModal({
 
 // ─── Document viewer ───────────────────────────────────────────────────────────
 
-function DocumentViewerModal({ doc, onClose }: { doc: WorkspaceDocument; onClose: () => void }) {
+function DocumentViewerModal({
+  doc,
+  workspaceId,
+  onClose,
+}: {
+  doc: WorkspaceDocument;
+  workspaceId: string;
+  onClose: () => void;
+}) {
   const ext = extLabel(doc.name);
   const colour = extColour(ext);
+  const [showText, setShowText] = useState(false);
+  const [loadingText, setLoadingText] = useState(false);
+  const [extractedText, setExtractedText] = useState<string | null>(null);
+
+  async function handleToggleText() {
+    if (showText) { setShowText(false); return; }
+    if (extractedText !== null) { setShowText(true); return; }
+    setLoadingText(true);
+    try {
+      const result = await getDocumentExtraction(workspaceId, doc.id);
+      setExtractedText(result.markdown || '(No text extracted)');
+      setShowText(true);
+    } catch {
+      setExtractedText('(Failed to load extracted text)');
+      setShowText(true);
+    } finally {
+      setLoadingText(false);
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-panel rounded-xl border border-border shadow-2xl w-full max-w-lg">
+      <div className={`relative bg-panel rounded-xl border border-border shadow-2xl w-full transition-all ${showText ? 'max-w-3xl' : 'max-w-lg'}`}>
         <div className="flex items-start gap-3 px-5 py-4 border-b border-border">
           <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${colour}`}>
             {ext}
@@ -222,22 +249,42 @@ function DocumentViewerModal({ doc, onClose }: { doc: WorkspaceDocument; onClose
             <ExtractionBadge status={doc.extraction_status} />
           </div>
 
-          {doc.extraction_status === 'done' && doc.url ? (
-            <a
-              href={doc.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full py-2.5 bg-teal/10 hover:bg-teal/15 text-teal text-sm font-medium rounded-lg transition-colors"
-            >
-              <FileText size={14} /> Open document
-            </a>
-          ) : doc.extraction_status !== 'done' ? (
+          {doc.extraction_status === 'done' ? (
+            <>
+              {doc.url && (
+                <a
+                  href={doc.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-teal/10 hover:bg-teal/15 text-teal text-sm font-medium rounded-lg transition-colors"
+                >
+                  <FileText size={14} /> Open document
+                </a>
+              )}
+              <button
+                onClick={handleToggleText}
+                disabled={loadingText}
+                className="flex items-center justify-center gap-2 w-full py-2.5 bg-panel-2 hover:bg-panel-3 border border-border text-text-mid text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+              >
+                {loadingText
+                  ? <><Loader2 size={13} className="animate-spin" /> Loading…</>
+                  : showText
+                    ? <><X size={13} /> Hide extracted text</>
+                    : <><FileCode size={13} /> View extracted text</>}
+              </button>
+              {showText && extractedText !== null && (
+                <div className="bg-canvas-deep rounded-lg border border-border max-h-96 overflow-y-auto p-4">
+                  <pre className="text-xs text-text-mid font-mono whitespace-pre-wrap leading-relaxed">{extractedText}</pre>
+                </div>
+              )}
+            </>
+          ) : (
             <p className="text-xs text-text-mute text-center py-4">
               {doc.extraction_status === 'processing' || doc.extraction_status === 'queued'
                 ? 'Extraction in progress — check back shortly.'
                 : 'Extract this document to view its content.'}
             </p>
-          ) : null}
+          )}
         </div>
       </div>
     </div>
@@ -694,7 +741,7 @@ export function SummaryTab({
         </div>
       </div>
 
-      {viewingDoc && <DocumentViewerModal doc={viewingDoc} onClose={() => setViewingDoc(null)} />}
+      {viewingDoc && <DocumentViewerModal doc={viewingDoc} workspaceId={workspace.id} onClose={() => setViewingDoc(null)} />}
       {showUpload && (
         <UploadModal
           workspaceId={workspace.id}

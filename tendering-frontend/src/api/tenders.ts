@@ -550,6 +550,9 @@ export const extractWorkspaceDocument = (workspaceId: string, docId: string): Pr
 export const deleteWorkspaceDocument = (workspaceId: string, docId: string): Promise<void> =>
   api.delete(`/tendering/workspaces/${workspaceId}/documents/${docId}`).then(() => undefined);
 
+export const getDocumentExtraction = (workspaceId: string, docId: string): Promise<{ markdown: string }> =>
+  api.get<{ markdown: string }>(`/tendering/workspaces/${workspaceId}/documents/${docId}/extraction`).then((r) => r.data);
+
 export const analyseWorkspace = (workspaceId: string): Promise<{ status: string }> =>
   api.post<{ status: string }>(`/tendering/workspaces/${workspaceId}/analyse`).then((r) => r.data);
 
