@@ -480,7 +480,7 @@ def upsert_evidence_link(data: dict) -> dict | None:
         return (
             get_client()
             .table("evidence_links")
-            .upsert(data, on_conflict="req_id,supplier_document_id")
+            .upsert(data, on_conflict="req_id,doc_id")
             .execute()
             .data[0]
         )
