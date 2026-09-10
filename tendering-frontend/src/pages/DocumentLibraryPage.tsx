@@ -498,13 +498,18 @@ export function DocumentLibraryPage() {
       (document.filename ?? '').toLowerCase().includes(searchQuery) ||
       (document.tags ?? []).some((tag) => tag.toLowerCase().includes(searchQuery));
     const matchCat = categoryFilter === 'all' || document.category === categoryFilter;
-    const matchStatus = statusFilter === 'all' || document.verification_status === statusFilter;
+    const effectiveStatus = isExpired(document) ? 'expired' : document.verification_status;
+    const matchStatus = statusFilter === 'all' || effectiveStatus === statusFilter;
     return matchSearch && matchCat && matchStatus;
   });
 
-  const expired = docs.filter((document) => document.verification_status === 'expired').length;
+  const isExpired = (document: (typeof docs)[0]) =>
+    document.verification_status === 'expired' ||
+    (!!document.expiry_date && new Date(document.expiry_date) < new Date());
+
+  const expired = docs.filter(isExpired).length;
   const expiringSoon = docs.filter((document) => {
-    if (!document.expiry_date || document.verification_status === 'expired') return false;
+    if (!document.expiry_date || isExpired(document)) return false;
     const days = daysUntilExpiry(document.expiry_date);
     return days >= 0 && days <= 90;
   }).length;
