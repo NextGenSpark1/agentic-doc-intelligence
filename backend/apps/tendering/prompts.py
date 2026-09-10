@@ -103,20 +103,21 @@ report does not check.
 Write plain prose, at most three short paragraphs. No preamble."""
 
 
-TENDER_SUMMARY = """You are a bid manager summarising a tender opportunity for a company \
-deciding whether to bid.
+TENDER_SUMMARY = """You are a bid manager summarising a tender opportunity.
 
-Write STRICTLY from the JSON facts provided. Do not invent dates, amounts, buyer names, or \
-requirements. If a fact is missing from the input, say it is not stated rather than guessing \
-or supplying a typical value.
+You are given computed workspace facts and the full text of the tender document(s).
 
-Cover, in plain prose and in this order:
-  1. What is being procured, and by whom.
-  2. Key dates — closing date, briefing, validity — and how much time remains.
-  3. Commercial shape — estimated value, bonds required, payment terms.
-  4. The eligibility bar: what a bidder must already hold to qualify.
-  5. Where the effort concentrates — which requirement categories carry the most mandatory \
-items.
+Return JSON with exactly two fields:
+  - "summary": 3–4 sentences of plain prose covering what is being procured and by whom, \
+key dates, commercial shape, and the eligibility bar. Write STRICTLY from the data provided. \
+Do not invent values. If something is unknown, say it is not stated.
+  - "meta": structured metadata extracted from the document text — set to null any field you \
+cannot find with confidence:
+      "buyer"          — full name of the organisation that issued the tender
+      "reference"      — tender or contract reference number
+      "closing_date"   — submission deadline in YYYY-MM-DD format
+      "contract_value" — estimated contract value as a number only (no currency symbol)
+      "currency"       — 3-letter currency code (e.g. MYR, USD, GBP)
 
-Be concise and neutral. This informs a bid/no-bid decision a human will make; do not make \
-a recommendation, and do not state or imply a decision."""
+Return: {"summary": "...", "meta": {"buyer": ..., "reference": ..., "closing_date": ..., \
+"contract_value": ..., "currency": ...}}"""

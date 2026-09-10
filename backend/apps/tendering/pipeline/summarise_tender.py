@@ -1,20 +1,23 @@
 """Workspace summary — derived facts first, narrative second.
 
-Everything quantitative is computed deterministically here; the LLM only writes prose from
-those facts. It cannot introduce a date, an amount, or a requirement. If the LLM is
-unavailable the deterministic summary still renders.
+Everything quantitative is computed deterministically here; the LLM writes prose AND
+extracts metadata (buyer, reference, closing date, contract value) from the raw markdown
+saved during ADE extraction. If the LLM is unavailable the deterministic summary still
+renders and backfill is skipped for that run.
 
-This stage also back-fills the workspace row from the extracted tender notice. Fields a
-human has already filled are never overwritten, and `bid_decision`/`readiness_score` are
-untouchable here.
+Fields a human has already filled are never overwritten, and `bid_decision`/
+`readiness_score` are untouchable here.
 """
 from __future__ import annotations
 
-import json
 from datetime import date, datetime, timezone
 
-# Extraction field → workspace column. Only columns that are blank-safe to fill from the doc.
-_META_FROM_EXTRACTION = {
+# How many chars of markdown to send per document — enough for metadata on the cover page
+# without blowing the context budget when there are multiple documents.
+_MARKDOWN_CAP_CHARS = 8_000
+
+# Workspace columns the LLM meta dict may fill when blank. Maps LLM key → workspace column.
+_LLM_META_TO_WORKSPACE = {
     "buyer": "buyer_name",
     "reference": "tender_reference",
     "closing_date": "closing_date",
@@ -127,31 +130,32 @@ def _deterministic_summary(facts: dict) -> str:
     return "\n".join(lines)
 
 
-def backfill_meta(workspace: dict, extracted: dict) -> dict:
-    """Fields to copy from a tender-notice extraction into blank workspace columns.
-
-    Only fills what is empty. Decision columns (`bid_decision`, `readiness_score`) are absent
-    from the map by construction so extraction can never write them.
-    """
+def _backfill_from_llm_meta(workspace: dict, meta: dict) -> dict:
+    """Build a patch dict from LLM-extracted meta fields, skipping already-filled columns."""
     patch: dict = {}
-    for workspace_field, extraction_field in _META_FROM_EXTRACTION.items():
-        if workspace.get(workspace_field) not in (None, "", 0):
+    for llm_key, workspace_col in _LLM_META_TO_WORKSPACE.items():
+        if workspace.get(workspace_col) not in (None, "", 0):
             continue
-        value = extracted.get(extraction_field)
+        value = meta.get(llm_key)
         if value in (None, "", []):
             continue
-        if workspace_field == "closing_date":
+        if llm_key == "closing_date":
             parsed = _parse_date(value)
             if parsed is None:
                 continue
             value = parsed.isoformat()
-        patch[workspace_field] = value
+        if llm_key == "contract_value":
+            try:
+                value = float(str(value).replace(",", "").strip())
+            except (TypeError, ValueError):
+                continue
+        patch[workspace_col] = value
     return patch
 
 
 def summarise(workspace_id: str) -> dict:
     """Summarise a tendering workspace from its extracted documents."""
-    from backend.core import llm
+    from backend.core import llm_reasoning
     from .. import db
     from ..prompts import TENDER_SUMMARY
 
@@ -159,27 +163,33 @@ def summarise(workspace_id: str) -> dict:
     documents = db.list_core_documents_for_workspace(workspace_id)
     requirements = db.list_workspace_requirements_raw(workspace_id)
 
-    # Back-fill workspace metadata from the tender-notice extraction, if one exists.
+    # Collect markdown from each document's ADE extraction for the LLM to read.
+    document_excerpts = []
     for document in documents:
         extraction = db.get_extraction_by_document(document["document_id"])
         if not extraction:
             continue
-        patch = backfill_meta(workspace, extraction.get("extracted_json") or {})
-        if patch:
-            db.update_workspace(workspace_id, patch)
-            workspace = {**workspace, **patch}
+        markdown = (extraction.get("extracted_json") or {}).get("markdown") or ""
+        if markdown:
+            document_excerpts.append({
+                "filename": document.get("filename") or document.get("name"),
+                "text": markdown[:_MARKDOWN_CAP_CHARS],
+            })
 
     facts = compute_facts(workspace, documents, requirements)
 
-    try:
-        summary_text = llm.complete(
-            tier="reasoning",
-            messages=[
-                {"role": "system", "content": TENDER_SUMMARY},
-                {"role": "user", "content": json.dumps(facts, default=str)},
-            ],
-        )
-    except Exception:
+    payload = {"facts": facts, "document_excerpts": document_excerpts}
+    answer = llm_reasoning.ask(TENDER_SUMMARY, payload, tender_id=workspace_id)
+
+    if answer and isinstance(answer, dict):
+        summary_text = str(answer.get("summary") or "").strip() or _deterministic_summary(facts)
+        meta = answer.get("meta") or {}
+        if isinstance(meta, dict):
+            patch = _backfill_from_llm_meta(workspace, meta)
+            if patch:
+                db.update_workspace(workspace_id, patch)
+                workspace = {**workspace, **patch}
+    else:
         summary_text = _deterministic_summary(facts)
 
     db.update_workspace(workspace_id, {"ai_summary": summary_text})
@@ -191,5 +201,5 @@ def summarise(workspace_id: str) -> dict:
         "summary": summary_text,
         "requirements_total": facts["requirements_total"],
         "requirements_mandatory": facts["requirements_mandatory"],
-        "days_until_closing": facts["days_until_closing"],
+        "days_until_closing": facts.get("days_until_closing"),
     }
