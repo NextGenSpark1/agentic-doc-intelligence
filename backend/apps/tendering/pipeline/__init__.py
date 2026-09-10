@@ -43,7 +43,7 @@ def process_workspace_document(workspace_doc_id: str) -> None:
     core_db.update_document(core_document_id, {"extraction_status": "processing"})
 
     try:
-        bucket = core_db.get_client().storage.from_(core_db.get_settings().storage_bucket)
+        bucket = core_db.get_client().storage.from_("tender-documents")
         content = bucket.download(core_doc["storage_path"])
 
         parsed = ade_client.parse_document(content)

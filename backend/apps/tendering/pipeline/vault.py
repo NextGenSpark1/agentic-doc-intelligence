@@ -40,7 +40,7 @@ def process_supplier_document(supplier_document_id: str) -> None:
 
     db.update_supplier_document(supplier_document_id, {"extraction_status": "processing"})
     try:
-        bucket = db_core.get_client().storage.from_(db_core.get_settings().storage_bucket)
+        bucket = db_core.get_client().storage.from_("library-documents")
         content = bucket.download(document["storage_path"])
 
         parsed = ade_client.parse_document(content)
