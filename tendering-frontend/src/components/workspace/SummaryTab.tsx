@@ -206,31 +206,28 @@ function DocumentViewerModal({
 }) {
   const ext = extLabel(doc.name);
   const colour = extColour(ext);
-  const [showText, setShowText] = useState(false);
+  const isPdf = doc.name.toLowerCase().endsWith('.pdf');
+  const isDone = doc.extraction_status === 'done';
+  const [activeTab, setActiveTab] = useState<'preview' | 'extracted'>(isDone && doc.url ? 'preview' : 'extracted');
   const [loadingText, setLoadingText] = useState(false);
   const [extractedText, setExtractedText] = useState<string | null>(null);
 
-  async function handleToggleText() {
-    if (showText) { setShowText(false); return; }
-    if (extractedText !== null) { setShowText(true); return; }
+  useEffect(() => {
+    if (activeTab !== 'extracted' || extractedText !== null || !isDone) return;
     setLoadingText(true);
-    try {
-      const result = await getDocumentExtraction(workspaceId, doc.id);
-      setExtractedText(result.markdown || '(No text extracted)');
-      setShowText(true);
-    } catch {
-      setExtractedText('(Failed to load extracted text)');
-      setShowText(true);
-    } finally {
-      setLoadingText(false);
-    }
-  }
+    getDocumentExtraction(workspaceId, doc.id)
+      .then((result) => setExtractedText(result.markdown || '(No text extracted)'))
+      .catch(() => setExtractedText('(Failed to load extracted text)'))
+      .finally(() => setLoadingText(false));
+  }, [activeTab, extractedText, isDone, workspaceId, doc.id]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative bg-panel rounded-xl border border-border shadow-2xl w-full transition-all ${showText ? 'max-w-3xl' : 'max-w-lg'}`}>
-        <div className="flex items-start gap-3 px-5 py-4 border-b border-border">
+      <div className="relative bg-panel rounded-xl border border-border shadow-2xl w-full max-w-4xl flex flex-col" style={{ height: '85vh' }}>
+
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border flex-shrink-0">
           <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${colour}`}>
             {ext}
           </div>
@@ -242,63 +239,83 @@ function DocumentViewerModal({
               {doc.uploaded_at ? ` · ${formatDate(doc.uploaded_at, { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-panel-2 text-text-mute hover:text-text transition-colors">
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <ExtractionBadge status={doc.extraction_status} />
+            {doc.url && (
+              <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                className="p-1.5 rounded-lg hover:bg-panel-2 text-text-mute hover:text-teal transition-colors" title="Open in new tab">
+                <FileText size={14} />
+              </a>
+            )}
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-panel-2 text-text-mute hover:text-text transition-colors">
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
-        <div className="px-5 py-5 space-y-3">
-          <div className="flex items-center gap-2 py-2.5 px-3 rounded-lg bg-panel-2 border border-border">
-            <FileCode size={13} className="text-teal flex-shrink-0" />
-            <ExtractionBadge status={doc.extraction_status} />
-          </div>
-
-          {(doc.extraction_status === 'uploaded' || doc.extraction_status === 'failed') && onExtract && (
+        {/* Tabs — only show when extracted */}
+        {isDone && (
+          <div className="flex border-b border-border flex-shrink-0">
             <button
-              onClick={onExtract}
-              disabled={isExtracting}
-              className="flex items-center justify-center gap-2 w-full py-2.5 bg-teal/10 hover:bg-teal/15 text-teal text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+              onClick={() => setActiveTab('preview')}
+              className={`px-5 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${activeTab === 'preview' ? 'border-teal text-teal' : 'border-transparent text-text-mute hover:text-text'}`}
             >
-              {isExtracting ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
-              {isExtracting ? 'Queuing extraction…' : 'Extract document'}
+              Preview
             </button>
-          )}
+            <button
+              onClick={() => setActiveTab('extracted')}
+              className={`px-5 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${activeTab === 'extracted' ? 'border-teal text-teal' : 'border-transparent text-text-mute hover:text-text'}`}
+            >
+              Extracted Text
+            </button>
+          </div>
+        )}
 
-          {doc.extraction_status === 'done' ? (
-            <>
-              {doc.url && (
-                <a
-                  href={doc.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-teal/10 hover:bg-teal/15 text-teal text-sm font-medium rounded-lg transition-colors"
-                >
-                  <FileText size={14} /> Open document
-                </a>
+        {/* Body */}
+        <div className="flex-1 overflow-hidden">
+          {!isDone ? (
+            <div className="h-full flex flex-col items-center justify-center gap-4 px-6">
+              {(doc.extraction_status === 'queued' || doc.extraction_status === 'processing') ? (
+                <><Loader2 size={20} className="animate-spin text-teal" /><p className="text-sm text-text-mute">Extraction in progress — check back shortly.</p></>
+              ) : (
+                <>
+                  <p className="text-sm text-text-mute">This document hasn't been extracted yet.</p>
+                  {onExtract && (
+                    <button onClick={onExtract} disabled={isExtracting}
+                      className="flex items-center gap-2 px-4 py-2 bg-teal/10 hover:bg-teal/15 text-teal text-sm font-medium rounded-lg transition-colors disabled:opacity-50">
+                      {isExtracting ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+                      {isExtracting ? 'Queuing extraction…' : 'Extract document'}
+                    </button>
+                  )}
+                </>
               )}
-              <button
-                onClick={handleToggleText}
-                disabled={loadingText}
-                className="flex items-center justify-center gap-2 w-full py-2.5 bg-panel-2 hover:bg-panel-3 border border-border text-text-mid text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-              >
-                {loadingText
-                  ? <><Loader2 size={13} className="animate-spin" /> Loading…</>
-                  : showText
-                    ? <><X size={13} /> Hide extracted text</>
-                    : <><FileCode size={13} /> View extracted text</>}
-              </button>
-              {showText && extractedText !== null && (
-                <div className="bg-canvas-deep rounded-lg border border-border max-h-96 overflow-y-auto p-4">
-                  <pre className="text-xs text-text-mid font-mono whitespace-pre-wrap leading-relaxed">{extractedText}</pre>
+            </div>
+          ) : activeTab === 'preview' ? (
+            <div className="h-full">
+              {doc.url && isPdf ? (
+                <iframe src={doc.url} className="w-full h-full rounded-b-xl" title={doc.name} />
+              ) : doc.url ? (
+                <div className="h-full flex flex-col items-center justify-center gap-3">
+                  <p className="text-sm text-text-mute">Preview not available for this file type.</p>
+                  <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 bg-teal/10 hover:bg-teal/15 text-teal text-sm font-medium rounded-lg transition-colors">
+                    <FileText size={13} /> Open file
+                  </a>
                 </div>
+              ) : (
+                <p className="text-sm text-text-mute text-center pt-12">No URL available.</p>
               )}
-            </>
+            </div>
           ) : (
-            <p className="text-xs text-text-mute text-center py-4">
-              {doc.extraction_status === 'processing' || doc.extraction_status === 'queued'
-                ? 'Extraction in progress — check back shortly.'
-                : 'Extract this document to view its content.'}
-            </p>
+            <div className="h-full overflow-y-auto p-5 bg-canvas-deep rounded-b-xl">
+              {loadingText ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 size={16} className="animate-spin text-teal" />
+                </div>
+              ) : (
+                <pre className="text-xs text-text-mid font-mono whitespace-pre-wrap leading-relaxed">{extractedText}</pre>
+              )}
+            </div>
           )}
         </div>
       </div>
