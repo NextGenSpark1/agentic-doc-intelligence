@@ -48,11 +48,14 @@ def process_workspace_document(workspace_doc_id: str) -> None:
 
         parsed = ade_client.parse_document(content)
 
+        # Persist the full markdown so the summarise stage can pass real document text to the
+        # LLM for metadata extraction (buyer, closing date, contract value). Without this the
+        # markdown is discarded after chunking and backfill never has anything to read.
         core_db.get_client().table("extractions").insert({
             "extraction_id": str(uuid.uuid4()),
             "document_id": core_document_id,
             "schema_name": "tender_document",
-            "extracted_json": {},
+            "extracted_json": {"markdown": parsed.get("markdown") or ""},
             "visual_grounding_json": {"confidence": 1.0},
             "extracted_at": datetime.now(timezone.utc).isoformat(),
         }).execute()
