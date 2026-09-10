@@ -182,8 +182,9 @@ function DocCard({
   const [showReplace, setShowReplace] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [extracting, setExtracting] = useState(false);
-  const expired = doc.verification_status === 'expired';
-  const pending = doc.verification_status === 'pending';
+  const dateExpired = !!doc.expiry_date && new Date(doc.expiry_date) < new Date();
+  const expired = doc.verification_status === 'expired' || dateExpired;
+  const pending = !expired && doc.verification_status === 'pending';
   const canExtract = !doc.extraction_status || doc.extraction_status === 'uploaded' || doc.extraction_status === 'failed';
   const isIndexing = doc.extraction_status === 'queued' || doc.extraction_status === 'processing';
 
