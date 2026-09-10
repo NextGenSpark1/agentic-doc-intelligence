@@ -511,10 +511,12 @@ def list_chunks(document_id: str) -> list[dict]:
 # ─────────────────────── Vault (supplier document store) ─────────────────────
 
 def create_supplier_document(org_id: str, data: dict) -> dict:
+    import uuid as _uuid
     row = (
         get_client()
         .table("supplier_documents")
         .insert({
+            "supplier_document_id": str(_uuid.uuid4()),
             "org_id": org_id,
             "title": data.get("title", ""),
             "doc_type": data.get("doc_type") or data.get("category") or "other",
