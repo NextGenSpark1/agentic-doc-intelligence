@@ -162,18 +162,15 @@ async def get_my_team(user: dict = Depends(get_current_user), org_id: str | None
 
 @router.get("/stats")
 async def get_stats(user: dict = Depends(get_current_user)):
-    if _is_platform_admin(user):
-        workspaces = await asyncio.to_thread(db.list_all_tendering_workspaces)
+    membership = await asyncio.to_thread(_get_tendering_membership, user)
+    org_id = membership["org_id"]
+    role = membership["role"]
+    if role == "org_admin":
+        workspaces = await asyncio.to_thread(db.list_tendering_workspaces, org_id)
+    elif role == "supervisor":
+        workspaces = await asyncio.to_thread(db.list_tendering_workspaces_for_supervisor, org_id, user["user_id"])
     else:
-        membership = await asyncio.to_thread(_get_tendering_membership, user)
-        org_id = membership["org_id"]
-        role = membership["role"]
-        if role == "org_admin":
-            workspaces = await asyncio.to_thread(db.list_tendering_workspaces, org_id)
-        elif role == "supervisor":
-            workspaces = await asyncio.to_thread(db.list_tendering_workspaces_for_supervisor, org_id, user["user_id"])
-        else:
-            workspaces = await asyncio.to_thread(db.list_tendering_workspaces_for_member, org_id, user["user_id"])
+        workspaces = await asyncio.to_thread(db.list_tendering_workspaces_for_member, org_id, user["user_id"])
     active_stages = {"new", "analysing", "preparing", "submitted"}
     active = [workspace for workspace in workspaces if workspace["stage"] in active_stages]
     today = date.today()
@@ -199,8 +196,6 @@ async def get_stats(user: dict = Depends(get_current_user)):
 
 @router.get("/workspaces")
 async def list_workspaces(user: dict = Depends(get_current_user)):
-    if _is_platform_admin(user):
-        return await asyncio.to_thread(db.list_all_tendering_workspaces)
     membership = await asyncio.to_thread(_get_tendering_membership, user)
     org_id = membership["org_id"]
     role = membership["role"]
