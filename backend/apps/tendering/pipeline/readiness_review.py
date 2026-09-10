@@ -271,6 +271,48 @@ def build_report(
     }
 
 
+def suggest_and_score(report: dict, workspace_id: str) -> dict:
+    """LLM advisory layer on top of the deterministic report.
+
+    Returns ai_score_estimate (integer 0–100) and suggestions (list of strings). The
+    deterministic score in `report` is never replaced — this is an additional signal only.
+    Returns an empty dict if the LLM is unavailable so the caller can merge safely.
+    """
+    import json
+    from backend.core import llm_reasoning
+    from ..prompts import READINESS_SUGGESTIONS
+
+    # Send score + gaps but not the raw requirement rows — the prompt only needs the report.
+    payload = {
+        "score": round(report.get("score", 0) * 100),
+        "submission_blocked": report.get("submission_blocked"),
+        "blockers": report.get("blocking_reasons", []),
+        "warnings_count": report.get("warnings", 0),
+        "satisfied": report.get("satisfied"),
+        "total": report.get("total"),
+        "mandatory_satisfied": report.get("mandatory_satisfied"),
+        "mandatory_total": report.get("mandatory_total"),
+        # Top 10 gaps only — enough context without blowing the prompt budget.
+        "gaps": report.get("gaps", [])[:10],
+    }
+
+    answer = llm_reasoning.ask(READINESS_SUGGESTIONS, payload, tender_id=workspace_id)
+    if not answer or not isinstance(answer, dict):
+        return {}
+
+    try:
+        ai_score = max(0, min(100, int(answer.get("ai_score_estimate", payload["score"]))))
+    except (TypeError, ValueError):
+        ai_score = payload["score"]
+
+    suggestions = answer.get("suggestions")
+    if not isinstance(suggestions, list):
+        suggestions = []
+    suggestions = [str(item) for item in suggestions if item][:5]
+
+    return {"ai_score_estimate": ai_score, "ai_suggestions": suggestions}
+
+
 def review(workspace_id: str) -> dict:
     """Run the readiness scan and persist the score.
 
@@ -296,7 +338,10 @@ def review(workspace_id: str) -> dict:
         "warnings": report["warnings"],
         "submission_blocked": report["submission_blocked"],
     })
-    return report
+
+    # LLM advisory layer — never blocks the return, never overwrites the deterministic score.
+    ai_layer = suggest_and_score(report, workspace_id)
+    return {**report, **ai_layer}
 
 
 def narrate(report: dict) -> str:

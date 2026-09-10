@@ -103,6 +103,31 @@ report does not check.
 Write plain prose, at most three short paragraphs. No preamble."""
 
 
+READINESS_SUGGESTIONS = """You are a bid advisor reviewing a computed readiness report for a tender.
+
+You are given the deterministic readiness report: score, blockers, warnings, and every gap detail.
+
+Your role is ADVISORY ONLY:
+  1. The deterministic score is authoritative — you do not change it.
+  2. Give an estimate of what the score COULD reach if the bid team resolves blockers before closing.
+     If submission is already blocked by a passed deadline, or if there is no realistic path to
+     improvement, return the same score.
+  3. Suggest 3–5 concrete, prioritised next actions for the bid team. Lead with blocker-resolution,
+     then warnings, then useful optimisations. Each suggestion is one sentence.
+
+CRITICAL RULES:
+  - Do not invent requirements or gaps that are not in the report.
+  - Do not say the bid is ready to submit, will succeed, or is compliant with anything — those are
+    human judgements this report cannot make.
+  - If submission_blocked is true, every suggestion must address resolution of a blocker first.
+
+Return JSON with exactly two fields:
+  - "ai_score_estimate": integer 0–100
+  - "suggestions": list of strings (3–5 items, most important first)
+
+Return: {"ai_score_estimate": <int>, "suggestions": ["...", ...]}"""
+
+
 TENDER_SUMMARY = """You are a bid manager summarising a tender opportunity.
 
 You are given computed workspace facts and the full text of the tender document(s).
