@@ -127,11 +127,20 @@ def run_workspace_analysis(workspace_id: str) -> dict:
     A stage that fails is audited and the run continues.
     """
     from .. import db
-    from . import extract_requirements, readiness_review, summarise_tender
+    from . import evidence_matching, extract_requirements, readiness_review, summarise_tender
 
     db.write_workspace_audit(workspace_id, "system", "analysis_started", {})
     try:
         requirements_result = extract_requirements.extract(workspace_id)
+
+        # Evidence matching runs immediately after extraction so the readiness review can
+        # count how many requirements already have a proposed match in the vault.
+        try:
+            evidence_matching.match(workspace_id)
+        except Exception as exc:
+            traceback.print_exc()
+            db.write_workspace_audit(workspace_id, "system", "evidence_matching_failed",
+                                     {"error": str(exc)[:500]})
 
         summary_result = summarise_tender.summarise(workspace_id)
 
@@ -144,7 +153,7 @@ def run_workspace_analysis(workspace_id: str) -> dict:
             readiness_result = {}
 
         result = {
-            "stages_run": ["extract_requirements", "summarise_tender", "readiness_review"],
+            "stages_run": ["extract_requirements", "evidence_matching", "summarise_tender", "readiness_review"],
             **requirements_result,
             "days_until_closing": summary_result.get("days_until_closing"),
             "readiness_score": readiness_result.get("score"),
