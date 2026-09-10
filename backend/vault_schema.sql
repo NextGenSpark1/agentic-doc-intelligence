@@ -2,31 +2,28 @@
 -- Safe to re-run (all statements are idempotent).
 
 -- 1. Link supplier_documents back to the library_documents row they were created from.
---    NULL for vault docs that pre-date the library integration (or added outside the library flow).
 ALTER TABLE supplier_documents
-    ADD COLUMN IF NOT EXISTS library_doc_id UUID REFERENCES library_documents(doc_id) ON DELETE SET NULL;
+    ADD COLUMN IF NOT EXISTS library_doc_id TEXT;
 
 CREATE INDEX IF NOT EXISTS supplier_documents_library_doc_id_idx
     ON supplier_documents(library_doc_id)
     WHERE library_doc_id IS NOT NULL;
 
 -- 2. Supplier-chunk vector search RPC.
---    Returns the best chunk per query, joining supplier_documents for metadata the adjudicator needs.
---    Filters out superseded and expired documents at the source so the adjudicator never sees them.
 CREATE OR REPLACE FUNCTION match_supplier_chunks(
     p_org_id          TEXT,
     p_query_embedding vector(1536),
     p_match_count     INT DEFAULT 12
 )
 RETURNS TABLE (
-    supplier_document_id UUID,
+    supplier_document_id TEXT,
     chunk_id             TEXT,
     text                 TEXT,
     page                 INT,
     title                TEXT,
     doc_type             TEXT,
     expiry_date          DATE,
-    library_doc_id       UUID,
+    library_doc_id       TEXT,
     similarity           FLOAT
 )
 LANGUAGE sql STABLE
