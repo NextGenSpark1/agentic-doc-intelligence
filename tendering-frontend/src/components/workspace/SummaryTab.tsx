@@ -195,10 +195,14 @@ function DocumentViewerModal({
   doc,
   workspaceId,
   onClose,
+  onExtract,
+  isExtracting,
 }: {
   doc: WorkspaceDocument;
   workspaceId: string;
   onClose: () => void;
+  onExtract?: () => void;
+  isExtracting?: boolean;
 }) {
   const ext = extLabel(doc.name);
   const colour = extColour(ext);
@@ -248,6 +252,17 @@ function DocumentViewerModal({
             <FileCode size={13} className="text-teal flex-shrink-0" />
             <ExtractionBadge status={doc.extraction_status} />
           </div>
+
+          {(doc.extraction_status === 'uploaded' || doc.extraction_status === 'failed') && onExtract && (
+            <button
+              onClick={onExtract}
+              disabled={isExtracting}
+              className="flex items-center justify-center gap-2 w-full py-2.5 bg-teal/10 hover:bg-teal/15 text-teal text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+            >
+              {isExtracting ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+              {isExtracting ? 'Queuing extraction…' : 'Extract document'}
+            </button>
+          )}
 
           {doc.extraction_status === 'done' ? (
             <>
@@ -314,7 +329,7 @@ export function SummaryTab({
 }) {
   const { orgCtx } = useAuth();
   const role = orgCtx?.role;
-  const canManageTeam = role === 'org_admin' || role === 'supervisor';
+  const canManageTeam = role === 'org_admin' || role === 'supervisor' || role === 'platform_admin';
 
   const [viewingDoc, setViewingDoc] = useState<WorkspaceDocument | null>(null);
   const [showUpload, setShowUpload] = useState(false);
@@ -547,7 +562,7 @@ export function SummaryTab({
                   const colour = extColour(ext);
                   const isExtracting = extractingIds.has(doc.id);
                   const isDeleting = deletingIds.has(doc.id);
-                  const canExtract = doc.document_id && (doc.extraction_status === 'uploaded' || doc.extraction_status === 'failed');
+                  const canExtract = doc.extraction_status === 'uploaded' || doc.extraction_status === 'failed';
 
                   return (
                     <div
@@ -741,7 +756,15 @@ export function SummaryTab({
         </div>
       </div>
 
-      {viewingDoc && <DocumentViewerModal doc={viewingDoc} workspaceId={workspace.id} onClose={() => setViewingDoc(null)} />}
+      {viewingDoc && (
+        <DocumentViewerModal
+          doc={viewingDoc}
+          workspaceId={workspace.id}
+          onClose={() => setViewingDoc(null)}
+          onExtract={() => { handleExtract(viewingDoc); setViewingDoc(null); }}
+          isExtracting={extractingIds.has(viewingDoc.id)}
+        />
+      )}
       {showUpload && (
         <UploadModal
           workspaceId={workspace.id}
