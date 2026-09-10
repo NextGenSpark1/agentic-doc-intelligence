@@ -529,8 +529,11 @@ export const updateWorkspace = (
 ): Promise<TenderWorkspace> =>
   api.patch<TenderWorkspace>(`/tendering/workspaces/${id}`, patch).then((response) => response.data);
 
-export const fetchMyTeam = (): Promise<OrgMember[]> =>
-  withMockFallback(() => api.get<OrgMember[]>('/tendering/my-team').then((response) => response.data), []);
+export const fetchMyTeam = (orgId?: string): Promise<OrgMember[]> =>
+  withMockFallback(
+    () => api.get<OrgMember[]>('/tendering/my-team', { params: orgId ? { org_id: orgId } : {} }).then((response) => response.data),
+    [],
+  );
 
 export const updateRequirement = (
   reqId: string,

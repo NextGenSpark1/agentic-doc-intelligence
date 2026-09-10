@@ -133,24 +133,30 @@ class WorkspaceChatIn(BaseModel):
 # ── Dashboard stats ────────────────────────────────────────────────────────────
 
 @router.get("/my-team")
-async def get_my_team(user: dict = Depends(get_current_user)):
+async def get_my_team(user: dict = Depends(get_current_user), org_id: str | None = None):
     """Return org members the current user may assign to workspaces.
 
     Supervisors get their invitees; org_admin gets all members; members get empty list.
+    platform_admin can pass org_id as a query param to get all members of that org.
     """
+    if user.get("role") == "platform_admin":
+        if not org_id:
+            return []
+        all_members = await asyncio.to_thread(list_org_members, org_id)
+        return [m for m in all_members if m["user_id"] != user["user_id"]]
+
     membership = await asyncio.to_thread(_get_tendering_membership, user)
-    org_id = membership["org_id"]
+    member_org_id = membership["org_id"]
     role = membership["role"]
     if role == "member":
         return []
-    all_members = await asyncio.to_thread(list_org_members, org_id)
+    all_members = await asyncio.to_thread(list_org_members, member_org_id)
     if role == "supervisor":
         user_id = user["user_id"]
         return [
             m for m in all_members
             if m.get("invited_by") == user_id and m["user_id"] != user_id
         ]
-    # org_admin sees everyone
     return [m for m in all_members if m["user_id"] != user["user_id"]]
 
 

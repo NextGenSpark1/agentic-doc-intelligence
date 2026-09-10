@@ -376,7 +376,7 @@ export function SummaryTab({
 
   useEffect(() => {
     if (!canManageTeam) return;
-    fetchMyTeam().then(setAssignableMembers).catch(() => {});
+    fetchMyTeam(workspace.org_id).then(setAssignableMembers).catch(() => {});
   }, [canManageTeam]);
 
   function resolveName(userId: string): string {
