@@ -267,41 +267,45 @@ function DocumentViewerModal({
         {/* Body */}
         <div className="flex-1 overflow-hidden">
           {activeTab === 'preview' ? (
-            isDone && doc.url && isPdf ? (
-              <iframe src={doc.url} className="w-full h-full rounded-b-xl" title={doc.name} />
-            ) : isDone && doc.url ? (
-              <div className="h-full flex flex-col items-center justify-center gap-3">
-                <p className="text-sm text-text-mute">Preview not available for this file type.</p>
-                <a href={doc.url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-4 py-2 bg-teal/10 hover:bg-teal/15 text-teal text-sm font-medium rounded-lg transition-colors">
-                  <FileText size={13} /> Open file
-                </a>
-              </div>
-            ) : isInProgress ? (
-              <div className="h-full flex flex-col items-center justify-center gap-3">
-                <Loader2 size={20} className="animate-spin text-teal" />
-                <p className="text-sm text-text-mute">Extraction in progress — check back shortly.</p>
+            doc.url ? (
+              <div className="relative w-full h-full">
+                {isPdf && (
+                  <iframe src={doc.url} className="w-full h-full rounded-b-xl" title={doc.name} />
+                )}
+                <div className={`${isPdf ? 'absolute bottom-3 right-3' : 'h-full flex flex-col items-center justify-center gap-3'}`}>
+                  {!isPdf && <p className="text-sm text-text-mute">Preview not available for this file type.</p>}
+                  <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 bg-navy hover:bg-navy-soft text-white text-xs font-medium rounded-lg shadow transition-colors">
+                    <FileText size={12} /> Open in new tab
+                  </a>
+                </div>
               </div>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center gap-4">
-                <p className="text-sm text-text-mute">
-                  {doc.extraction_status === 'failed' ? 'Extraction failed — try again.' : 'Extract this document to preview it.'}
-                </p>
-                {onExtract && (
-                  <button onClick={onExtract} disabled={isExtracting}
-                    className="flex items-center gap-2 px-4 py-2 bg-teal/10 hover:bg-teal/15 text-teal text-sm font-medium rounded-lg transition-colors disabled:opacity-50">
-                    {isExtracting ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
-                    {isExtracting ? 'Queuing extraction…' : 'Extract document'}
-                  </button>
-                )}
+              <div className="h-full flex flex-col items-center justify-center gap-3">
+                <p className="text-sm text-text-mute">No file URL available.</p>
               </div>
             )
           ) : (
             <div className="h-full overflow-y-auto p-5 bg-canvas-deep rounded-b-xl">
               {!isDone ? (
-                <p className="text-xs text-text-mute text-center pt-12">
-                  {isInProgress ? 'Extraction in progress…' : 'Extract the document first to see the text.'}
-                </p>
+                <div className="flex flex-col items-center justify-center gap-4 pt-16">
+                  {isInProgress ? (
+                    <><Loader2 size={18} className="animate-spin text-teal" /><p className="text-xs text-text-mute">Extraction in progress…</p></>
+                  ) : (
+                    <>
+                      <p className="text-xs text-text-mute">
+                        {doc.extraction_status === 'failed' ? 'Extraction failed — try again.' : 'Extract this document to see the text.'}
+                      </p>
+                      {onExtract && (
+                        <button onClick={onExtract} disabled={isExtracting}
+                          className="flex items-center gap-2 px-4 py-2 bg-teal/10 hover:bg-teal/15 text-teal text-sm font-medium rounded-lg transition-colors disabled:opacity-50">
+                          {isExtracting ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+                          {isExtracting ? 'Queuing extraction…' : 'Extract document'}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               ) : loadingText ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 size={16} className="animate-spin text-teal" />
@@ -342,7 +346,8 @@ export function SummaryTab({
   const role = orgCtx?.role;
   const canManageTeam = role === 'org_admin' || role === 'supervisor' || role === 'platform_admin';
 
-  const [viewingDoc, setViewingDoc] = useState<WorkspaceDocument | null>(null);
+  const [viewingDocId, setViewingDocId] = useState<string | null>(null);
+  const viewingDoc = viewingDocId ? (documents.find((document) => document.id === viewingDocId) ?? null) : null;
   const [showUpload, setShowUpload] = useState(false);
   const [currentStage, setCurrentStage] = useState(workspace.stage);
   const [updatingStage, setUpdatingStage] = useState(false);
@@ -401,10 +406,6 @@ export function SummaryTab({
   }
 
   async function handleExtract(doc: WorkspaceDocument) {
-    if (!doc.document_id) {
-      toast.error('This document has no storage path — re-upload it');
-      return;
-    }
     setExtractingIds((prev) => new Set(prev).add(doc.id));
     setDocuments((prev) => prev.map((d) => d.id === doc.id ? { ...d, extraction_status: 'queued' } : d));
     try {
@@ -585,7 +586,7 @@ export function SummaryTab({
                       {/* Left: icon + name + status */}
                       <div
                         className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
-                        onClick={() => setViewingDoc(doc)}
+                        onClick={() => setViewingDocId(doc.id)}
                       >
                         <div className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 text-[9px] font-bold ${colour}`}>
                           {ext}
@@ -776,8 +777,8 @@ export function SummaryTab({
         <DocumentViewerModal
           doc={viewingDoc}
           workspaceId={workspace.id}
-          onClose={() => setViewingDoc(null)}
-          onExtract={() => { handleExtract(viewingDoc); setViewingDoc(null); }}
+          onClose={() => setViewingDocId(null)}
+          onExtract={() => { handleExtract(viewingDoc); setViewingDocId(null); }}
           isExtracting={extractingIds.has(viewingDoc.id)}
         />
       )}
