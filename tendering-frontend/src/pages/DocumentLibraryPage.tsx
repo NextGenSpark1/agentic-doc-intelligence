@@ -498,6 +498,10 @@ export function DocumentLibraryPage() {
     },
   });
 
+  const isExpired = (document: (typeof docs)[0]) =>
+    document.verification_status === 'expired' ||
+    (!!document.expiry_date && new Date(document.expiry_date) < new Date());
+
   const filtered = docs.filter((document) => {
     const searchQuery = search.toLowerCase();
     const matchSearch =
@@ -509,10 +513,6 @@ export function DocumentLibraryPage() {
     const matchStatus = statusFilter === 'all' || effectiveStatus === statusFilter;
     return matchSearch && matchCat && matchStatus;
   });
-
-  const isExpired = (document: (typeof docs)[0]) =>
-    document.verification_status === 'expired' ||
-    (!!document.expiry_date && new Date(document.expiry_date) < new Date());
 
   const expired = docs.filter(isExpired).length;
   const expiringSoon = docs.filter((document) => {
