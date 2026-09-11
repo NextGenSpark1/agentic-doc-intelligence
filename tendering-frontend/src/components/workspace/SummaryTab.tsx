@@ -359,6 +359,7 @@ export function SummaryTab({
   const [extractingIds, setExtractingIds] = useState<Set<string>>(new Set());
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [runningAnalysis, setRunningAnalysis] = useState(false);
+  const analysisStartRef = useRef(0);
 
   const days = daysUntil(workspace.closing_date);
   const isActive = ['new', 'analysing', 'preparing'].includes(workspace.stage);
@@ -377,9 +378,16 @@ export function SummaryTab({
         setCurrentStage(updated.stage);
         onWorkspaceChange?.({ stage: updated.stage, ai_summary: updated.ai_summary });
         if (updated.stage === 'preparing') {
-          toast.success('Analysis complete — requirements extracted');
+          toast.success('Analysis complete — check the Requirements tab', { id: 'analysis' });
           setRunningAnalysis(false);
+          analysisStartRef.current = 0;
         }
+      }
+      // Timeout: if analysis has been running for > 10 min, assume failure.
+      if (analysisStartRef.current > 0 && Date.now() - analysisStartRef.current > 10 * 60 * 1000) {
+        toast.error('Analysis is taking too long — check Railway logs for errors', { id: 'analysis' });
+        analysisStartRef.current = 0;
+        setRunningAnalysis(false);
       }
     } catch { /* silent — next poll will retry */ }
   }, [workspace.id, currentStage, onWorkspaceChange]);
@@ -439,7 +447,8 @@ export function SummaryTab({
       await analyseWorkspace(workspace.id);
       setCurrentStage('analysing');
       onWorkspaceChange?.({ stage: 'analysing' });
-      toast.success('Analysis started — requirements will appear shortly');
+      analysisStartRef.current = Date.now();
+      toast.loading('Running analysis — extracting requirements…', { id: 'analysis' });
     } catch {
       toast.error('Failed to start analysis');
       setRunningAnalysis(false);
@@ -576,7 +585,8 @@ export function SummaryTab({
                   const colour = extColour(ext);
                   const isExtracting = extractingIds.has(doc.id);
                   const isDeleting = deletingIds.has(doc.id);
-                  const canExtract = doc.extraction_status === 'uploaded' || doc.extraction_status === 'failed';
+                  const canExtract = doc.extraction_status === 'uploaded' || doc.extraction_status === 'failed' || doc.extraction_status === 'done';
+                  const isRedo = doc.extraction_status === 'done';
 
                   return (
                     <div
@@ -609,13 +619,13 @@ export function SummaryTab({
                           <button
                             onClick={(e) => { e.stopPropagation(); handleExtract(doc); }}
                             disabled={isExtracting}
-                            title="Extract text with LandingAI ADE"
-                            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-teal hover:bg-teal/10 rounded-lg transition-colors disabled:opacity-50"
+                            title={isRedo ? 'Re-run ADE extraction' : 'Extract text with LandingAI ADE'}
+                            className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded-lg transition-colors disabled:opacity-50 ${isRedo ? 'text-text-mute hover:bg-panel-3 opacity-0 group-hover:opacity-100' : 'text-teal hover:bg-teal/10'}`}
                           >
                             {isExtracting
                               ? <Loader2 size={10} className="animate-spin" />
                               : <Zap size={10} />}
-                            Extract
+                            {isRedo ? 'Re-extract' : 'Extract'}
                           </button>
                         )}
                         {(doc.extraction_status === 'queued' || doc.extraction_status === 'processing') && (

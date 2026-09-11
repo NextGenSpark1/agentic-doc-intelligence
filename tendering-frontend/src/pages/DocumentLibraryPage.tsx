@@ -73,17 +73,25 @@ function FileViewerModal({
   const [activeTab, setActiveTab] = useState<'preview' | 'extracted'>('preview');
   const [loadingText, setLoadingText] = useState(false);
   const [extractedText, setExtractedText] = useState<string | null>(null);
+  const [textError, setTextError] = useState<'no_vault' | 'failed' | null>(null);
   const [verifying, setVerifying] = useState(false);
   const isVerified = doc.verification_status === 'verified';
 
   useEffect(() => {
-    if (activeTab !== 'extracted' || extractedText !== null || !isDone) return;
+    if (activeTab !== 'extracted' || extractedText !== null || textError !== null || !isDone) return;
     setLoadingText(true);
     getLibraryDocumentExtraction(doc.doc_id)
       .then((result) => setExtractedText(result.text || '(No text extracted)'))
-      .catch(() => setExtractedText('(Failed to load extracted text)'))
+      .catch((error) => {
+        const detail: string = error?.response?.data?.detail ?? '';
+        if (detail.includes('vault entry') || detail.includes('re-upload')) {
+          setTextError('no_vault');
+        } else {
+          setTextError('failed');
+        }
+      })
       .finally(() => setLoadingText(false));
-  }, [activeTab, extractedText, isDone, doc.doc_id]);
+  }, [activeTab, extractedText, textError, isDone, doc.doc_id]);
 
   async function handleVerify() {
     setVerifying(true);
@@ -177,12 +185,23 @@ function FileViewerModal({
               {!isDone ? (
                 <div className="flex flex-col items-center justify-center gap-3 pt-16">
                   <p className="text-xs text-text-mute">
-                    {doc.extraction_status === 'failed' ? 'Extraction failed — retry from the library.' : 'Extract this document first to see its text.'}
+                    {doc.extraction_status === 'failed' ? 'Extraction failed — use the Extract button to retry.' : 'Extract this document first to see its text.'}
                   </p>
                 </div>
               ) : loadingText ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 size={16} className="animate-spin text-teal" />
+                </div>
+              ) : textError === 'no_vault' ? (
+                <div className="flex flex-col items-center justify-center gap-2 pt-16">
+                  <p className="text-xs text-text-mute text-center max-w-xs">
+                    This document was uploaded before text indexing was available.
+                    Replace it with a new upload to enable extracted text.
+                  </p>
+                </div>
+              ) : textError === 'failed' ? (
+                <div className="flex flex-col items-center justify-center gap-2 pt-16">
+                  <p className="text-xs text-text-mute">Failed to load extracted text — try again later.</p>
                 </div>
               ) : (
                 <pre className="text-xs text-text-mid font-mono whitespace-pre-wrap leading-relaxed">{extractedText}</pre>
@@ -326,8 +345,9 @@ function DocCard({
   const dateExpired = !!doc.expiry_date && new Date(doc.expiry_date) < new Date();
   const expired = doc.verification_status === 'expired' || dateExpired;
   const pending = !expired && doc.verification_status === 'pending';
-  const canExtract = !doc.extraction_status || doc.extraction_status === 'uploaded' || doc.extraction_status === 'failed';
+  const canExtract = !doc.extraction_status || doc.extraction_status === 'uploaded' || doc.extraction_status === 'failed' || doc.extraction_status === 'done';
   const isIndexing = doc.extraction_status === 'queued' || doc.extraction_status === 'processing';
+  const isRedo = doc.extraction_status === 'done';
 
   async function handleDelete() {
     if (!confirm(`Delete "${doc.title}"? This cannot be undone.`)) return;
@@ -451,11 +471,11 @@ function DocCard({
             <button
               onClick={handleExtract}
               disabled={extracting || isIndexing}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium border rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed border-navy text-navy hover:bg-navy hover:text-white"
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium border rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isRedo ? 'border-border text-text-mute hover:border-navy hover:text-navy' : 'border-navy text-navy hover:bg-navy hover:text-white'}`}
             >
               {extracting || isIndexing
                 ? <><div className="w-2.5 h-2.5 border border-current/40 border-t-current rounded-full animate-spin" />Indexing…</>
-                : <><Cpu size={12} />{doc.extraction_status === 'failed' ? 'Retry' : 'Extract'}</>
+                : <><Cpu size={12} />{isRedo ? 'Re-extract' : doc.extraction_status === 'failed' ? 'Retry' : 'Extract'}</>
               }
             </button>
           )}
