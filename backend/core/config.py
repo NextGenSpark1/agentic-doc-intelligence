@@ -33,13 +33,13 @@ class Settings(BaseSettings):
     mock_ade: bool = False
 
     # --- LLM routing (LiteLLM model strings). Swap freely; agents don't care. ---
-    llm_reasoning_model: str = "groq/llama-3.3-70b-versatile"  # summaries, anomaly reasoning, chat
-    llm_fast_model: str = "groq/llama-3.1-8b-instant"          # classification, cheap calls
-    llm_embedding_model: str = "gemini/gemini-embedding-001" # RAG embeddings (Gemini)
+    llm_reasoning_model: str = "groq/llama3-70b-8192"  # summaries, anomaly reasoning, chat
+    llm_fast_model: str = "groq/llama-3.1-8b-instant"  # classification, cheap calls
+    llm_embedding_model: str = "gemini/gemini-embedding-001"  # RAG embeddings (Gemini)
     # Whole-case cross-document reasoning (entities/relationships/timeline/findings LLM pass).
     # Separate from the "reasoning" tier above so it can be tuned independently (bigger prompts,
     # different model) even though both currently point at the same Groq model.
-    llm_case_reasoning_model: str = "groq/llama-3.3-70b-versatile"
+    llm_case_reasoning_model: str = "groq/llama3-70b-8192"
 
     # --- API Keys (LiteLLM reads these from os.environ) ---
     groq_api_key: str = ""
