@@ -530,7 +530,9 @@ def delete_workspace_requirements(workspace_id: str, pending_only: bool = False)
 def insert_workspace_requirement(data: dict) -> dict | None:
     try:
         return get_client().table("workspace_requirements").insert(data).execute().data[0]
-    except Exception:
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
         return None
 
 
