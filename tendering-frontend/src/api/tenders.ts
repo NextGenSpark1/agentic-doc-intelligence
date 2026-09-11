@@ -582,6 +582,12 @@ export const replaceLibraryDocument = (docId: string, data: { url: string; filen
 export const extractLibraryDocument = (docId: string): Promise<{ status: string }> =>
   api.post<{ status: string }>(`/tendering/library/${docId}/extract`).then((r) => r.data);
 
+export const getLibraryDocumentExtraction = (docId: string): Promise<{ text: string; chunk_count: number }> =>
+  api.get<{ text: string; chunk_count: number }>(`/tendering/library/${docId}/extraction`).then((r) => r.data);
+
+export const verifyLibraryDocument = (docId: string): Promise<LibraryDocument> =>
+  api.patch<LibraryDocument>(`/tendering/library/${docId}`, { verification_status: 'verified' }).then((r) => r.data);
+
 export interface ChatCitation {
   document_id: string;
   page: number;
