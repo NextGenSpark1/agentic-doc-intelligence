@@ -38,29 +38,44 @@ def process_supplier_document(supplier_document_id: str) -> None:
         return
 
     db.update_supplier_document(supplier_document_id, {"extraction_status": "processing"})
+
+    # Step 1: ADE parsing — failure here means nothing was extracted; mark failed.
     try:
         bucket = db_core.get_client().storage.from_("library-documents")
         content = bucket.download(document["storage_path"])
-
         parsed = ade_client.parse_document(content)
-        _index_vault_chunks(org_id, supplier_document_id, parsed["chunks"])
-
-        db.update_supplier_document(supplier_document_id, {
-            "extraction_status": "done",
-            "page_count": parsed.get("page_count") or 0,
-        })
-    except Exception as exc:  # noqa: BLE001 — record failure, don't crash the worker
+    except Exception as exc:  # noqa: BLE001
         traceback.print_exc()
         db.update_supplier_document(supplier_document_id, {"extraction_status": "failed"})
         try:
             db_core.get_client().table("audit_log").insert({
-                "actor": "system",
-                "action": "vault_extraction_failed",
+                "actor": "system", "action": "vault_extraction_failed",
                 "detail": {"supplier_document_id": supplier_document_id,
                            "org_id": org_id, "error": str(exc)[:500]},
             }).execute()
         except Exception:
-            pass  # audit logging must never mask the original failure
+            pass
+        return
+
+    # Step 2: chunk indexing (embed + store) — failure degrades to no vector search
+    # but text was extracted, so mark done regardless so users can view it.
+    try:
+        _index_vault_chunks(org_id, supplier_document_id, parsed["chunks"])
+    except Exception as exc:  # noqa: BLE001
+        traceback.print_exc()
+        try:
+            db_core.get_client().table("audit_log").insert({
+                "actor": "system", "action": "vault_indexing_failed",
+                "detail": {"supplier_document_id": supplier_document_id,
+                           "org_id": org_id, "error": str(exc)[:500]},
+            }).execute()
+        except Exception:
+            pass
+
+    db.update_supplier_document(supplier_document_id, {
+        "extraction_status": "done",
+        "page_count": parsed.get("page_count") or 0,
+    })
 
 
 def _index_vault_chunks(org_id: str, supplier_document_id: str, chunks: list[dict]) -> None:
@@ -89,15 +104,19 @@ def _index_vault_chunks(org_id: str, supplier_document_id: str, chunks: list[dic
         if not c.get("text"):
             continue
         grounding = (c.get("grounding") or [{}])[0]
-        rows.append({
+        row: dict = {
             "org_id": org_id,
             "supplier_document_id": supplier_document_id,
             "chunk_id": c.get("chunk_id") or str(uuid.uuid4()),
             "text": c["text"],
             "page": grounding.get("page"),
             "bbox": grounding.get("bbox") or [],
-            "embedding": vectors[vector_index],
-        })
+        }
+        # Omit embedding key entirely when None so PostgREST uses the column default (NULL)
+        # rather than receiving an explicit null for a vector column, which some versions reject.
+        if vectors[vector_index] is not None:
+            row["embedding"] = vectors[vector_index]
+        rows.append(row)
         vector_index += 1
     db.delete_supplier_chunks(supplier_document_id)
     db.insert_supplier_chunks(rows)

@@ -199,7 +199,8 @@ async def list_members(org_id: str, user: dict = Depends(get_current_user)):
 
 
 @router.post("/orgs/{org_id}/invite", status_code=201)
-async def invite_member(org_id: str, body: InviteBody, user: dict = Depends(get_current_user)):
+async def invite_member(org_id: str, body: InviteBody, user: dict = Depends(get_current_user),
+                        platform: str = Depends(_get_platform)):
     m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
     if not m or m["org_id"] != org_id:
         raise HTTPException(403, "access denied")
@@ -221,13 +222,15 @@ async def invite_member(org_id: str, body: InviteBody, user: dict = Depends(get_
     except Exception:
         raise HTTPException(409, "An invitation for this email already exists in this org")
 
-    invite_link = f"{get_settings().frontend_url}/invite/{invite['token']}"
+    s = get_settings()
+    base_url = s.tendering_frontend_url if platform == "tendering" else s.frontend_url
+    invite_link = f"{base_url}/invite/{invite['token']}"
     org = await asyncio.to_thread(db.get_org, org_id)
     org_name = org["name"] if org else org_id
     inviter_name = user.get("full_name") or user.get("email", "Your team")
     email_sent = await asyncio.to_thread(
         mail.send_invitation_email,
-        body.email, org_name, body.role, invite_link, inviter_name,
+        body.email, org_name, body.role, invite_link, inviter_name, platform,
     )
 
     return {
@@ -263,7 +266,8 @@ async def cancel_invitation(org_id: str, token: str, user: dict = Depends(get_cu
 
 
 @router.post("/orgs/{org_id}/invitations/{token}/resend", status_code=200)
-async def resend_invitation(org_id: str, token: str, user: dict = Depends(get_current_user)):
+async def resend_invitation(org_id: str, token: str, user: dict = Depends(get_current_user),
+                            platform: str = Depends(_get_platform)):
     if not _is_platform_admin(user):
         m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
         if not m or m["org_id"] != org_id or m["role"] not in ("org_admin", "supervisor"):
@@ -275,11 +279,13 @@ async def resend_invitation(org_id: str, token: str, user: dict = Depends(get_cu
         raise HTTPException(410, "Invitation already accepted")
     org = await asyncio.to_thread(db.get_org, org_id)
     org_name = org["name"] if org else org_id
-    invite_link = f"{get_settings().frontend_url}/invite/{token}"
+    s = get_settings()
+    base_url = s.tendering_frontend_url if platform == "tendering" else s.frontend_url
+    invite_link = f"{base_url}/invite/{token}"
     inviter_name = user.get("full_name") or user.get("email") or "NextGen Spark"
     email_sent = await asyncio.to_thread(
         mail.send_invitation_email,
-        invite["email"], org_name, invite["role"], invite_link, inviter_name,
+        invite["email"], org_name, invite["role"], invite_link, inviter_name, platform,
     )
     return {"email_sent": email_sent, "invite_link": invite_link}
 

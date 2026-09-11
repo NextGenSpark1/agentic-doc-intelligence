@@ -94,6 +94,7 @@ class Settings(BaseSettings):
     resend_from_email: str = "onboarding@resend.dev"
     # Frontend base URL — used to build absolute invite links in emails.
     frontend_url: str = "https://agentic-doc-intelligence-psi.vercel.app"
+    tendering_frontend_url: str = "https://agentic-doc-intelligence-7bsj-ruby.vercel.app"
 
 
 @lru_cache
