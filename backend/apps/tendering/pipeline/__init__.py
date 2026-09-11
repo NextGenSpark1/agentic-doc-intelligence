@@ -104,7 +104,7 @@ def _index_workspace_chunks(workspace_id: str, document_id: str, chunks: list[di
         if not chunk.get("text"):
             continue
         grounding = (chunk.get("grounding") or [{}])[0]
-        rows.append({
+        row: dict = {
             "case_id": None,
             "workspace_id": workspace_id,
             "document_id": document_id,
@@ -113,8 +113,10 @@ def _index_workspace_chunks(workspace_id: str, document_id: str, chunks: list[di
             "type": chunk.get("type") or "text",
             "page": grounding.get("page"),
             "bbox": grounding.get("bbox") or [],
-            "embedding": vectors[vector_index],
-        })
+        }
+        if vectors[vector_index] is not None:
+            row["embedding"] = vectors[vector_index]
+        rows.append(row)
         vector_index += 1
 
     insert_chunks(rows)
