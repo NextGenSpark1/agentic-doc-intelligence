@@ -295,6 +295,11 @@ def link_core_document_to_workspace_doc(workspace_doc_id: str, core_document_id:
     ).eq("id", workspace_doc_id).execute()
 
 
+def delete_workspace(workspace_id: str) -> None:
+    """Delete a workspace and all its child rows (documents, requirements, bid decisions)."""
+    get_client().table("tender_workspaces").delete().eq("id", workspace_id).execute()
+
+
 def delete_workspace_document(doc_id: str) -> None:
     """Delete workspace document row and its linked core document (chunks cascade)."""
     row = get_workspace_document(doc_id)

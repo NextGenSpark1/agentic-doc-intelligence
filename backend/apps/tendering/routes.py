@@ -248,6 +248,15 @@ async def update_workspace(
     return updated
 
 
+@router.delete("/workspaces/{workspace_id}", status_code=204)
+async def delete_workspace(workspace_id: str, user: dict = Depends(get_current_user)):
+    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
+    if not workspace or workspace["org_id"] != org_id:
+        raise HTTPException(404, "Workspace not found")
+    await asyncio.to_thread(db.delete_workspace, workspace_id)
+
+
 @router.post("/workspaces/{workspace_id}/documents", status_code=201)
 async def add_workspace_document(
     workspace_id: str,

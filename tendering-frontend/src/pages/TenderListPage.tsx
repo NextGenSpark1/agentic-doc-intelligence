@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, CalendarDays, ArrowRight } from 'lucide-react';
+import { Plus, Search, CalendarDays, ArrowRight, Trash2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getWorkspaces, createWorkspace } from '../api/tenders';
+import { getWorkspaces, createWorkspace, deleteWorkspace } from '../api/tenders';
 import { StageBadge, BidDecisionBadge } from '../components/Badge';
 import { daysUntil, formatCurrency } from '../lib/utils';
 import type { TenderWorkspace, WorkspaceStage } from '../types';
@@ -231,8 +231,10 @@ function CreateWorkspaceModal({ onCreated, onClose }: { onCreated: () => void; o
 
 // ─── Workspace Card ───────────────────────────────────────────────────────────
 
-function WorkspaceCard({ workspace }: { workspace: TenderWorkspace }) {
+function WorkspaceCard({ workspace, onDelete }: { workspace: TenderWorkspace; onDelete: (id: string) => void }) {
   const navigate = useNavigate();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const days = daysUntil(workspace.closing_date);
   const isActive = ['new', 'analysing', 'preparing', 'submitted'].includes(workspace.stage);
   const urgent = isActive && days <= 14;
@@ -241,13 +243,41 @@ function WorkspaceCard({ workspace }: { workspace: TenderWorkspace }) {
     workspace.readiness_score >= 80 ? 'bg-green' :
     workspace.readiness_score >= 50 ? 'bg-teal' : 'bg-amber';
 
+  async function handleDelete(event: React.MouseEvent) {
+    event.stopPropagation();
+    if (!confirmDelete) { setConfirmDelete(true); return; }
+    setDeleting(true);
+    try {
+      await deleteWorkspace(workspace.id);
+      onDelete(workspace.id);
+      toast.success('Workspace deleted');
+    } catch {
+      toast.error('Failed to delete workspace');
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  }
+
   return (
     <div
       onClick={() => navigate(`/tenders/${workspace.id}`)}
-      className={`bg-panel border rounded-xl p-5 cursor-pointer hover:shadow-md transition-all group ${
+      onMouseLeave={() => setConfirmDelete(false)}
+      className={`relative bg-panel border rounded-xl p-5 cursor-pointer hover:shadow-md transition-all group ${
         urgent ? 'border-amber/50 hover:border-amber' : 'border-border hover:border-teal'
       }`}
     >
+      {/* Delete button */}
+      <button
+        onClick={handleDelete}
+        disabled={deleting}
+        className={`absolute top-3 right-3 z-10 flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all
+          opacity-0 group-hover:opacity-100 disabled:opacity-40
+          ${confirmDelete ? 'bg-red text-white opacity-100' : 'bg-panel-2 text-text-mute hover:text-red hover:bg-red-bg border border-border'}`}
+      >
+        <Trash2 size={11} />
+        {confirmDelete ? 'Confirm?' : 'Delete'}
+      </button>
+
       {/* Top row */}
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0 flex-1">
@@ -330,6 +360,12 @@ export function TenderListPage() {
     queryFn: getWorkspaces,
   });
 
+  function handleDeleted(workspaceId: string) {
+    queryClient.setQueryData<TenderWorkspace[]>(['workspaces'], (previous) =>
+      (previous ?? []).filter((workspace) => workspace.id !== workspaceId),
+    );
+  }
+
   const filtered = workspaces.filter((workspace) => {
     const searchQuery = search.toLowerCase();
     const matchesSearch =
@@ -404,7 +440,7 @@ export function TenderListPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filtered.map((workspace) => (
-            <WorkspaceCard key={workspace.id} workspace={workspace} />
+            <WorkspaceCard key={workspace.id} workspace={workspace} onDelete={handleDeleted} />
           ))}
         </div>
       )}
