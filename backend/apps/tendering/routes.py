@@ -546,9 +546,6 @@ async def extract_library_document(
     if not supplier_doc:
         raise HTTPException(409, "No vault entry for this document — re-upload to enable extraction")
 
-    if supplier_doc.get("extraction_status") == "processing":
-        raise HTTPException(409, "Extraction already in progress")
-
     supplier_document_id = supplier_doc["supplier_document_id"]
     await asyncio.to_thread(
         db.update_supplier_document, supplier_document_id, {"extraction_status": "queued"}

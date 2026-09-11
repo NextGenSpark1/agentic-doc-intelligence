@@ -303,23 +303,23 @@ function ReplaceModal({
 function ExtractionStatusBadge({ status }: { status?: string | null }) {
   if (!status || status === 'uploaded') return (
     <span className="flex items-center gap-1 text-[11px] text-text-mute">
-      <Cpu size={11} /> Not indexed
+      <Cpu size={11} /> Not extracted
     </span>
   );
   if (status === 'queued' || status === 'processing') return (
     <span className="flex items-center gap-1 text-[11px] text-amber font-medium">
       <div className="w-2.5 h-2.5 border border-amber/60 border-t-amber rounded-full animate-spin" />
-      Indexing…
+      Extracting…
     </span>
   );
   if (status === 'done') return (
     <span className="flex items-center gap-1 text-[11px] text-green font-medium">
-      <CheckCircle2 size={11} /> Indexed
+      <CheckCircle2 size={11} /> Extracted
     </span>
   );
   if (status === 'failed') return (
     <span className="flex items-center gap-1 text-[11px] text-red font-medium">
-      <AlertCircle size={11} /> Index failed
+      <AlertCircle size={11} /> Extraction failed
     </span>
   );
   return null;
@@ -345,9 +345,8 @@ function DocCard({
   const dateExpired = !!doc.expiry_date && new Date(doc.expiry_date) < new Date();
   const expired = doc.verification_status === 'expired' || dateExpired;
   const pending = !expired && doc.verification_status === 'pending';
-  const canExtract = !doc.extraction_status || doc.extraction_status === 'uploaded' || doc.extraction_status === 'failed' || doc.extraction_status === 'done';
   const isIndexing = doc.extraction_status === 'queued' || doc.extraction_status === 'processing';
-  const isRedo = doc.extraction_status === 'done';
+  const isRedo = doc.extraction_status === 'done' || isIndexing;
 
   async function handleDelete() {
     if (!confirm(`Delete "${doc.title}"? This cannot be undone.`)) return;
@@ -458,27 +457,23 @@ function DocCard({
               Download
             </button>
           )}
-          {(expired || pending) && (
-            <button
-              onClick={() => setShowReplace(true)}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-teal border border-teal rounded-lg hover:bg-teal hover:text-white transition-colors"
-            >
-              <Upload size={12} />
-              Replace
-            </button>
-          )}
-          {(canExtract || isIndexing) && (
-            <button
-              onClick={handleExtract}
-              disabled={extracting || isIndexing}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium border rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isRedo ? 'border-border text-text-mute hover:border-navy hover:text-navy' : 'border-navy text-navy hover:bg-navy hover:text-white'}`}
-            >
-              {extracting || isIndexing
-                ? <><div className="w-2.5 h-2.5 border border-current/40 border-t-current rounded-full animate-spin" />Indexing…</>
-                : <><Cpu size={12} />{isRedo ? 'Re-extract' : doc.extraction_status === 'failed' ? 'Retry' : 'Extract'}</>
-              }
-            </button>
-          )}
+          <button
+            onClick={() => setShowReplace(true)}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-teal border border-teal rounded-lg hover:bg-teal hover:text-white transition-colors"
+          >
+            <Upload size={12} />
+            Replace
+          </button>
+          <button
+            onClick={handleExtract}
+            disabled={extracting}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium border rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isRedo ? 'border-border text-text-mute hover:border-navy hover:text-navy' : 'border-navy text-navy hover:bg-navy hover:text-white'}`}
+          >
+            {extracting
+              ? <><div className="w-2.5 h-2.5 border border-current/40 border-t-current rounded-full animate-spin" />Queuing…</>
+              : <><Cpu size={12} />{isRedo ? 'Re-extract' : doc.extraction_status === 'failed' ? 'Retry' : 'Extract'}</>
+            }
+          </button>
         </div>
       </div>
 
