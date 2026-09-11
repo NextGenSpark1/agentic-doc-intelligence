@@ -170,6 +170,30 @@ def merge(rule_rows: list[dict], llm_rows: list[dict]) -> list[dict]:
     return merged
 
 
+def drop_already_present(rows: list[dict], present: set[str]) -> tuple[list[dict], int]:
+    """Return the rows the workspace does not already have, and how many were dropped.
+
+    Re-running analysis keeps every requirement a person has worked on, then extracts all the
+    documents again. Without this, each kept requirement was inserted a second time as a fresh
+    'unchecked' copy on every run. `present` holds `requirement_hash` values (description +
+    source document + page); descriptions cannot be edited after insert, so a stored row's hash
+    stays stable. Rows kept here are added to `present`, so a requirement that turns up twice
+    in one run is also inserted once.
+    """
+    from .. import db
+
+    fresh: list[dict] = []
+    dropped = 0
+    for row in rows:
+        digest = db.requirement_hash(row)
+        if digest in present:
+            dropped += 1
+            continue
+        present.add(digest)
+        fresh.append(row)
+    return fresh, dropped
+
+
 def extract(workspace_id: str) -> dict:
     """Extract requirements from all processed documents in a workspace."""
     from backend.core import llm_reasoning
@@ -177,13 +201,15 @@ def extract(workspace_id: str) -> dict:
     from ..prompts import REQUIREMENT_EXTRACTION
 
     workspace = db.get_tendering_workspace(workspace_id) or {}
-    # Re-extract only what humans haven't reviewed yet.
+    # Re-extract only what nobody has worked on yet. Whatever survives this delete is still in
+    # the workspace, so it is excluded from the inserts below rather than duplicated.
     db.delete_workspace_requirements(workspace_id, pending_only=True)
+    present = {db.requirement_hash(row) for row in db.list_workspace_requirements_raw(workspace_id)}
 
     # Documents in the pipeline come from the core documents table linked to this workspace.
     core_documents = db.list_core_documents_for_workspace(workspace_id)
 
-    inserted = skipped = ungrounded = 0
+    inserted = skipped = ungrounded = already_present = 0
     rule_count = llm_count = 0
 
     for document in core_documents:
@@ -223,7 +249,9 @@ def extract(workspace_id: str) -> dict:
 
         llm_count += len(llm_rows)
 
-        for row in merge(rule_rows, llm_rows):
+        new_rows, dropped = drop_already_present(merge(rule_rows, llm_rows), present)
+        already_present += dropped
+        for row in new_rows:
             created = db.insert_workspace_requirement({
                 **row,
                 "req_id": str(uuid.uuid4()),
@@ -242,6 +270,7 @@ def extract(workspace_id: str) -> dict:
 
     result = {
         "requirements_inserted": inserted,
+        "already_present": already_present,
         "duplicates_skipped": skipped,
         "ungrounded_dropped": ungrounded,
         "from_rules": rule_count,

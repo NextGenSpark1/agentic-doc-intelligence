@@ -1,7 +1,7 @@
 """Tendering data-access layer — all table touches for the tendering platform."""
 from __future__ import annotations
 
-from backend.core.db_core import get_client
+from backend.core.db_core import _is_unique_violation, get_client
 
 
 def _normalize_requirement(req: dict) -> dict:
@@ -473,12 +473,58 @@ def match_workspace_chunks(workspace_id: str, query_embedding: list[float], top_
     ) or []
 
 
+_DELETE_BATCH = 100  # keeps the IN (...) list well inside PostgREST's URL-length limit
+
+
 def delete_workspace_requirements(workspace_id: str, pending_only: bool = False) -> None:
-    """Delete requirements for a workspace. If pending_only, only deletes unchecked ones."""
-    query = get_client().table("workspace_requirements").delete().eq("workspace_id", workspace_id)
-    if pending_only:
-        query = query.eq("status", "unchecked")
-    query.execute()
+    """Delete requirements for a workspace.
+
+    With pending_only, deletes only requirements nobody has worked on yet, so re-running
+    analysis can refresh them. A requirement counts as worked on if its status is no longer
+    'unchecked', or if a person has given it an owner, written notes, or confirmed or dismissed
+    evidence for it. Those are kept.
+
+    "Status is unchecked" alone used to be the test, which deleted an unchecked requirement's
+    owner and notes on every run — and, since evidence_links cascade on delete, would also
+    erase any evidence a person had confirmed for it.
+    """
+    client = get_client()
+    if not pending_only:
+        client.table("workspace_requirements").delete().eq("workspace_id", workspace_id).execute()
+        return
+
+    unchecked = (
+        client.table("workspace_requirements")
+        .select("req_id, owner, notes")
+        .eq("workspace_id", workspace_id)
+        .eq("status", "unchecked")
+        .execute()
+        .data
+    ) or []
+    if not unchecked:
+        return
+
+    reviewed_evidence = (
+        client.table("evidence_links")
+        .select("req_id")
+        .eq("workspace_id", workspace_id)
+        .in_("human_review_status", ["confirmed", "dismissed"])
+        .execute()
+        .data
+    ) or []
+    has_reviewed_evidence = {str(link["req_id"]) for link in reviewed_evidence}
+
+    deletable = [
+        str(requirement["req_id"])
+        for requirement in unchecked
+        if not (requirement.get("owner") or "").strip()
+        and not (requirement.get("notes") or "").strip()
+        and str(requirement["req_id"]) not in has_reviewed_evidence
+    ]
+    for start in range(0, len(deletable), _DELETE_BATCH):
+        client.table("workspace_requirements").delete().in_(
+            "req_id", deletable[start:start + _DELETE_BATCH]
+        ).execute()
 
 
 def insert_workspace_requirement(data: dict) -> dict | None:
@@ -512,16 +558,47 @@ def list_evidence_links(workspace_id: str) -> list[dict]:
 
 
 def upsert_evidence_link(data: dict) -> dict | None:
-    try:
-        return (
-            get_client()
-            .table("evidence_links")
-            .upsert(data, on_conflict="req_id,doc_id")
+    """Save an AI evidence proposal without ever overwriting a person's decision.
+
+    One row per (req_id, doc_id). If a row already exists:
+      * still pending         -> refresh the AI's fields (score, rationale, matched chunk)
+      * confirmed / dismissed -> left untouched, because a person has already decided
+
+    Returns the row written, or None when an existing row was left unchanged.
+
+    This used to be a plain upsert carrying human_review_status="pending", so every analysis
+    run would have reset a confirmed or dismissed link back to pending. It also caught every
+    exception and returned None, so a broken insert was counted as "skipped" and looked the
+    same as "no matches". Database errors now propagate and the caller reports them.
+    """
+    client = get_client()
+    existing = (
+        client.table("evidence_links")
+        .select("id, human_review_status")
+        .eq("req_id", data["req_id"])
+        .eq("doc_id", data["doc_id"])
+        .limit(1)
+        .execute()
+        .data
+    )
+    if existing:
+        if existing[0].get("human_review_status") != "pending":
+            return None
+        refresh = {key: data[key] for key in ("score", "rationale", "matched_chunk_id") if key in data}
+        rows = (
+            client.table("evidence_links")
+            .update(refresh)
+            .eq("id", existing[0]["id"])
             .execute()
-            .data[0]
+            .data
         )
-    except Exception:
-        return None
+        return rows[0] if rows else None
+    try:
+        return client.table("evidence_links").insert(data).execute().data[0]
+    except Exception as err:
+        if _is_unique_violation(err):
+            return None  # a concurrent run inserted this pair first; its row stands
+        raise
 
 
 def write_workspace_audit(workspace_id: str, actor: str, action: str, detail: dict | None = None) -> None:

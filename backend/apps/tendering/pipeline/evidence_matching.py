@@ -181,6 +181,8 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
     ]
 
     proposed = skipped = ungrounded = matched_requirements = no_candidates = 0
+    left_unchanged = save_errors = 0
+    first_save_error: str | None = None
 
     for requirement in requirements:
         description = requirement.get("description") or ""
@@ -220,31 +222,41 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
                 # No library document linked to this vault doc — can't create an evidence link.
                 skipped += 1
                 continue
-            created = db.upsert_evidence_link({
-                "req_id": requirement["req_id"],
-                "doc_id": m["doc_id"],
-                "workspace_id": tender_id,
-                "org_id": org_id,
-                "score": m["score"],
-                "rationale": m["rationale"],
-                "matched_chunk_id": m.get("matched_chunk_id") or "",
-                "source": m.get("source", "llm"),
-                "human_review_status": "pending",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            })
+            try:
+                created = db.upsert_evidence_link({
+                    "req_id": requirement["req_id"],
+                    "doc_id": m["doc_id"],
+                    "workspace_id": tender_id,
+                    "org_id": org_id,
+                    "score": m["score"],
+                    "rationale": m["rationale"],
+                    "matched_chunk_id": m.get("matched_chunk_id") or "",
+                    "source": m.get("source", "llm"),
+                    "human_review_status": "pending",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception as exc:
+                # Reported, not swallowed: a failing save must not look like "no matches".
+                save_errors += 1
+                first_save_error = first_save_error or f"{type(exc).__name__}: {exc}"[:300]
+                continue
             if created is None:
-                skipped += 1
+                left_unchanged += 1  # a person already confirmed or dismissed this link
             else:
                 proposed += 1
 
     result = {
         "proposed": proposed,
         "skipped": skipped,
+        "left_unchanged": left_unchanged,
+        "save_errors": save_errors,
         "ungrounded_dropped": ungrounded,
         "requirements_matched": matched_requirements,
         "requirements_considered": len(requirements),
         "requirements_without_candidates": no_candidates,
     }
+    if first_save_error:
+        result["first_save_error"] = first_save_error
     # `requirements_without_candidates` is the number that matters operationally: it is the
     # gap between what the tender demands and what the vault holds.
     db.write_workspace_audit(tender_id, "system", "evidence_matching_completed", result)
