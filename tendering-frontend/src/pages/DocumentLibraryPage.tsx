@@ -57,6 +57,56 @@ function ExpiryTag({ expiry_date }: { expiry_date?: string }) {
   );
 }
 
+// ─── File viewer modal ────────────────────────────────────────────────────────
+
+function FileViewerModal({ doc, onClose }: { doc: LibraryDocument; onClose: () => void }) {
+  const isPdf = (doc.filename ?? '').toLowerCase().endsWith('.pdf') || (doc.url ?? '').includes('.pdf');
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-panel rounded-xl border border-border shadow-2xl w-full max-w-4xl flex flex-col" style={{ height: '85vh' }}>
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border flex-shrink-0">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-text truncate">{doc.title}</p>
+            <p className="text-xs text-text-mute mt-0.5 truncate">{doc.filename}</p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <DocCategoryBadge category={doc.category} />
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-panel-2 text-text-mute hover:text-text transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+        {/* Body */}
+        <div className="flex-1 overflow-hidden relative">
+          {doc.url ? (
+            <>
+              {isPdf && <iframe src={doc.url} className="w-full h-full rounded-b-xl" title={doc.title} />}
+              {!isPdf && (
+                <div className="h-full flex flex-col items-center justify-center gap-3">
+                  <FileText size={32} className="text-text-mute" />
+                  <p className="text-sm text-text-mute">Preview not available for this file type.</p>
+                </div>
+              )}
+              <div className="absolute bottom-3 right-3">
+                <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-4 py-2 bg-navy hover:bg-navy-soft text-white text-xs font-medium rounded-lg shadow transition-colors">
+                  <FileText size={12} /> Open in new tab
+                </a>
+              </div>
+            </>
+          ) : (
+            <div className="h-full flex items-center justify-center">
+              <p className="text-sm text-text-mute">No file URL available.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Replace modal ────────────────────────────────────────────────────────────
 
 function ReplaceModal({
@@ -180,6 +230,7 @@ function DocCard({
   onExtracted: () => void;
 }) {
   const [showReplace, setShowReplace] = useState(false);
+  const [showViewer, setShowViewer] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const dateExpired = !!doc.expiry_date && new Date(doc.expiry_date) < new Date();
@@ -215,11 +266,11 @@ function DocCard({
 
   return (
     <>
-      <div className={`bg-panel border rounded-xl p-5 flex flex-col transition-all hover:shadow-sm group ${
+      <div className={`bg-panel border rounded-xl p-5 flex flex-col transition-all hover:shadow-sm group cursor-pointer ${
         expired ? 'border-red/30 hover:border-red/50' :
         pending ? 'border-amber/30 hover:border-amber/50' :
         'border-border hover:border-teal/40'
-      }`}>
+      }`} onClick={() => setShowViewer(true)}>
         {/* Header */}
         <div className="flex items-start gap-3 mb-3">
           <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
@@ -234,7 +285,7 @@ function DocCard({
             <p className="text-[11px] text-text-mute mt-0.5 truncate">{doc.filename}</p>
           </div>
           <button
-            onClick={handleDelete}
+            onClick={(e) => { e.stopPropagation(); handleDelete(); }}
             disabled={deleting}
             className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-text-mute hover:text-red hover:bg-red-bg transition-all"
             title="Delete"
@@ -280,7 +331,7 @@ function DocCard({
         </div>
 
         {/* Actions */}
-        <div className="flex gap-2 mt-auto flex-wrap">
+        <div className="flex gap-2 mt-auto flex-wrap" onClick={(e) => e.stopPropagation()}>
           {doc.url ? (
             <a
               href={doc.url}
@@ -321,6 +372,7 @@ function DocCard({
         </div>
       </div>
 
+      {showViewer && <FileViewerModal doc={doc} onClose={() => setShowViewer(false)} />}
       {showReplace && (
         <ReplaceModal
           doc={doc}
