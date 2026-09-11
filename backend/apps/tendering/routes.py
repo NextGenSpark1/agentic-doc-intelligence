@@ -7,6 +7,7 @@ the user has no tendering membership so the frontend mock-fallback kicks in grac
 from __future__ import annotations
 
 import asyncio
+import traceback
 from datetime import date
 from typing import Optional
 
@@ -634,6 +635,7 @@ async def workspace_chat(
             ],
         )
     except Exception:
+        traceback.print_exc()
         answer = "The AI assistant is temporarily unavailable. Check that the LLM provider is configured."
 
     citations = [
