@@ -331,7 +331,38 @@ def create_library_document(org_id: str, data: dict) -> dict:
 
 
 def delete_library_document(doc_id: str) -> None:
-    get_client().table("library_documents").delete().eq("doc_id", doc_id).execute()
+    """Delete a library document and every vault row derived from it.
+
+    `supplier_documents.library_doc_id` is a plain TEXT column with no foreign key, so the
+    database will not cascade. Without this, deleting a document from the library left its
+    vault chunks in `match_supplier_chunks` — a document the user removed could still be
+    proposed as bid evidence, citing a library_doc_id the UI can no longer resolve.
+
+    Vault rows are deleted before the library row so a failure part-way through leaves the
+    library entry visible (and retryable) rather than leaving orphaned, still-searchable
+    evidence behind. Chunks are deleted explicitly rather than relying on a cascade from
+    `supplier_documents`, because these two tables have no committed DDL and the constraint
+    cannot be verified from the repo.
+    """
+    client = get_client()
+    supplier_docs = (
+        client.table("supplier_documents")
+        .select("supplier_document_id")
+        .eq("library_doc_id", str(doc_id))
+        .execute()
+        .data
+    ) or []
+
+    for supplier_doc in supplier_docs:
+        supplier_document_id = supplier_doc["supplier_document_id"]
+        client.table("supplier_document_chunks").delete().eq(
+            "supplier_document_id", supplier_document_id
+        ).execute()
+        client.table("supplier_documents").delete().eq(
+            "supplier_document_id", supplier_document_id
+        ).execute()
+
+    client.table("library_documents").delete().eq("doc_id", doc_id).execute()
 
 
 def update_library_document(doc_id: str, patch: dict) -> dict | None:
@@ -489,13 +520,15 @@ def upsert_evidence_link(data: dict) -> dict | None:
 
 
 def write_workspace_audit(workspace_id: str, actor: str, action: str, detail: dict | None = None) -> None:
-    get_client().table("audit_log").insert({
-        "case_id": None,
-        "workspace_id": workspace_id,
-        "actor": actor,
-        "action": action,
-        "detail": detail or {},
-    }).execute()
+    """Audit a workspace action.
+
+    A thin alias over core's `write_audit` that fills the workspace column instead of the case
+    one, so tendering code never has to remember which keyword to pass — and every audit row
+    in both products still goes through one helper.
+    """
+    from backend.core.db_core import write_audit as _write_audit
+
+    _write_audit(None, actor, action, detail, workspace_id=workspace_id)
 
 
 def get_extraction_by_document(document_id: str) -> dict | None:

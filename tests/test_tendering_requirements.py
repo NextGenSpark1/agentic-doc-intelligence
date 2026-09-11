@@ -14,8 +14,8 @@ from backend.apps.tendering.pipeline.extract_requirements import (
     validate_llm_requirements,
 )
 from backend.apps.tendering.pipeline.summarise_tender import (
+    _backfill_from_llm_meta,
     _deterministic_summary,
-    backfill_meta,
     compute_facts,
     days_until,
 )
@@ -281,35 +281,50 @@ def test_deterministic_summary_flags_a_passed_deadline():
 
 
 # --------------------------- meta back-fill ---------------------------
-def test_backfill_populates_blank_meta_from_extraction():
-    patch = backfill_meta(
-        {"buyer": None, "closing_date": None},
-        {"buyer_name": "Ministry of Works", "closing_date": "2026-09-10",
-         "tender_reference": "MOW/2026/114"},
+# `_backfill_from_llm_meta(workspace, meta)` maps LLM-extracted meta keys onto workspace
+# columns, filling only what is still blank.
+
+def test_backfill_populates_blank_columns_from_extracted_meta():
+    patch = _backfill_from_llm_meta(
+        {"buyer_name": None, "closing_date": None, "tender_reference": None},
+        {"buyer": "Ministry of Works", "closing_date": "2026-09-10",
+         "reference": "MOW/2026/114"},
     )
-    assert patch["buyer"] == "Ministry of Works"
+    assert patch["buyer_name"] == "Ministry of Works"
     assert patch["closing_date"] == "2026-09-10"
-    assert patch["reference_no"] == "MOW/2026/114"
+    assert patch["tender_reference"] == "MOW/2026/114"
 
 
 def test_backfill_never_overwrites_a_human_entered_value():
-    patch = backfill_meta(
-        {"buyer": "Typed By A Human"},
-        {"buyer_name": "Extracted Buyer"},
+    patch = _backfill_from_llm_meta(
+        {"buyer_name": "Typed By A Human"},
+        {"buyer": "Extracted Buyer"},
     )
-    assert "buyer" not in patch
+    assert "buyer_name" not in patch
 
 
 def test_backfill_skips_unparseable_dates():
-    assert "closing_date" not in backfill_meta({}, {"closing_date": "sometime next month"})
+    assert "closing_date" not in _backfill_from_llm_meta({}, {"closing_date": "sometime next month"})
+
+
+def test_backfill_parses_a_formatted_contract_value():
+    patch = _backfill_from_llm_meta({}, {"contract_value": "1,250,000"})
+    assert patch["contract_value"] == 1250000.0
+
+
+def test_backfill_skips_an_unparseable_contract_value():
+    """A value we cannot read must not become a confident-looking number on the workspace."""
+    assert "contract_value" not in _backfill_from_llm_meta({}, {"contract_value": "circa 1.2m"})
 
 
 def test_backfill_of_an_empty_extraction_changes_nothing():
-    assert backfill_meta({}, {}) == {}
+    assert _backfill_from_llm_meta({}, {}) == {}
 
 
-def test_backfill_never_touches_the_bid_decision():
+def test_backfill_never_touches_decision_columns():
     """Rule 3: extraction may fill facts, never decisions."""
-    patch = backfill_meta({}, {"buyer_name": "X", "bid_decision": "bid", "readiness_score": 0.9})
+    patch = _backfill_from_llm_meta(
+        {}, {"buyer": "X", "bid_decision": "bid", "readiness_score": 90},
+    )
     assert "bid_decision" not in patch
     assert "readiness_score" not in patch

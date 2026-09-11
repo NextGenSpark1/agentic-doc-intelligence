@@ -184,9 +184,18 @@ def match_chunks_in_document(document_id: str, query_embedding: list[float], top
 
 
 # ------------------------- Audit log -----------------------------
-def write_audit(case_id: str, actor: str, action: str, detail: dict | None = None) -> None:
+def write_audit(case_id: str | None, actor: str, action: str, detail: dict | None = None,
+                workspace_id: str | None = None) -> None:
+    """Append one audit row.
+
+    `case_id` (investigation) and `workspace_id` (tendering) are parallel nullable columns —
+    a row belongs to whichever workspace produced it. Both live on one helper so there is a
+    single place audit rows are written, and so a caller cannot quietly skip the trail by
+    reaching for a different path.
+    """
     get_client().table("audit_log").insert(
-        {"case_id": case_id, "actor": actor, "action": action, "detail": detail or {}}
+        {"case_id": case_id, "workspace_id": workspace_id, "actor": actor,
+         "action": action, "detail": detail or {}}
     ).execute()
 
 

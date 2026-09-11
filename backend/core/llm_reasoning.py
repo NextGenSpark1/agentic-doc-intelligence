@@ -21,12 +21,17 @@ from . import llm
 
 
 def ask(system_prompt: str, payload: dict, case_id: str | None = None,
-        tender_id: str | None = None) -> Any | None:
+        workspace_id: str | None = None) -> Any | None:
     """Run one grounded reasoning pass. Never raises — see the module docstring.
 
-    Pass `case_id` for an investigation workspace or `tender_id` for a tender one; the failure
-    audit is written against whichever is given, so a dead LLM tier is diagnosable from either
-    product's audit trail.
+    Pass `case_id` for an investigation case or `workspace_id` for a tendering workspace; the
+    failure audit is written against whichever is given, so a dead LLM tier is diagnosable from
+    either product's audit trail.
+
+    The keyword must match `db_core.write_audit`'s. It previously did not (`tender_id` here vs
+    no such parameter there), and because the audit write sits inside a bare `except: pass`, the
+    resulting TypeError was swallowed — so `ask` kept its never-raises contract while silently
+    never writing an audit row. Every LLM failure in both products was invisible.
     """
     try:
         raw = llm.complete(
@@ -48,7 +53,7 @@ def ask(system_prompt: str, payload: dict, case_id: str | None = None,
             from . import db_core
 
             db_core.write_audit(case_id, "system", "case_reasoning_failed",
-                                {"error": str(exc)[:500]}, tender_id=tender_id)
+                                {"error": str(exc)[:500]}, workspace_id=workspace_id)
         except Exception:
             pass  # audit logging must never break the graceful rule-only fallback
         return None

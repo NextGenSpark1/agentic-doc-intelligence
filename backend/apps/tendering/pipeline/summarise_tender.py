@@ -179,7 +179,7 @@ def summarise(workspace_id: str) -> dict:
     facts = compute_facts(workspace, documents, requirements)
 
     payload = {"facts": facts, "document_excerpts": document_excerpts}
-    answer = llm_reasoning.ask(TENDER_SUMMARY, payload, tender_id=workspace_id)
+    answer = llm_reasoning.ask(TENDER_SUMMARY, payload, workspace_id=workspace_id)
 
     if answer and isinstance(answer, dict):
         summary_text = str(answer.get("summary") or "").strip() or _deterministic_summary(facts)

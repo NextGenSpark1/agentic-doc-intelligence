@@ -213,7 +213,7 @@ def extract(workspace_id: str) -> dict:
                     for chunk in batch
                 ],
             }
-            answer = llm_reasoning.ask(REQUIREMENT_EXTRACTION, payload, tender_id=workspace_id)
+            answer = llm_reasoning.ask(REQUIREMENT_EXTRACTION, payload, workspace_id=workspace_id)
             if answer is None:
                 continue
             validated = validate_llm_requirements(answer, chunk_index)

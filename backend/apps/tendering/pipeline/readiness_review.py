@@ -296,7 +296,7 @@ def suggest_and_score(report: dict, workspace_id: str) -> dict:
         "gaps": report.get("gaps", [])[:10],
     }
 
-    answer = llm_reasoning.ask(READINESS_SUGGESTIONS, payload, tender_id=workspace_id)
+    answer = llm_reasoning.ask(READINESS_SUGGESTIONS, payload, workspace_id=workspace_id)
     if not answer or not isinstance(answer, dict):
         return {}
 

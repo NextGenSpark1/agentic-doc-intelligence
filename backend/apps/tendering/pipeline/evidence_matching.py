@@ -203,7 +203,7 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
 
         # 2. Adjudicate — the model picks from what we offered and justifies each pick.
         answer = llm_reasoning.ask(EVIDENCE_MATCHING, _payload(requirement, candidates),
-                                   tender_id=tender_id)
+                                   workspace_id=tender_id)
         if answer is None:
             continue  # LLM unavailable — leave the requirement unmatched rather than guess
 

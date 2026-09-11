@@ -164,3 +164,42 @@ def test_ask_returns_none_on_unparseable_json():
     with patch("backend.core.llm.complete", return_value="not json at all"), \
          patch("backend.core.db_core.write_audit"):
         assert llm_reasoning.ask("system prompt", {}, "case-1") is None
+
+
+def test_ask_audits_a_tendering_failure_against_the_workspace():
+    """ask()'s audit keyword must match write_audit's signature.
+
+    Regression: ask() passed `tender_id=` while write_audit had no such parameter. The
+    resulting TypeError was swallowed by the audit block's own `except: pass`, so ask() kept
+    its never-raises contract while silently never writing a row - every LLM failure in both
+    products became invisible in the audit log. A mock cannot catch a signature mismatch, so
+    this test calls the real write_audit and stubs only the database client.
+    """
+    from unittest.mock import MagicMock
+
+    from backend.core import llm_reasoning
+
+    client = MagicMock()
+    with patch("backend.core.llm.complete", side_effect=RuntimeError("provider down")), \
+         patch("backend.core.db_core.get_client", return_value=client):
+        assert llm_reasoning.ask("sys", {}, workspace_id="ws-1") is None
+
+    row = client.table.return_value.insert.call_args[0][0]
+    assert row["workspace_id"] == "ws-1"
+    assert row["case_id"] is None
+    assert row["action"] == "case_reasoning_failed"
+
+
+def test_ask_audits_an_investigation_failure_against_the_case():
+    from unittest.mock import MagicMock
+
+    from backend.core import llm_reasoning
+
+    client = MagicMock()
+    with patch("backend.core.llm.complete", side_effect=RuntimeError("provider down")), \
+         patch("backend.core.db_core.get_client", return_value=client):
+        llm_reasoning.ask("sys", {}, "CASE-1")
+
+    row = client.table.return_value.insert.call_args[0][0]
+    assert row["case_id"] == "CASE-1"
+    assert row["workspace_id"] is None
