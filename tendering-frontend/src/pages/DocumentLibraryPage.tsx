@@ -1,10 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Library, Upload, Search, AlertCircle, CheckCircle2, Clock,
-  FileText, Download, Calendar, Plus, FolderOpen, X, CloudUpload, Trash2, Cpu,
+  FileText, Download, Calendar, Plus, FolderOpen, X, CloudUpload, Trash2, Cpu, Loader2,
 } from 'lucide-react';
-import { getLibraryDocuments, addLibraryDocument, deleteLibraryDocument, replaceLibraryDocument, extractLibraryDocument } from '../api/tenders';
+import { getLibraryDocuments, addLibraryDocument, deleteLibraryDocument, replaceLibraryDocument, extractLibraryDocument, getLibraryDocumentExtraction, verifyLibraryDocument } from '../api/tenders';
 import { supabase } from '../lib/supabase';
 import { DocCategoryBadge, VerificationBadge } from '../components/Badge';
 import type { LibraryDocument, DocCategory, VerificationStatus } from '../types';
@@ -59,8 +59,45 @@ function ExpiryTag({ expiry_date }: { expiry_date?: string }) {
 
 // ─── File viewer modal ────────────────────────────────────────────────────────
 
-function FileViewerModal({ doc, onClose }: { doc: LibraryDocument; onClose: () => void }) {
+function FileViewerModal({
+  doc,
+  onClose,
+  onVerified,
+}: {
+  doc: LibraryDocument;
+  onClose: () => void;
+  onVerified: () => void;
+}) {
   const isPdf = (doc.filename ?? '').toLowerCase().endsWith('.pdf') || (doc.url ?? '').includes('.pdf');
+  const isDone = doc.extraction_status === 'done';
+  const [activeTab, setActiveTab] = useState<'preview' | 'extracted'>('preview');
+  const [loadingText, setLoadingText] = useState(false);
+  const [extractedText, setExtractedText] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const isVerified = doc.verification_status === 'verified';
+
+  useEffect(() => {
+    if (activeTab !== 'extracted' || extractedText !== null || !isDone) return;
+    setLoadingText(true);
+    getLibraryDocumentExtraction(doc.doc_id)
+      .then((result) => setExtractedText(result.text || '(No text extracted)'))
+      .catch(() => setExtractedText('(Failed to load extracted text)'))
+      .finally(() => setLoadingText(false));
+  }, [activeTab, extractedText, isDone, doc.doc_id]);
+
+  async function handleVerify() {
+    setVerifying(true);
+    try {
+      await verifyLibraryDocument(doc.doc_id);
+      onVerified();
+      toast.success('Document marked as verified');
+    } catch {
+      toast.error('Failed to verify document');
+    } finally {
+      setVerifying(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
@@ -73,32 +110,83 @@ function FileViewerModal({ doc, onClose }: { doc: LibraryDocument; onClose: () =
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <DocCategoryBadge category={doc.category} />
+            {!isVerified && (
+              <button
+                onClick={handleVerify}
+                disabled={verifying}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green/10 hover:bg-green/20 text-green border border-green/30 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {verifying ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
+                Mark as Verified
+              </button>
+            )}
+            {isVerified && (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green">
+                <CheckCircle2 size={11} /> Verified
+              </span>
+            )}
             <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-panel-2 text-text-mute hover:text-text transition-colors">
               <X size={16} />
             </button>
           </div>
         </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-border flex-shrink-0">
+          <button
+            onClick={() => setActiveTab('preview')}
+            className={`px-5 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${activeTab === 'preview' ? 'border-teal text-teal' : 'border-transparent text-text-mute hover:text-text'}`}
+          >
+            Preview
+          </button>
+          <button
+            onClick={() => setActiveTab('extracted')}
+            className={`px-5 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${activeTab === 'extracted' ? 'border-teal text-teal' : 'border-transparent text-text-mute hover:text-text'}`}
+          >
+            Extracted Text
+          </button>
+        </div>
+
         {/* Body */}
-        <div className="flex-1 overflow-hidden relative">
-          {doc.url ? (
-            <>
-              {isPdf && <iframe src={doc.url} className="w-full h-full rounded-b-xl" title={doc.title} />}
-              {!isPdf && (
+        <div className="flex-1 overflow-hidden">
+          {activeTab === 'preview' ? (
+            <div className="relative w-full h-full">
+              {doc.url && isPdf && <iframe src={doc.url} className="w-full h-full rounded-b-xl" title={doc.title} />}
+              {doc.url && !isPdf && (
                 <div className="h-full flex flex-col items-center justify-center gap-3">
                   <FileText size={32} className="text-text-mute" />
                   <p className="text-sm text-text-mute">Preview not available for this file type.</p>
                 </div>
               )}
-              <div className="absolute bottom-3 right-3">
-                <a href={doc.url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-4 py-2 bg-navy hover:bg-navy-soft text-white text-xs font-medium rounded-lg shadow transition-colors">
-                  <FileText size={12} /> Open in new tab
-                </a>
-              </div>
-            </>
+              {!doc.url && (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-sm text-text-mute">No file URL available.</p>
+                </div>
+              )}
+              {doc.url && (
+                <div className="absolute bottom-3 right-3">
+                  <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 bg-navy hover:bg-navy-soft text-white text-xs font-medium rounded-lg shadow transition-colors">
+                    <FileText size={12} /> Open in new tab
+                  </a>
+                </div>
+              )}
+            </div>
           ) : (
-            <div className="h-full flex items-center justify-center">
-              <p className="text-sm text-text-mute">No file URL available.</p>
+            <div className="h-full overflow-y-auto p-5 bg-canvas-deep rounded-b-xl">
+              {!isDone ? (
+                <div className="flex flex-col items-center justify-center gap-3 pt-16">
+                  <p className="text-xs text-text-mute">
+                    {doc.extraction_status === 'failed' ? 'Extraction failed — retry from the library.' : 'Extract this document first to see its text.'}
+                  </p>
+                </div>
+              ) : loadingText ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 size={16} className="animate-spin text-teal" />
+                </div>
+              ) : (
+                <pre className="text-xs text-text-mid font-mono whitespace-pre-wrap leading-relaxed">{extractedText}</pre>
+              )}
             </div>
           )}
         </div>
@@ -223,11 +311,13 @@ function DocCard({
   onDeleted,
   onReplaced,
   onExtracted,
+  onVerified,
 }: {
   doc: LibraryDocument;
   onDeleted: () => void;
   onReplaced: () => void;
   onExtracted: () => void;
+  onVerified: () => void;
 }) {
   const [showReplace, setShowReplace] = useState(false);
   const [showViewer, setShowViewer] = useState(false);
@@ -372,7 +462,7 @@ function DocCard({
         </div>
       </div>
 
-      {showViewer && <FileViewerModal doc={doc} onClose={() => setShowViewer(false)} />}
+      {showViewer && <FileViewerModal doc={doc} onClose={() => setShowViewer(false)} onVerified={() => { onVerified(); setShowViewer(false); }} />}
       {showReplace && (
         <ReplaceModal
           doc={doc}
@@ -710,6 +800,7 @@ export function DocumentLibraryPage() {
               onDeleted={() => queryClient.invalidateQueries({ queryKey: ['library-docs'] })}
               onReplaced={() => queryClient.invalidateQueries({ queryKey: ['library-docs'] })}
               onExtracted={() => queryClient.invalidateQueries({ queryKey: ['library-docs'] })}
+              onVerified={() => queryClient.invalidateQueries({ queryKey: ['library-docs'] })}
             />
           ))}
         </div>
