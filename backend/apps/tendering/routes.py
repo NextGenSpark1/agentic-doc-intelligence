@@ -327,8 +327,8 @@ async def extract_workspace_document(
     core_doc = await asyncio.to_thread(core_db.get_document, core_document_id)
     if not core_doc:
         raise HTTPException(404, "Core document record missing")
-    if core_doc.get("extraction_status") not in ("uploaded", "failed"):
-        raise HTTPException(409, "Extraction already in progress or completed")
+    if core_doc.get("extraction_status") in ("queued", "processing"):
+        raise HTTPException(409, "Extraction already in progress")
 
     await asyncio.to_thread(core_db.update_document, core_document_id, {"extraction_status": "queued"})
 
