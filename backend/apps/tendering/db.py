@@ -622,3 +622,10 @@ def insert_supplier_chunks(rows: list[dict]) -> None:
     if not rows:
         return
     get_client().table("supplier_document_chunks").insert(rows).execute()
+
+
+def delete_supplier_chunks(supplier_document_id: str) -> None:
+    """Remove every indexed chunk for one vault document, ahead of a re-index."""
+    get_client().table("supplier_document_chunks").delete().eq(
+        "supplier_document_id", supplier_document_id
+    ).execute()

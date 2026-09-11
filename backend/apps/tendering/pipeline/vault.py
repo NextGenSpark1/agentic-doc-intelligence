@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import traceback
 import uuid
-from datetime import datetime, timezone
 
 # Reused from core rather than reimplemented — one embedding path, one set of retry and
 # degrade-to-text-only semantics, for both products.
@@ -65,13 +64,25 @@ def process_supplier_document(supplier_document_id: str) -> None:
 
 
 def _index_vault_chunks(org_id: str, supplier_document_id: str, chunks: list[dict]) -> None:
-    """Embed and store vault chunks. Every row carries org_id — the isolation key."""
+    """Embed and store vault chunks. Every row carries org_id — the isolation key.
+
+    Replaces rather than appends. Extract can be clicked more than once, and without clearing
+    the previous index each run doubled the document's rows — skewing retrieval toward
+    re-extracted documents (more chunks, more chances to land in top-k), and on a fresh
+    database colliding with the chunk_id primary key whenever ADE reissues the same ids.
+
+    The old chunks are deleted only after the new ones have been embedded, so a parse or
+    embedding failure leaves the previous working index in place rather than an empty one.
+    """
     from .. import db
 
     texts = [c["text"] for c in chunks if c.get("text")]
     if not texts:
         return
-    vectors = _embed_in_batches(texts, org_id, supplier_document_id)
+    # case_id is None: the vault is org-scoped, not case-scoped. Passing org_id here (as this
+    # used to) wrote an org id into audit_log.case_id. The failure row still links back to the
+    # vault document, because _embed_in_batches records it as `document_id` in the detail.
+    vectors = _embed_in_batches(texts, None, supplier_document_id)
 
     rows, vector_index = [], 0
     for c in chunks:
@@ -88,19 +99,5 @@ def _index_vault_chunks(org_id: str, supplier_document_id: str, chunks: list[dic
             "embedding": vectors[vector_index],
         })
         vector_index += 1
+    db.delete_supplier_chunks(supplier_document_id)
     db.insert_supplier_chunks(rows)
-
-
-def supersede(old_document_id: str, new_document_id: str) -> dict | None:
-    """Mark a vault document as replaced by a newer version.
-
-    Superseded documents are excluded from `match_supplier_docs` in SQL, so a renewed
-    certificate stops the old one being proposed as evidence — without deleting it, since an
-    expired certificate is still a record of what was valid at submission time.
-    """
-    from .. import db
-
-    return db.update_supplier_document(old_document_id, {
-        "superseded_by": new_document_id,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    })

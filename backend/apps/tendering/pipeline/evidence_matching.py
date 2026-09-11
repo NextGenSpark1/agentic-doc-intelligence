@@ -6,8 +6,9 @@ outlives any single tender.
 
 Two-stage by design:
 
-  1. **Retrieve** candidate vault excerpts by embedding the requirement (`match_supplier_docs`,
-     org-filtered in SQL). Cheap, recall-oriented, no LLM.
+  1. **Retrieve** candidate vault excerpts by embedding the requirement (`db.match_supplier_docs`,
+     which calls the `match_supplier_chunks` RPC — org-filtered in SQL). Cheap, recall-oriented,
+     no LLM.
   2. **Adjudicate** the shortlist with one LLM call per requirement, which must pick from the
      supplied candidates and say *why*. A match with no rationale is worse than no match — a
      bidder would submit on it.
@@ -69,7 +70,7 @@ def shortlist_candidates(rows: list[dict], min_similarity: float = _MIN_SIMILARI
 def is_expired(document: dict, today: date | None = None) -> bool:
     """Has this vault document's expiry passed?
 
-    `match_supplier_docs` already excludes expired documents in SQL. This is the second check,
+    The `match_supplier_chunks` RPC already excludes expired documents in SQL. This is the second check,
     for links created before an expiry lapsed — a certificate that was valid when matched and
     has since expired must stop counting toward readiness.
     """
@@ -157,9 +158,9 @@ def _payload(requirement: dict, candidates: list[dict]) -> dict:
 def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
     """Propose vault evidence for a tender's requirements.
 
-    Only requirements a human has not dismissed are matched, and every proposal is born
-    `pending` (Rule 3) — matching suggests, a human approves before it counts toward a
-    submission. Pass `requirement_ids` to re-match a subset, e.g. after a vault upload.
+    Every requirement in the workspace is matched (requirements have no dismissed state), and
+    every proposal is born `pending` (Rule 3) — matching suggests, a human approves before it
+    counts toward a submission. Pass `requirement_ids` to re-match a subset, e.g. after a vault upload.
     """
     from backend.core import llm, llm_reasoning
 

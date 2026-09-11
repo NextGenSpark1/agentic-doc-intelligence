@@ -131,3 +131,109 @@ def test_a_document_with_no_vault_entry_still_deletes(monkeypatch):
     db.delete_library_document("LIB-1")
 
     assert [name for name, _ in client.deleted] == ["library_documents"]
+
+
+# ------------------------------ re-indexing (#3) ------------------------------
+# `_index_vault_chunks` is exercised with db and the embedder stubbed, so the ordering of the
+# delete and insert can be observed directly.
+
+from backend.apps.tendering.pipeline import vault
+
+
+def _chunks(*ids):
+    return [{"chunk_id": cid, "text": f"text {cid}", "grounding": [{"page": 1, "bbox": []}]}
+            for cid in ids]
+
+
+def _record_vault_calls(monkeypatch, embed=None):
+    calls: list[tuple] = []
+    monkeypatch.setattr(db, "delete_supplier_chunks",
+                        lambda sid: calls.append(("delete", sid)))
+    monkeypatch.setattr(db, "insert_supplier_chunks",
+                        lambda rows: calls.append(("insert", [r["chunk_id"] for r in rows])))
+    monkeypatch.setattr(vault, "_embed_in_batches",
+                        embed or (lambda texts, *_a, **_k: [[0.0] * 3 for _ in texts]))
+    return calls
+
+
+def test_reindexing_replaces_the_previous_chunks(monkeypatch):
+    """Clicking Extract twice must not double the document's rows in the vault."""
+    calls = _record_vault_calls(monkeypatch)
+
+    vault._index_vault_chunks("org-1", "SUP-1", _chunks("c1", "c2"))
+
+    assert calls == [("delete", "SUP-1"), ("insert", ["c1", "c2"])]
+
+
+def test_old_chunks_survive_an_embedding_failure(monkeypatch):
+    """The delete waits until the new chunks are embedded, so a failure mid-extract leaves
+    the previous working index searchable instead of wiping it."""
+    def failing_embed(*_a, **_k):
+        raise RuntimeError("embedding provider down")
+
+    calls = _record_vault_calls(monkeypatch, embed=failing_embed)
+
+    try:
+        vault._index_vault_chunks("org-1", "SUP-1", _chunks("c1"))
+    except RuntimeError:
+        pass
+
+    assert ("delete", "SUP-1") not in calls
+
+
+def test_a_document_with_no_text_leaves_the_index_untouched(monkeypatch):
+    """An empty parse (e.g. an image ADE could not read) is not a reason to delete a
+    previously good index."""
+    calls = _record_vault_calls(monkeypatch)
+
+    vault._index_vault_chunks("org-1", "SUP-1", [{"chunk_id": "c1", "text": ""}])
+
+    assert calls == []
+
+
+# ------------------------- embedding-failure audit (#7) -------------------------
+def test_vault_embedding_failure_is_not_logged_against_a_case(monkeypatch):
+    """The vault is org-scoped, so an embedding failure must not land an org id in
+    audit_log.case_id. The row should still link to the vault document via the detail.
+
+    Uses the real core _embed_in_batches, stubbing only the embedder and the audit writer,
+    so the case_id actually passed to write_audit is what gets checked.
+    """
+    from backend.core import extract as core_extract
+
+    audits: list[tuple] = []
+    monkeypatch.setattr(core_extract, "_embed_batch_with_retry",
+                        lambda batch: (_ for _ in ()).throw(RuntimeError("provider down")))
+    monkeypatch.setattr(core_extract.db, "write_audit",
+                        lambda case_id, actor, action, detail=None, **kw: audits.append(
+                            (case_id, action, detail)))
+    monkeypatch.setattr(vault, "_embed_in_batches", core_extract._embed_in_batches)
+    monkeypatch.setattr(db, "delete_supplier_chunks", lambda sid: None)
+    monkeypatch.setattr(db, "insert_supplier_chunks", lambda rows: None)
+
+    vault._index_vault_chunks("org-1", "SUP-1", _chunks("c1"))
+
+    assert audits, "an embedding failure must still be audited"
+    case_id, action, detail = audits[0]
+    assert action == "chunk_embedding_failed"
+    assert case_id is None, f"org id leaked into case_id: {case_id!r}"
+    assert detail["document_id"] == "SUP-1"
+
+
+def test_vault_chunks_degrade_to_text_only_when_embedding_fails(monkeypatch):
+    """A failed embed stores the chunk text without a vector rather than dropping it."""
+    from backend.core import extract as core_extract
+
+    inserted: list[list[dict]] = []
+    monkeypatch.setattr(core_extract, "_embed_batch_with_retry",
+                        lambda batch: (_ for _ in ()).throw(RuntimeError("provider down")))
+    monkeypatch.setattr(core_extract.db, "write_audit", lambda *a, **k: None)
+    monkeypatch.setattr(vault, "_embed_in_batches", core_extract._embed_in_batches)
+    monkeypatch.setattr(db, "delete_supplier_chunks", lambda sid: None)
+    monkeypatch.setattr(db, "insert_supplier_chunks", lambda rows: inserted.append(rows))
+
+    vault._index_vault_chunks("org-1", "SUP-1", _chunks("c1"))
+
+    assert inserted[0][0]["text"] == "text c1"
+    assert inserted[0][0]["embedding"] is None
+    assert inserted[0][0]["org_id"] == "org-1"   # isolation key still set
