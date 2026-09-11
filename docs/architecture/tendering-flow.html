@@ -1,0 +1,228 @@
+<style>
+  :root {
+    --ground:#F7F8FA; --surface:#FFFFFF; --surface-2:#F1F3F6;
+    --ink:#1B2430; --ink-mid:#4B5563; --ink-mute:#7A8496;
+    --line:#DDE2E9; --line-strong:#C6CDD8;
+    --navy:#1E3A5F; --blue:#1558D4; --blue-soft:#EAF1FD;
+    --reuse:#2E7D52; --reuse-bg:#E7F2EC; --reuse-line:#B6D8C4;
+    --extend:#B9791A; --extend-bg:#FBF1DF; --extend-line:#E7CE9C;
+    --new:#1558D4; --new-bg:#EAF1FD; --new-line:#BAD2F6;
+    --danger:#B4232A; --danger-bg:#FBEDED;
+    --track:#C6CDD8;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+    --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  }
+  @media (prefers-color-scheme: dark){:root{
+    --ground:#10151C; --surface:#161C25; --surface-2:#1D242F;
+    --ink:#E7EBF0; --ink-mid:#AEB7C4; --ink-mute:#7C8697;
+    --line:#29323F; --line-strong:#3A4552;
+    --navy:#8FB0D6; --blue:#5B8DEE; --blue-soft:#17263F;
+    --reuse:#5CB185; --reuse-bg:#14271D; --reuse-line:#27543B;
+    --extend:#D6A04A; --extend-bg:#2A2010; --extend-line:#5A4620;
+    --new:#5B8DEE; --new-bg:#17263F; --new-line:#274468;
+    --danger:#E27078; --danger-bg:#2A1315; --track:#3A4552;
+  }}
+  :root[data-theme="light"]{
+    --ground:#F7F8FA; --surface:#FFFFFF; --surface-2:#F1F3F6;
+    --ink:#1B2430; --ink-mid:#4B5563; --ink-mute:#7A8496;
+    --line:#DDE2E9; --line-strong:#C6CDD8; --navy:#1E3A5F; --blue:#1558D4; --blue-soft:#EAF1FD;
+    --reuse:#2E7D52; --reuse-bg:#E7F2EC; --reuse-line:#B6D8C4;
+    --extend:#B9791A; --extend-bg:#FBF1DF; --extend-line:#E7CE9C;
+    --new:#1558D4; --new-bg:#EAF1FD; --new-line:#BAD2F6;
+    --danger:#B4232A; --danger-bg:#FBEDED; --track:#C6CDD8;
+  }
+  :root[data-theme="dark"]{
+    --ground:#10151C; --surface:#161C25; --surface-2:#1D242F;
+    --ink:#E7EBF0; --ink-mid:#AEB7C4; --ink-mute:#7C8697;
+    --line:#29323F; --line-strong:#3A4552; --navy:#8FB0D6; --blue:#5B8DEE; --blue-soft:#17263F;
+    --reuse:#5CB185; --reuse-bg:#14271D; --reuse-line:#27543B;
+    --extend:#D6A04A; --extend-bg:#2A2010; --extend-line:#5A4620;
+    --new:#5B8DEE; --new-bg:#17263F; --new-line:#274468;
+    --danger:#E27078; --danger-bg:#2A1315; --track:#3A4552;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px 110px;}
+
+  header.mast{border-bottom:1px solid var(--line);padding:38px 0 24px;margin-bottom:26px;}
+  .kicker{font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--blue);font-weight:500;display:flex;align-items:center;gap:10px;margin-bottom:16px;}
+  .kicker::before{content:"";width:22px;height:22px;border-radius:5px;background:var(--navy);flex:none;-webkit-mask:linear-gradient(135deg,transparent 42%,#fff 42% 58%,transparent 58%) center/100% 100%;}
+  h1{font-size:clamp(28px,4vw,42px);line-height:1.07;letter-spacing:-.02em;margin:0 0 12px;font-weight:600;text-wrap:balance;max-width:20ch;}
+  .dek{font-size:17.5px;color:var(--ink-mid);margin:0 0 20px;max-width:70ch;}
+  .legend{display:flex;flex-wrap:wrap;gap:9px;align-items:center;}
+  .legend .lt{font-family:var(--mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-mute);margin-right:2px;}
+  .tag{font-family:var(--mono);font-size:11px;font-weight:500;padding:3px 9px;border-radius:5px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
+  .tag::before{content:"";width:7px;height:7px;border-radius:2px;}
+  .t-reuse{background:var(--reuse-bg);color:var(--reuse);} .t-reuse::before{background:var(--reuse);}
+  .t-extend{background:var(--extend-bg);color:var(--extend);} .t-extend::before{background:var(--extend);}
+  .t-new{background:var(--new-bg);color:var(--new);} .t-new::before{background:var(--new);}
+
+  /* ---- flow ---- */
+  .flow{display:flex;flex-direction:column;gap:0;margin-top:14px;}
+  .band{position:relative;padding:22px 0 22px 150px;}
+  .band + .band{border-top:1px dashed var(--line);}
+  .band .blabel{position:absolute;left:0;top:22px;width:128px;}
+  .band .bt{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--ink);letter-spacing:.01em;}
+  .band .bn{font-family:var(--mono);font-size:10.5px;color:var(--ink-mute);margin-top:3px;letter-spacing:.06em;}
+  .band .bd{font-size:12px;color:var(--ink-mute);margin-top:6px;line-height:1.5;max-width:118px;}
+
+  .row{display:flex;flex-wrap:wrap;align-items:stretch;gap:12px;}
+
+  .node{
+    flex:1 1 190px;min-width:180px;background:var(--surface);border:1px solid var(--line);
+    border-radius:11px;padding:13px 15px;position:relative;overflow:hidden;
+    display:flex;flex-direction:column;gap:5px;
+  }
+  .node::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--track);}
+  .node.reuse::before{background:var(--reuse);}
+  .node.extend::before{background:var(--extend);}
+  .node.new::before{background:var(--new);}
+  .node .nh{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .node .nt{font-weight:600;font-size:14.5px;letter-spacing:-.01em;}
+  .node .file{font-family:var(--mono);font-size:11px;color:var(--ink-mute);}
+  .node .nd{font-size:12.5px;color:var(--ink-mid);line-height:1.5;}
+  .pill{font-family:var(--mono);font-size:9.5px;font-weight:600;padding:2px 6px;border-radius:4px;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;}
+  .pill.reuse{background:var(--reuse-bg);color:var(--reuse);}
+  .pill.extend{background:var(--extend-bg);color:var(--extend);}
+  .pill.new{background:var(--new-bg);color:var(--new);}
+
+  .down{display:flex;justify-content:center;padding:9px 0 9px 150px;}
+  .down span{font-family:var(--mono);font-size:11px;color:var(--ink-mute);display:inline-flex;align-items:center;gap:8px;letter-spacing:.05em;}
+  .down span::before,.down span::after{content:"";width:26px;height:1px;background:var(--line-strong);}
+  .down .ar{color:var(--blue);font-size:13px;}
+
+  /* store + persistence row */
+  .store{flex:1 1 150px;min-width:150px;background:var(--surface-2);border:1px solid var(--line);border-radius:11px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;}
+  .store .st{font-family:var(--mono);font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px;}
+  .store .st::before{content:"";width:9px;height:9px;border-radius:2px;background:var(--navy);}
+  .store .sd{font-size:11.5px;color:var(--ink-mute);}
+  .store.newstore .st::before{background:var(--new);}
+
+  /* guardrail strip */
+  .rail{
+    display:flex;gap:12px;flex-wrap:wrap;margin:8px 0 0 150px;
+  }
+  .guard{flex:1 1 240px;min-width:230px;border:1px solid var(--line);border-left:3px solid var(--navy);
+    border-radius:0 9px 9px 0;background:var(--surface);padding:11px 14px;}
+  .guard.iso{border-left-color:var(--danger);}
+  .guard .gt{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-mute);margin-bottom:3px;font-weight:500;}
+  .guard .gd{font-size:12.5px;color:var(--ink-mid);line-height:1.5;}
+  .guard code{font-family:var(--mono);font-size:.86em;background:var(--surface-2);padding:1px 4px;border-radius:3px;border:1px solid var(--line);}
+
+  .sectitle{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-mute);margin:40px 0 10px 150px;font-weight:500;}
+  @media (max-width:680px){
+    .band{padding-left:0;padding-top:14px;}
+    .band .blabel{position:static;width:auto;margin-bottom:12px;display:flex;align-items:baseline;gap:12px;}
+    .band .bd{display:none;}
+    .down,.rail,.sectitle{padding-left:0;margin-left:0;}
+  }
+
+  .foot{margin-top:56px;padding-top:20px;border-top:1px solid var(--line);font-family:var(--mono);font-size:12px;color:var(--ink-mute);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;}
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <div class="kicker">Tendering Intelligence · System Flow</div>
+    <h1>Runtime data flow — a tender, upload to submission</h1>
+    <p class="dek">One tender document set, traced end-to-end through the shared Document Intelligence Core and the tender-specific stages. Each node is tagged by how it's sourced; the two invariants that hold at every step — grounding and tenant isolation — are called out where they apply.</p>
+    <div class="legend">
+      <span class="lt">Node source</span>
+      <span class="tag t-reuse">reuse — core, unchanged</span>
+      <span class="tag t-extend">extend — same stage, tender config</span>
+      <span class="tag t-new">new — tender component</span>
+    </div>
+  </header>
+
+  <div class="flow">
+
+    <!-- INGEST -->
+    <div class="band">
+      <div class="blabel"><div class="bt">Ingest</div><div class="bn">PER-DOCUMENT</div><div class="bd">Runs once per uploaded file, in a background task.</div></div>
+      <div class="row">
+        <div class="node reuse"><div class="nh"><span class="nt">Upload</span><span class="pill reuse">reuse</span></div><div class="file">main.py · storage</div><div class="nd">PDF / Word / Excel / ZIP / scan → Supabase Storage, <code>documents</code> row created, org-scoped path.</div></div>
+        <div class="node extend"><div class="nh"><span class="nt">Classify</span><span class="pill extend">extend</span></div><div class="file">pipeline/classify.py</div><div class="nd">Same LLM+heuristic engine, tender label set: tender notice, ITT, BOQ, pricing schedule, addendum…</div></div>
+        <div class="node reuse"><div class="nh"><span class="nt">ADE Parse</span><span class="pill reuse">reuse</span></div><div class="file">ade_client.py</div><div class="nd">Layout-aware parse → chunks carrying <b>page + bbox</b> visual grounding.</div></div>
+      </div>
+    </div>
+
+    <div class="down"><span><span class="ar">▼</span> parsed chunks <span class="ar">▼</span></span></div>
+
+    <!-- INDEX -->
+    <div class="band">
+      <div class="blabel"><div class="bt">Index</div><div class="bn">PER-DOCUMENT</div><div class="bd">Builds the retrieval + extraction substrate.</div></div>
+      <div class="row">
+        <div class="node reuse"><div class="nh"><span class="nt">Chunk + Embed</span><span class="pill reuse">reuse</span></div><div class="file">pipeline/extract.py</div><div class="nd">Gemini 1536-dim, batched 100, retry/backoff; degrades to text-only on failure.</div></div>
+        <div class="node extend"><div class="nh"><span class="nt">Field Extract</span><span class="pill extend">extend</span></div><div class="file">ade extract · Tender schema</div><div class="nd">ADE extracts against a tender Pydantic schema registered in <code>SCHEMA_REGISTRY</code>.</div></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div class="store"><div class="st">pgvector · chunks</div><div class="sd">embeddings + page/bbox, HNSW index, case-scoped</div></div>
+        <div class="store"><div class="st">extractions</div><div class="sd">structured fields per document</div></div>
+      </div>
+    </div>
+
+    <div class="down"><span><span class="ar">▼</span> "Run Analysis" — case-level, domain stage registry <span class="ar">▼</span></span></div>
+
+    <!-- ANALYSE -->
+    <div class="band">
+      <div class="blabel"><div class="bt">Analyse</div><div class="bn">CASE-LEVEL</div><div class="bd">The tender domain's ordered stage list, run by the shared orchestrator.</div></div>
+      <div class="row">
+        <div class="node new"><div class="nh"><span class="nt">Requirement Extract</span><span class="pill new">new</span></div><div class="file">domains/tender/stages</div><div class="nd">1 doc → N clause-linked <code>Requirement</code> rows (category, mandatory flag, source, confidence).</div></div>
+        <div class="node extend"><div class="nh"><span class="nt">Risk / Disqualification</span><span class="pill extend">extend</span></div><div class="file">detect_anomalies retargeted</div><div class="nd">Rule + LLM merge, tender prompts: missing mandatory clause, disqualifying condition.</div></div>
+        <div class="node new"><div class="nh"><span class="nt">Readiness Review</span><span class="pill new">new</span></div><div class="file">domains/tender/stages</div><div class="nd">Cross-document check over assembled state: missing forms, expired certs, unread addenda.</div></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div class="node reuse"><div class="nh"><span class="nt">Summarise</span><span class="pill reuse">reuse</span></div><div class="file">summarise.py</div><div class="nd">Structured tender summary + readiness score, from validated records only.</div></div>
+        <div class="node new"><div class="nh"><span class="nt">Evidence Matching</span><span class="pill new">new</span></div><div class="file">cross-index retrieval</div><div class="nd">Embed requirements ↔ embed supplier vault, match across the two. <b>org-scoped</b> retrieval.</div></div>
+      </div>
+    </div>
+
+    <div class="down"><span><span class="ar">▼</span> structured records (never chat-only) <span class="ar">▼</span></span></div>
+
+    <!-- PERSIST -->
+    <div class="band">
+      <div class="blabel"><div class="bt">Persist</div><div class="bn">STRUCTURED STATE</div><div class="bd">Rows, not prose — they back dashboards, workflows, reporting.</div></div>
+      <div class="row">
+        <div class="store newstore"><div class="st">requirements</div><div class="sd">clause-linked, pending review</div></div>
+        <div class="store newstore"><div class="st">evidence_links</div><div class="sd">AI score + user approval</div></div>
+        <div class="store newstore"><div class="st">supplier_documents</div><div class="sd">org vault, expiry-tracked</div></div>
+        <div class="store newstore"><div class="st">tasks</div><div class="sd">owner, due date, status</div></div>
+        <div class="store"><div class="st">audit_log</div><div class="sd">every action, prev→new</div></div>
+      </div>
+    </div>
+
+    <div class="down"><span><span class="ar">▼</span> read views + human validation loop <span class="ar">▲</span></span></div>
+
+    <!-- SURFACE -->
+    <div class="band">
+      <div class="blabel"><div class="bt">Surface</div><div class="bn">SUPPLIER UI</div><div class="bd">Where the bid team reviews, validates and decides.</div></div>
+      <div class="row">
+        <div class="node extend"><div class="nh"><span class="nt">Compliance Matrix</span><span class="pill extend">extend</span></div><div class="file">read view over requirements</div><div class="nd">Review · edit · accept/reject AI finding · assign owner · attach evidence.</div></div>
+        <div class="node new"><div class="nh"><span class="nt">Bid / No-Bid</span><span class="pill new">new</span></div><div class="file">scoring + rationale</div><div class="nd">Guided score across coverage + inputs. Recommendation only — human decides.</div></div>
+        <div class="node reuse"><div class="nh"><span class="nt">Evidence-Linked Chat</span><span class="pill reuse">reuse</span></div><div class="file">main.py chat (RAG)</div><div class="nd">Grounded Q&amp;A with page/clause citations — the core chat, unchanged.</div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- invariants -->
+  <div class="sectitle">Invariants that hold at every step</div>
+  <div class="rail">
+    <div class="guard">
+      <div class="gt">Rule 2 · Grounding</div>
+      <div class="gd"><code>llm_reasoning.ask()</code> drops any AI output citing a document/entity not sent to it. Every persisted requirement/finding carries <b>source doc · page · clause · confidence</b> — required at the schema layer, not optional.</div>
+    </div>
+    <div class="guard iso">
+      <div class="gt">Rule 4 · Tenant isolation</div>
+      <div class="gd">Every route through <code>_load_case_or_403</code> (org/role scoped). Vector search is <code>case_id</code>-scoped; evidence matching adds <code>org_id</code> scope so one supplier's vault is never searched for another. Storage, logs, background jobs inherit the caller's scope.</div>
+    </div>
+    <div class="guard">
+      <div class="gt">Rule 3 · Human-in-the-loop</div>
+      <div class="gd">AI records land <code>pending</code>. No endpoint auto-confirms compliance, approves evidence, or makes the bid decision — those writes are always user-initiated and audit-logged.</div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span>NextGen Spark · Document Intelligence Suite</span>
+    <span>Companion to the Core Extension architecture note</span>
+  </div>
+</div>

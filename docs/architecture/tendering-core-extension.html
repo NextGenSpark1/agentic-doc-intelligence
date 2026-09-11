@@ -1,0 +1,446 @@
+<style>
+  :root {
+    --ground: #F7F8FA;
+    --surface: #FFFFFF;
+    --surface-2: #F1F3F6;
+    --ink: #1B2430;
+    --ink-mid: #4B5563;
+    --ink-mute: #7A8496;
+    --line: #DDE2E9;
+    --line-strong: #C6CDD8;
+    --navy: #1E3A5F;
+    --blue: #1558D4;
+    --blue-soft: #EAF1FD;
+    /* semantic — the spine of this document */
+    --reuse: #2E7D52;      --reuse-bg: #E7F2EC;
+    --extend: #B9791A;     --extend-bg: #FBF1DF;
+    --new: #1558D4;        --new-bg: #EAF1FD;
+    --danger: #B4232A;     --danger-bg: #FBEDED;
+    --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    --sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #10151C; --surface: #161C25; --surface-2: #1D242F;
+      --ink: #E7EBF0; --ink-mid: #AEB7C4; --ink-mute: #7C8697;
+      --line: #29323F; --line-strong: #3A4552;
+      --navy: #8FB0D6; --blue: #5B8DEE; --blue-soft: #17263F;
+      --reuse: #5CB185; --reuse-bg: #14271D;
+      --extend: #D6A04A; --extend-bg: #2A2010;
+      --new: #5B8DEE; --new-bg: #17263F;
+      --danger: #E27078; --danger-bg: #2A1315;
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #F7F8FA; --surface: #FFFFFF; --surface-2: #F1F3F6;
+    --ink: #1B2430; --ink-mid: #4B5563; --ink-mute: #7A8496;
+    --line: #DDE2E9; --line-strong: #C6CDD8;
+    --navy: #1E3A5F; --blue: #1558D4; --blue-soft: #EAF1FD;
+    --reuse: #2E7D52; --reuse-bg: #E7F2EC;
+    --extend: #B9791A; --extend-bg: #FBF1DF;
+    --new: #1558D4; --new-bg: #EAF1FD;
+    --danger: #B4232A; --danger-bg: #FBEDED;
+  }
+  :root[data-theme="dark"] {
+    --ground: #10151C; --surface: #161C25; --surface-2: #1D242F;
+    --ink: #E7EBF0; --ink-mid: #AEB7C4; --ink-mute: #7C8697;
+    --line: #29323F; --line-strong: #3A4552;
+    --navy: #8FB0D6; --blue: #5B8DEE; --blue-soft: #17263F;
+    --reuse: #5CB185; --reuse-bg: #14271D;
+    --extend: #D6A04A; --extend-bg: #2A2010;
+    --new: #5B8DEE; --new-bg: #17263F;
+    --danger: #E27078; --danger-bg: #2A1315;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px; line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 28px 120px; }
+  .col { max-width: 720px; }
+
+  /* ---- masthead ---- */
+  header.mast {
+    border-bottom: 1px solid var(--line);
+    padding: 40px 0 26px; margin-bottom: 8px;
+  }
+  .kicker {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--blue); font-weight: 500;
+    display: flex; align-items: center; gap: 10px; margin-bottom: 18px;
+  }
+  .kicker::before {
+    content: ""; width: 22px; height: 22px; border-radius: 5px;
+    background: var(--navy); flex: none;
+    -webkit-mask: linear-gradient(135deg, transparent 42%, #fff 42% 58%, transparent 58%) center/100% 100%;
+  }
+  h1 {
+    font-size: clamp(30px, 4.4vw, 46px); line-height: 1.06;
+    letter-spacing: -0.02em; margin: 0 0 14px; font-weight: 600;
+    text-wrap: balance; max-width: 16ch;
+  }
+  .dek { font-size: 18px; color: var(--ink-mid); margin: 0 0 22px; max-width: 62ch; }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 8px 22px; font-family: var(--mono);
+    font-size: 12px; color: var(--ink-mute);
+  }
+  .meta b { color: var(--ink-mid); font-weight: 500; }
+
+  /* ---- legend ---- */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 10px; margin: 26px 0 4px;
+    padding: 16px 18px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .legend .lg-title {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--ink-mute); width: 100%; margin-bottom: 2px;
+  }
+  .tag {
+    font-family: var(--mono); font-size: 11.5px; font-weight: 500;
+    padding: 3px 9px; border-radius: 5px; letter-spacing: 0.02em; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .tag::before { content: ""; width: 7px; height: 7px; border-radius: 2px; }
+  .t-reuse { background: var(--reuse-bg); color: var(--reuse); }
+  .t-reuse::before { background: var(--reuse); }
+  .t-extend { background: var(--extend-bg); color: var(--extend); }
+  .t-extend::before { background: var(--extend); }
+  .t-new { background: var(--new-bg); color: var(--new); }
+  .t-new::before { background: var(--new); }
+
+  /* ---- sections ---- */
+  section { padding-top: 52px; scroll-margin-top: 20px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
+  .sec-num {
+    font-family: var(--mono); font-size: 13px; color: var(--blue);
+    font-weight: 500; flex: none;
+  }
+  h2 {
+    font-size: 25px; letter-spacing: -0.015em; margin: 0; font-weight: 600;
+    text-wrap: balance;
+  }
+  .sec-sub { color: var(--ink-mid); margin: 4px 0 24px; max-width: 64ch; }
+  h3 {
+    font-size: 16.5px; margin: 30px 0 10px; font-weight: 600; letter-spacing: -0.01em;
+    display: flex; align-items: center; gap: 10px;
+  }
+  p { margin: 0 0 14px; max-width: 70ch; }
+  p.col, ul.col { max-width: 720px; }
+  strong { font-weight: 600; }
+  code {
+    font-family: var(--mono); font-size: 0.86em; background: var(--surface-2);
+    padding: 1px 5px; border-radius: 4px; color: var(--ink);
+    border: 1px solid var(--line);
+  }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  ul.lead { margin: 0 0 16px; padding-left: 0; list-style: none; max-width: 70ch; }
+  ul.lead li { position: relative; padding-left: 20px; margin-bottom: 7px; }
+  ul.lead li::before {
+    content: ""; position: absolute; left: 3px; top: 10px; width: 6px; height: 6px;
+    border-radius: 1px; background: var(--line-strong); transform: rotate(45deg);
+  }
+
+  /* ---- callout ---- */
+  .note {
+    border-left: 3px solid var(--navy); background: var(--surface);
+    padding: 15px 18px; border-radius: 0 8px 8px 0; margin: 20px 0;
+    border-top: 1px solid var(--line); border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .note.warn { border-left-color: var(--extend); }
+  .note.crit { border-left-color: var(--danger); }
+  .note .nl {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--ink-mute); margin-bottom: 4px;
+    display: block; font-weight: 500;
+  }
+  .note p:last-child { margin-bottom: 0; }
+
+  /* ---- layered stack diagram ---- */
+  .stack { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 4px; }
+  .layer {
+    border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+    padding: 16px 18px; position: relative; overflow: hidden;
+  }
+  .layer::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  }
+  .layer.core::before { background: var(--reuse); }
+  .layer.engine::before { background: var(--new); }
+  .layer.ui::before { background: var(--navy); }
+  .layer .lh {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 10px; flex-wrap: wrap;
+  }
+  .layer .lname { font-weight: 600; font-size: 15.5px; }
+  .layer .lname small {
+    font-family: var(--mono); font-weight: 400; color: var(--ink-mute);
+    font-size: 12px; margin-left: 8px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-family: var(--mono); font-size: 11.5px; padding: 3px 8px;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px;
+    color: var(--ink-mid);
+  }
+  .chip.hot { background: var(--new-bg); border-color: transparent; color: var(--new); }
+  .arrow {
+    text-align: center; color: var(--ink-mute); font-family: var(--mono);
+    font-size: 11px; letter-spacing: 0.1em; padding: 1px 0;
+  }
+
+  /* ---- tables ---- */
+  .twrap { overflow-x: auto; margin: 18px 0 6px; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 640px; }
+  thead th {
+    background: var(--surface-2); text-align: left; padding: 11px 14px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.05em;
+    text-transform: uppercase; color: var(--ink-mute); font-weight: 500;
+    border-bottom: 1px solid var(--line); white-space: nowrap;
+  }
+  tbody td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--surface); }
+  td .fn { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+  td.verdict { white-space: nowrap; }
+  .mono { font-family: var(--mono); }
+  .small { font-size: 12.5px; color: var(--ink-mid); }
+
+  /* mapping matrix specific */
+  table.map td:first-child { font-weight: 600; width: 26%; }
+
+  /* data model reconciliation */
+  .dm-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin: 18px 0; }
+  @media (min-width: 720px) { .dm-grid { grid-template-columns: 1fr 1fr; } }
+  .dm {
+    border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+    padding: 14px 16px;
+  }
+  .dm h4 {
+    margin: 0 0 4px; font-family: var(--mono); font-size: 13.5px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .dm p { font-size: 13px; color: var(--ink-mid); margin: 0; max-width: none; }
+  .dm .cur { font-family: var(--mono); font-size: 11.5px; color: var(--ink-mute); }
+
+  /* rule cards */
+  .rule {
+    border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+    padding: 18px 20px; margin: 14px 0;
+  }
+  .rule .rt { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .rule .rn {
+    font-family: var(--mono); font-size: 11px; font-weight: 500; padding: 2px 8px;
+    border-radius: 5px; background: var(--danger-bg); color: var(--danger);
+    letter-spacing: 0.04em;
+  }
+  .rule .rname { font-weight: 600; font-size: 15px; }
+  .rule ul.enf { margin: 0; padding-left: 0; list-style: none; }
+  .rule ul.enf li {
+    position: relative; padding-left: 26px; margin-bottom: 8px; font-size: 14px;
+    color: var(--ink-mid);
+  }
+  .rule ul.enf li::before {
+    content: "✓"; position: absolute; left: 0; top: 0; color: var(--reuse);
+    font-weight: 700; font-family: var(--mono);
+  }
+  .rule ul.enf li code { color: var(--ink); }
+
+  hr.div { border: none; border-top: 1px solid var(--line); margin: 0; }
+
+  .foot {
+    margin-top: 70px; padding-top: 22px; border-top: 1px solid var(--line);
+    font-family: var(--mono); font-size: 12px; color: var(--ink-mute);
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    tbody tr td, .layer { transition: background .15s ease; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <div class="kicker">NextGen Document Intelligence Suite · Architecture Note</div>
+    <h1>Extending the Core for Tendering Intelligence</h1>
+    <p class="dek">How the Tendering Intelligence product is built as a configuration-and-schema extension of the existing Investigation Intelligence pipeline — one document-processing core, two domain apps. No second OCR, embedding, vector-search, or citation pipeline.</p>
+    <div class="meta">
+      <span><b>Owner</b> Nawran — Backend &amp; Data Pipeline Lead</span>
+      <span><b>Basis</b> current <code>backend/</code> tree, verified</span>
+      <span><b>Status</b> design proposal · v1</span>
+    </div>
+  </header>
+
+  <div class="legend">
+    <span class="lg-title">How to read every mapping in this document</span>
+    <span class="tag t-reuse">REUSE — runs unchanged</span>
+    <span class="tag t-extend">EXTEND — same stage, new config / schema / prompt</span>
+    <span class="tag t-new">NEW — genuinely new component (justified inline)</span>
+  </div>
+
+  <!-- 1 · EXTENSION MECHANISM -->
+  <section id="mechanism">
+    <div class="sec-head"><span class="sec-num">01</span><h2>The extension mechanism</h2></div>
+    <p class="sec-sub">The codebase already has the seam we need. Three of the four extension points exist today; one has to be built. That gap is the actual engineering in this plan.</p>
+
+    <p>Investigation Intelligence already routes behaviour by <code>case_type</code>. A tender workspace is simply a new domain that registers against the same seams:</p>
+
+    <div class="twrap">
+      <table>
+        <thead><tr><th>Extension point</th><th>Exists today?</th><th>What Tendering registers</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="fn">schema_for_case_type()</span><div class="small">schemas/investigation.py</div></td>
+            <td><span class="tag t-reuse">REUSE</span></td>
+            <td>A <code>tender/</code> schema module added to <code>SCHEMA_REGISTRY</code> — Pydantic models ADE extracts against. Pure data, no new code path.</td>
+          </tr>
+          <tr>
+            <td><span class="fn">classify.KNOWN_TYPES</span><div class="small">pipeline/classify.py</div></td>
+            <td><span class="tag t-extend">EXTEND</span></td>
+            <td>Swap the fraud doc-types for the 12 tender categories (tender notice, ITT, BOQ, pricing schedule…). Same LLM+heuristic engine, different label set + prompt.</td>
+          </tr>
+          <tr>
+            <td><span class="fn">llm_reasoning.ask()</span><div class="small">pipeline/llm_reasoning.py</div></td>
+            <td><span class="tag t-reuse">REUSE</span></td>
+            <td>The grounded-JSON reasoning helper (with its anti-hallucination validation) is domain-agnostic. Tender stages call it with tender prompts.</td>
+          </tr>
+          <tr>
+            <td><span class="fn">run_case_analysis()</span><div class="small">pipeline/__init__.py</div></td>
+            <td><span class="tag t-new">NEW seam</span></td>
+            <td><strong>The one real gap.</strong> The orchestrator hard-codes its five stages. It must become a <em>registry keyed by domain</em> so a workspace runs its own stage list.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note warn">
+      <span class="nl">The decision this plan turns on</span>
+      <p><code>run_case_analysis</code> today is a fixed sequence: <code>resolve_entities → build_relationships → reconstruct_timeline → detect_anomalies → summarise</code>. Tendering needs a <em>different</em> sequence. The fix is not an <code>if domain == "tender"</code> branch — it is a <strong>stage registry</strong>: each domain declares an ordered list of stage callables, and the orchestrator just runs whichever list the workspace's domain points to. Investigation keeps its five; Tendering declares its own. This one refactor is what makes everything below "config, not fork."</p>
+    </div>
+
+    <h3>Proposed package shape</h3>
+    <p>Rename the shared modules into a <code>core/</code> boundary and let each product be a thin domain package. Nothing moves that isn't already shared; the split just makes the boundary explicit and stops drift.</p>
+    <div class="twrap">
+      <table>
+        <thead><tr><th>Layer</th><th>Modules</th><th>Reuse</th></tr></thead>
+        <tbody>
+          <tr><td><strong>core/</strong><div class="small">shared document intelligence</div></td><td class="mono small">ade_client · extract · llm · llm_reasoning · db(generic) · auth · orgs · email · chunk/embed/search</td><td><span class="tag t-reuse">REUSE</span></td></tr>
+          <tr><td><strong>domains/investigation/</strong></td><td class="mono small">schemas · prompts · stages(entities, relationships, timeline, anomalies, summarise)</td><td><span class="tag t-reuse">REUSE</span></td></tr>
+          <tr><td><strong>domains/tender/</strong></td><td class="mono small">schemas · prompts · stages(requirements, compliance, readiness, evidence-match)</td><td><span class="tag t-new">NEW</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note crit">
+      <span class="nl">Sequencing risk — raise with the team</span>
+      <p>The <code>core/</code> extraction must land <strong>before</strong> tender stages are written. If Tendering is built as a sibling of Investigation with "extract the core later," later never comes and you maintain two forks by Q4. Do the boundary first, on the current green codebase.</p>
+    </div>
+  </section>
+
+  <hr class="div" style="margin-top:52px">
+
+  <!-- 2 · LAYER 2 MAPPING -->
+  <section id="mapping">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Layer 2 functions → config extension or new component</h2></div>
+    <p class="sec-sub">Every tender-engine function from the roadmap, mapped to an existing stage it configures or a new component it requires. Nine of twelve are extensions; three are genuinely new, each justified.</p>
+
+    <div class="twrap">
+      <table class="map">
+        <thead><tr><th>Layer-2 function</th><th>Verdict</th><th>Maps to / why new</th></tr></thead>
+        <tbody>
+          <tr><td>Tender information extraction</td><td class="verdict"><span class="tag t-extend">EXTEND</span></td><td>Per-document <code>extract</code> stage with a <code>Tender</code> Pydantic schema. Identical to how Investigation extracts <code>FinancialTransaction</code>.</td></tr>
+          <tr><td>Eligibility extraction</td><td class="verdict"><span class="tag t-extend">EXTEND</span></td><td>Fields on the <code>Requirement</code> / tender schema + a prompt. No new pipeline.</td></tr>
+          <tr><td>Requirement extraction</td><td class="verdict"><span class="tag t-new">NEW</span></td><td><strong>New case-level stage.</strong> Emits many structured <code>Requirement</code> rows per tender (clause-linked). Reuses <code>llm_reasoning.ask()</code> + grounding validation, but the output cardinality (1 doc → N requirements) and the record shape are new.</td></tr>
+          <tr><td>Mandatory requirement detection</td><td class="verdict"><span class="tag t-extend">EXTEND</span></td><td>A boolean <code>mandatory</code> field + prompt rule inside the requirement stage. Not a separate pass.</td></tr>
+          <tr><td>Submission instruction extraction</td><td class="verdict"><span class="tag t-extend">EXTEND</span></td><td>A requirement <em>category</em> (<code>submission_instruction</code>). Same stage, taxonomy value.</td></tr>
+          <tr><td>Evaluation criteria extraction</td><td class="verdict"><span class="tag t-extend">EXTEND</span></td><td>Requirement category + fields. Same stage.</td></tr>
+          <tr><td>Risk / disqualification detection</td><td class="verdict"><span class="tag t-extend">EXTEND</span></td><td>This is <code>detect_anomalies</code> with tender rules + prompt: missing mandatory clause, disqualifying condition. Reuses the rule+LLM merge and <code>findings</code> machinery wholesale — semantics shift from "fraud red flag" to "disqualification risk."</td></tr>
+          <tr><td>Compliance matrix generation</td><td class="verdict"><span class="tag t-reuse">REUSE*</span></td><td>Not a pipeline stage at all — it is a <em>read view</em> over the <code>Requirement</code> rows (like the existing Findings tab reads <code>findings</code>). Zero new backend beyond a list endpoint.</td></tr>
+          <tr><td>Bid / no-bid assessment</td><td class="verdict"><span class="tag t-new">NEW</span></td><td><strong>New scoring component.</strong> Aggregates requirement coverage + user inputs into a guided score. New because it composes state across records rather than extracting from a document; deterministic scorer + optional LLM rationale. Recommendation only (Rule 3).</td></tr>
+          <tr><td>Clarification tracking</td><td class="verdict"><span class="tag t-extend">EXTEND</span></td><td>A record type + status workflow reusing the review-state pattern (below). No pipeline change.</td></tr>
+          <tr><td>Submission readiness review</td><td class="verdict"><span class="tag t-new">NEW</span></td><td><strong>New cross-document check stage.</strong> "Missing mandatory form, expired cert, inconsistent company name, unread addendum." Reuses <code>detect_anomalies</code>' shape but operates over the tender's <em>whole assembled state</em> (requirements + vault + tasks), not raw extractions.</td></tr>
+          <tr><td>Evidence matching</td><td class="verdict"><span class="tag t-new">NEW</span></td><td><strong>New cross-index retrieval.</strong> The only piece needing retrieval you don't have: embed requirements, embed the supplier vault, match across the two. Your current RAG is within-a-case; this is Requirement ↔ Vault. Technically the hardest new surface — and the one that most needs a measurement harness before it touches a live bid.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small mono">* REUSE* = no new pipeline component; a thin read/list endpoint over already-structured rows.</p>
+
+    <div class="note">
+      <span class="nl">Reused wholesale from the core (no tender variant needed)</span>
+      <p>Upload · storage · ADE parse · classification engine · chunking · embedding (batched, fault-tolerant) · vector search · <strong>grounded AI chat with page+bbox citations</strong> (satisfies §9 &amp; Rule 2 as-is) · auth · orgs/roles · tenant isolation · audit log · background processing · the dedup + anti-hallucination guardrails.</p>
+    </div>
+  </section>
+
+  <hr class="div" style="margin-top:52px">
+
+  <!-- 3 · DATA MODEL -->
+  <section id="datamodel">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Data-model reconciliation</h2></div>
+    <p class="sec-sub">The roadmap's nine entities checked against tables that already exist for Investigation Intelligence. Reuse the shared ones as-is, add the tender-specific ones, and resolve one naming collision before it causes drift.</p>
+
+    <div class="dm-grid">
+      <div class="dm"><h4><span class="tag t-reuse">REUSE</span> Organisation</h4><p>Already exists as <code>organisations</code> (multi-tenancy). Add <code>industry</code>, <code>address</code> columns only.</p><p class="cur">→ organisations</p></div>
+      <div class="dm"><h4><span class="tag t-reuse">REUSE</span> User</h4><p>Already exists as <code>org_members</code> (role, invited_by, org scope). No new table.</p><p class="cur">→ org_members</p></div>
+      <div class="dm"><h4><span class="tag t-extend">EXTEND</span> Tender</h4><p>This is a domain-typed workspace — the same role <code>cases</code> plays for investigations. Reuse the <code>cases</code> table with a <code>domain='tender'</code> discriminator + tender columns (<code>buyer</code>, <code>closing_date</code>, <code>readiness_score</code>, <code>bid_decision</code>), <em>or</em> a sibling <code>tenders</code> table sharing the core FKs. See collision note.</p><p class="cur">→ cases (extend) or tenders</p></div>
+      <div class="dm"><h4><span class="tag t-reuse">REUSE</span> Tender Document</h4><p>Structurally identical to <code>documents</code> (file, type, version, processing status, storage path). Reuse the table; <code>document_type</code> carries tender categories.</p><p class="cur">→ documents</p></div>
+      <div class="dm"><h4><span class="tag t-new">NEW</span> Requirement</h4><p>No equivalent. This is the tender core record: clause-linked, mandatory flag, category, confidence, validation status, owner. New table.</p><p class="cur">→ requirements (new)</p></div>
+      <div class="dm"><h4><span class="tag t-new">NEW</span> Supplier Document</h4><p>The reusable company vault — org-scoped, not tender-scoped. Distinct lifecycle (issue/expiry/verification). New table.</p><p class="cur">→ supplier_documents (new)</p></div>
+      <div class="dm"><h4><span class="tag t-new">NEW</span> Evidence Link</h4><p>Join between requirement and supplier document with AI relevance score + user approval. New table (backs evidence matching).</p><p class="cur">→ evidence_links (new)</p></div>
+      <div class="dm"><h4><span class="tag t-new">NEW</span> Task</h4><p>Assignment/workflow record. New table — Investigation has no task concept.</p><p class="cur">→ tasks (new)</p></div>
+      <div class="dm"><h4><span class="tag t-reuse">REUSE</span> Audit Event</h4><p>Already exists as <code>audit_log</code>. Add <code>previous_value</code>/<code>new_value</code> columns for field-level change history.</p><p class="cur">→ audit_log</p></div>
+    </div>
+
+    <div class="note warn">
+      <span class="nl">Conflicts &amp; duplication to resolve</span>
+      <p><strong>1. Tender vs. cases (collision).</strong> The roadmap models <code>Tender</code> as a top-level entity; the core already has <code>cases</code> doing exactly that job (org scope, documents, findings, chat, access control via <code>_load_case_or_403</code>). Do <em>not</em> build a parallel workspace table with its own access logic — that duplicates the tenant-isolation surface. Recommendation: add a <code>domain</code> column to <code>cases</code> and reuse every access/audit path already hardened for it.</p>
+      <p style="margin-top:10px"><strong>2. Requirement vs. findings (near-duplicate — deliberate).</strong> A <code>Requirement</code> and a <code>finding</code> share a shape: AI-extracted, source-linked (doc/page/clause), confidence, human validation state. Don't fork the review logic twice. Generalise the <em>"AI-extracted record pending human review"</em> pattern (status, reviewed_by, source refs, content-hash dedup) into a base both specialise. This is the single most valuable abstraction in the whole extension.</p>
+    </div>
+  </section>
+
+  <hr class="div" style="margin-top:52px">
+
+  <!-- 4 · HARD RULES -->
+  <section id="rules">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Enforcing the hard rules in the design</h2></div>
+    <p class="sec-sub">The three non-negotiable rules are not new work — the core already enforces the shape of all three. Tendering inherits the enforcement; here is exactly where it lives.</p>
+
+    <div class="rule">
+      <div class="rt"><span class="rn">RULE 2</span><span class="rname">Every AI finding needs source + confidence</span></div>
+      <ul class="enf">
+        <li>The <code>llm_reasoning.ask()</code> guardrail already <strong>drops any output citing a document/entity/event not sent to the model</strong> — ungrounded findings never persist. Requirements inherit this unchanged.</li>
+        <li>Chunks carry <code>page</code> + <code>bbox</code> from ADE visual grounding; the <code>Requirement</code> schema makes <code>source_document</code>, <code>page</code>, <code>clause</code>, <code>confidence</code> <strong>required, not optional</strong> — an extraction missing them is rejected at validation, not rendered.</li>
+        <li>Enforced at the schema layer (Pydantic) so the rule can't be bypassed by a prompt change.</li>
+      </ul>
+    </div>
+
+    <div class="rule">
+      <div class="rt"><span class="rn">RULE 3</span><span class="rname">AI extracts / suggests / flags — never auto-decides</span></div>
+      <ul class="enf">
+        <li>Reuses the existing <strong>human-review state machine</strong>: every AI record lands <code>pending</code>. A person moves it to <code>validated</code>/<code>rejected</code> — the API has no path that auto-confirms.</li>
+        <li>Evidence links carry an <code>ai_relevance_score</code> but require <code>user_approval_status</code> before they count toward a submission — the AI suggests, the bid team approves.</li>
+        <li>Bid/no-bid and readiness are <strong>recommendations with a score</strong>; no endpoint marks a tender "compliant" or "submitted" from an AI call. The decision write is always user-initiated and audit-logged.</li>
+      </ul>
+    </div>
+
+    <div class="rule">
+      <div class="rt"><span class="rn">RULE 4</span><span class="rname">Strict tenant isolation across every surface</span></div>
+      <ul class="enf">
+        <li><strong>DB &amp; API:</strong> reuse <code>_load_case_or_403</code> + org/role scoping already hardened this session — every tender route goes through it, including the new requirement/vault/evidence endpoints.</li>
+        <li><strong>Vector search &amp; AI retrieval:</strong> <code>match_chunks</code> is <code>case_id</code>-scoped today; the new evidence-match retrieval must be <code>org_id</code>-scoped so one supplier's vault is never searched for another. This is the one isolation surface to design in from line one, not retrofit.</li>
+        <li><strong>Storage:</strong> continue the <code>{case_id}/{doc_id}/</code> path convention with signed URLs behind the access check; vault files scoped under <code>{org_id}/</code>.</li>
+        <li><strong>Logs, caches, background jobs:</strong> audit rows already carry <code>org_id</code>; background analysis is invoked only through access-checked endpoints, so a queued job inherits the caller's scope.</li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="foot">
+    <span>NextGen Spark Sdn Bhd · Document Intelligence Suite</span>
+    <span>Architecture proposal — reuse over duplication</span>
+  </div>
+
+</div>

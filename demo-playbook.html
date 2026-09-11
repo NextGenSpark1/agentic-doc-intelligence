@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Investigation Intelligence — Demo Playbook</title>
+<style>
+  :root {
+    --ground: #EAECF0;
+    --panel: #FFFFFF;
+    --panel-2: #F5F6F9;
+    --ink: #1B2430;
+    --ink-2: #49515F;
+    --ink-mute: #7E8794;
+    --line: #D8DCE3;
+    --line-2: #C4CAD3;
+    --accent: #1558D4;
+    --accent-2: #2D6FE0;
+    --accent-wash: #EBF1FC;
+    --navy: #16293F;
+    --navy-2: #1E3A5F;
+    --critical: #B4232A;
+    --critical-bg: #FBEDED;
+    --warn: #9A5E0C;
+    --warn-bg: #FBF1E2;
+    --good: #2E7D52;
+    --good-bg: #E9F3EE;
+    --shadow: 0 1px 2px rgba(22,41,63,.06), 0 6px 20px rgba(22,41,63,.05);
+    --mono: ui-monospace, "Cascadia Code", "Segoe UI Mono", "SFMono-Regular", Consolas, monospace;
+    --sans: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", system-ui, sans-serif;
+    --maxw: 940px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0C1522;
+      --panel: #13233A;
+      --panel-2: #182C46;
+      --ink: #E7ECF3;
+      --ink-2: #AEB8C6;
+      --ink-mute: #7A8697;
+      --line: #26374F;
+      --line-2: #33475F;
+      --accent: #5B8DEF;
+      --accent-2: #82A8F5;
+      --accent-wash: #16294A;
+      --navy: #0A1524;
+      --navy-2: #16293F;
+      --critical: #E77E83;
+      --critical-bg: #2A1518;
+      --warn: #E0A24A;
+      --warn-bg: #2A2013;
+      --good: #6FBE90;
+      --good-bg: #12251A;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #EAECF0; --panel: #FFFFFF; --panel-2: #F5F6F9;
+    --ink: #1B2430; --ink-2: #49515F; --ink-mute: #7E8794;
+    --line: #D8DCE3; --line-2: #C4CAD3;
+    --accent: #1558D4; --accent-2: #2D6FE0; --accent-wash: #EBF1FC;
+    --navy: #16293F; --navy-2: #1E3A5F;
+    --critical: #B4232A; --critical-bg: #FBEDED;
+    --warn: #9A5E0C; --warn-bg: #FBF1E2;
+    --good: #2E7D52; --good-bg: #E9F3EE;
+    --shadow: 0 1px 2px rgba(22,41,63,.06), 0 6px 20px rgba(22,41,63,.05);
+  }
+  :root[data-theme="dark"] {
+    --ground: #0C1522; --panel: #13233A; --panel-2: #182C46;
+    --ink: #E7ECF3; --ink-2: #AEB8C6; --ink-mute: #7A8697;
+    --line: #26374F; --line-2: #33475F;
+    --accent: #5B8DEF; --accent-2: #82A8F5; --accent-wash: #16294A;
+    --navy: #0A1524; --navy-2: #16293F;
+    --critical: #E77E83; --critical-bg: #2A1518;
+    --warn: #E0A24A; --warn-bg: #2A2013;
+    --good: #6FBE90; --good-bg: #12251A;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.28);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- sticky nav ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    background: color-mix(in srgb, var(--navy) 92%, transparent);
+    backdrop-filter: saturate(1.4) blur(8px);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  .topbar .wrap { display: flex; align-items: center; gap: 18px; height: 52px; }
+  .brandmark { display: flex; align-items: center; gap: 9px; color: #fff; font-weight: 600; font-size: 14px; letter-spacing: .2px; white-space: nowrap; }
+  .brandmark .dot { width: 9px; height: 9px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 0 3px rgba(85,141,239,.25); }
+  .topnav { display: flex; gap: 4px; margin-left: auto; overflow-x: auto; scrollbar-width: none; }
+  .topnav::-webkit-scrollbar { display: none; }
+  .topnav a {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .3px;
+    color: rgba(255,255,255,.62); text-decoration: none;
+    padding: 6px 9px; border-radius: 6px; white-space: nowrap;
+  }
+  .topnav a:hover { color: #fff; background: rgba(255,255,255,.09); }
+  .topnav a:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+
+  /* ---------- masthead ---------- */
+  .mast { background: linear-gradient(160deg, var(--navy) 0%, var(--navy-2) 100%); color: #EAF0F8; padding: 46px 0 40px; }
+  .eyebrow { font-family: var(--mono); font-size: 11.5px; letter-spacing: 2.2px; text-transform: uppercase; color: var(--accent-2); }
+  .mast .eyebrow { color: #8FB4F5; }
+  .mast h1 { font-size: clamp(26px, 4.6vw, 40px); line-height: 1.1; margin: 12px 0 0; font-weight: 700; letter-spacing: -.4px; text-wrap: balance; max-width: 20ch; }
+  .mast .lede { font-size: clamp(15px, 2.2vw, 18px); color: #B9C7DB; margin: 16px 0 0; max-width: 62ch; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+  .chip {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .3px;
+    color: #CBD8EC; background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.14); border-radius: 999px; padding: 5px 11px;
+  }
+  .chip b { color: #fff; font-weight: 600; }
+  .usehow { margin-top: 24px; font-size: 13.5px; color: #93A6C2; display: flex; align-items: baseline; gap: 8px; max-width: 66ch; }
+  .usehow .k { font-family: var(--mono); font-size: 10.5px; letter-spacing: 1px; text-transform: uppercase; color: #6E86A8; white-space: nowrap; }
+
+  /* ---------- sections ---------- */
+  main { padding: 8px 0 72px; }
+  section { padding: 40px 0 8px; scroll-margin-top: 64px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 22px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+  .sec-head .num { font-family: var(--mono); font-size: 12px; color: var(--accent); font-weight: 600; letter-spacing: .5px; }
+  .sec-head h2 { font-size: clamp(19px, 3vw, 24px); margin: 0; font-weight: 700; letter-spacing: -.2px; color: var(--ink); text-wrap: balance; }
+  .sec-head .sub { margin-left: auto; font-size: 12.5px; color: var(--ink-mute); text-align: right; max-width: 34ch; }
+  p { margin: 0 0 14px; max-width: 72ch; }
+  a.inline { color: var(--accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+  a.inline:hover { border-bottom-color: var(--accent); }
+
+  /* ---------- pitch callout ---------- */
+  .pitch { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 12px; padding: 22px 24px; box-shadow: var(--shadow); }
+  .pitch p { font-size: 16.5px; line-height: 1.62; color: var(--ink); margin-bottom: 10px; }
+  .pitch p:last-child { margin-bottom: 0; }
+  .pitch .lead-word { font-family: var(--mono); font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent); display: block; margin-bottom: 8px; }
+  .pitch strong { color: var(--ink); }
+
+  /* ---------- demo steps ---------- */
+  .steps { display: flex; flex-direction: column; gap: 14px; }
+  .step { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; box-shadow: var(--shadow); }
+  .step-top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .step-n { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #fff; background: var(--navy-2); width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; }
+  :root[data-theme="dark"] .step-n { background: var(--accent); color: #0A1524; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .step-n { background: var(--accent); color: #0A1524; } }
+  .step-title { font-weight: 650; font-size: 16px; color: var(--ink); }
+  .step-screen { font-family: var(--mono); font-size: 10.5px; letter-spacing: .4px; text-transform: uppercase; color: var(--ink-mute); margin-left: auto; background: var(--panel-2); border: 1px solid var(--line); padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
+  .step-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 22px; }
+  .step-grid .cell .lab { font-family: var(--mono); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--ink-mute); margin-bottom: 4px; }
+  .step-grid .cell p { font-size: 13.5px; margin: 0; color: var(--ink-2); }
+  .step .proves { grid-column: 1 / -1; margin-top: 2px; padding-top: 12px; border-top: 1px dashed var(--line-2); font-size: 13.5px; color: var(--ink); }
+  .step .proves .lab { color: var(--accent); }
+  .step .proves b { font-weight: 650; }
+
+  /* ---------- feature grid ---------- */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; box-shadow: var(--shadow); }
+  .card h3 { margin: 0 0 7px; font-size: 15.5px; font-weight: 650; color: var(--ink); display: flex; align-items: center; gap: 9px; }
+  .card h3 .tag { font-family: var(--mono); font-size: 9.5px; letter-spacing: .5px; text-transform: uppercase; color: var(--accent); background: var(--accent-wash); border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); border-radius: 5px; padding: 2px 6px; }
+  .card p { font-size: 13.5px; color: var(--ink-2); margin: 0; }
+
+  /* ---------- pipeline ---------- */
+  .pipe { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+  .stage { flex: 1 1 118px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 13px; position: relative; box-shadow: var(--shadow); }
+  .stage .sn { font-family: var(--mono); font-size: 10px; color: var(--accent); font-weight: 700; }
+  .stage .st { font-size: 13px; font-weight: 640; color: var(--ink); margin-top: 3px; line-height: 1.25; }
+  .stage .sd { font-size: 11.5px; color: var(--ink-mute); margin-top: 4px; line-height: 1.35; }
+  .stack-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+  .stack-item { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; font-size: 12.5px; color: var(--ink-2); }
+  .stack-item b { color: var(--ink); font-weight: 640; }
+  .stack-item .role { font-family: var(--mono); font-size: 9.5px; letter-spacing: .5px; text-transform: uppercase; color: var(--ink-mute); display: block; margin-bottom: 2px; }
+
+  /* ---------- customization ---------- */
+  .levels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 22px; }
+  .level { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; box-shadow: var(--shadow); display: flex; flex-direction: column; }
+  .level .badge { font-family: var(--mono); font-size: 10px; letter-spacing: .6px; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; align-self: flex-start; margin-bottom: 10px; }
+  .level.l1 .badge { color: var(--good); background: var(--good-bg); border: 1px solid color-mix(in srgb, var(--good) 30%, transparent); }
+  .level.l2 .badge { color: var(--warn); background: var(--warn-bg); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); }
+  .level.l3 .badge { color: var(--accent); background: var(--accent-wash); border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent); }
+  .level h3 { margin: 0 0 6px; font-size: 15px; font-weight: 650; }
+  .level .eff { font-family: var(--mono); font-size: 11px; color: var(--ink-mute); margin-bottom: 8px; }
+  .level p { font-size: 13px; color: var(--ink-2); margin: 0; }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; min-width: 660px; background: var(--panel); font-size: 13px; }
+  thead th { text-align: left; font-family: var(--mono); font-size: 10px; letter-spacing: .8px; text-transform: uppercase; color: var(--ink-mute); background: var(--panel-2); padding: 11px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  tbody td { padding: 11px 14px; border-bottom: 1px solid var(--line); color: var(--ink-2); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody td:first-child { color: var(--ink); font-weight: 620; white-space: nowrap; }
+  .reuse { font-family: var(--mono); font-size: 11px; color: var(--good); }
+
+  /* ---------- Q&A ---------- */
+  .persona-key { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+  .pk { font-family: var(--mono); font-size: 11px; letter-spacing: .3px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--ink-2); background: var(--panel); }
+  .pk b { color: var(--ink); }
+  .qa { display: flex; flex-direction: column; gap: 12px; }
+  .q { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow); }
+  .q .who { display: inline-block; font-family: var(--mono); font-size: 10px; letter-spacing: .5px; text-transform: uppercase; padding: 2px 7px; border-radius: 5px; margin-bottom: 9px; border: 1px solid var(--line-2); color: var(--ink-mute); }
+  .q .who.tech { color: var(--accent); background: var(--accent-wash); border-color: color-mix(in srgb, var(--accent) 24%, transparent); }
+  .q .who.growth { color: var(--good); background: var(--good-bg); border-color: color-mix(in srgb, var(--good) 26%, transparent); }
+  .q .who.solutions { color: var(--warn); background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 26%, transparent); }
+  .q .who.delivery { color: var(--ink-2); background: var(--panel-2); }
+  .q .ask { font-weight: 650; font-size: 15px; color: var(--ink); margin: 0 0 8px; }
+  .q .ans { font-size: 13.5px; color: var(--ink-2); margin: 0; }
+  .q .ans strong { color: var(--ink); font-weight: 640; }
+
+  /* ---------- risks ---------- */
+  .risk { background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--warn); border-radius: 12px; padding: 8px 20px; box-shadow: var(--shadow); }
+  .risk ul { list-style: none; margin: 0; padding: 0; }
+  .risk li { padding: 14px 0; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 130px 1fr; gap: 16px; align-items: start; }
+  .risk li:last-child { border-bottom: none; }
+  .risk .rname { font-weight: 640; font-size: 13.5px; color: var(--ink); }
+  .risk .rsev { font-family: var(--mono); font-size: 9.5px; letter-spacing: .5px; text-transform: uppercase; padding: 2px 6px; border-radius: 5px; display: inline-block; margin-top: 5px; }
+  .rsev.hi { color: var(--critical); background: var(--critical-bg); }
+  .rsev.med { color: var(--warn); background: var(--warn-bg); }
+  .rsev.lo { color: var(--ink-mute); background: var(--panel-2); }
+  .risk .rdesc { font-size: 13.5px; color: var(--ink-2); }
+  .risk .rdesc b { color: var(--ink); font-weight: 620; }
+
+  /* ---------- checklist ---------- */
+  .checklist { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .checklist .col h3 { font-family: var(--mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); margin: 0 0 12px; }
+  .checklist ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+  .checklist li { display: flex; gap: 10px; font-size: 13.5px; color: var(--ink-2); align-items: baseline; }
+  .checklist li::before { content: "▢"; color: var(--accent); font-size: 13px; flex-shrink: 0; }
+  .checklist li b { color: var(--ink); font-weight: 620; }
+
+  .fallback { margin-top: 20px; background: var(--critical-bg); border: 1px solid color-mix(in srgb, var(--critical) 28%, transparent); border-radius: 12px; padding: 16px 20px; }
+  .fallback h3 { margin: 0 0 8px; font-size: 13.5px; color: var(--critical); font-family: var(--mono); letter-spacing: .5px; text-transform: uppercase; }
+  .fallback p { font-size: 13.5px; color: var(--ink-2); margin: 0; }
+
+  footer { border-top: 1px solid var(--line); margin-top: 40px; padding: 22px 0 8px; color: var(--ink-mute); font-size: 12px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: space-between; }
+  footer .mono { font-family: var(--mono); font-size: 11px; }
+
+  @media (max-width: 720px) {
+    .step-grid, .grid2, .levels, .checklist { grid-template-columns: 1fr; }
+    .risk li { grid-template-columns: 1fr; gap: 4px; }
+    .sec-head .sub { display: none; }
+    .sec-head { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap">
+    <span class="brandmark"><span class="dot"></span>NextGen Spark · Investigation Intelligence</span>
+    <nav class="topnav" aria-label="Sections">
+      <a href="#pitch">Pitch</a>
+      <a href="#demo">Demo script</a>
+      <a href="#moat">Why defensible</a>
+      <a href="#arch">Under the hood</a>
+      <a href="#custom">Customization</a>
+      <a href="#qa">Q&amp;A bank</a>
+      <a href="#risks">Honest status</a>
+      <a href="#checklist">Demo-day</a>
+    </nav>
+  </div>
+</div>
+
+<header class="mast">
+  <div class="wrap">
+    <div class="eyebrow">Executive Demo Playbook · Internal</div>
+    <h1>Turn a pile of documents into a defensible investigation.</h1>
+    <p class="lede">A run-of-show for the leadership demo — what to click, what to say, what each moment proves, and crisp answers to the questions the room will ask. Built from the actual codebase, not the pitch deck.</p>
+    <div class="chips">
+      <span class="chip">Audience: <b>Co-founder · CGO · CSO · Manager</b></span>
+      <span class="chip">Product: <b>Agentic Document Intelligence</b></span>
+      <span class="chip">Status: <b>Working end-to-end</b></span>
+      <span class="chip">Stack: <b>React · FastAPI · Supabase · LandingAI · LiteLLM</b></span>
+    </div>
+    <p class="usehow"><span class="k">How to use</span> Keep this open on a second screen. Sections 1–4 drive the live demo; 5 answers "where else can we sell this"; 6–8 keep you honest and un-ambushable.</p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- 0 / PITCH -->
+  <section id="pitch">
+    <div class="sec-head">
+      <span class="num">01</span>
+      <h2>The 90-second pitch</h2>
+      <span class="sub">Open with this before you touch the screen.</span>
+    </div>
+    <div class="pitch">
+      <span class="lead-word">Say it like this</span>
+      <p>"Investigators drown in documents — invoices, contracts, bank statements, emails. The evidence of wrongdoing is <strong>across</strong> those documents, not inside any one of them. Today that cross-referencing is done by hand, and it doesn't scale."</p>
+      <p>"Our platform ingests the whole corpus, extracts the structured facts from every page, and then <strong>reasons across the case</strong> — resolving who's who, mapping the money and relationships, rebuilding the timeline, and surfacing the anomalies a human would need weeks to find."</p>
+      <p>"The part that makes it usable in a real investigation: <strong>every AI claim is traceable</strong>. Click any finding and it highlights the exact spot in the source PDF. Nothing is a black box, an investigator confirms every finding before it reaches a report, and the whole thing is domain-configurable — the same engine handles procurement fraud today and insurance claims tomorrow, with no code change."</p>
+    </div>
+  </section>
+
+  <!-- 1 / DEMO SCRIPT -->
+  <section id="demo">
+    <div class="sec-head">
+      <span class="num">02</span>
+      <h2>Live demo — run of show</h2>
+      <span class="sub">Numbered in the exact order to click. ~10–12 minutes.</span>
+    </div>
+
+    <div class="steps">
+
+      <div class="step">
+        <div class="step-top"><span class="step-n">1</span><span class="step-title">Land on the Cases dashboard</span><span class="step-screen">Cases</span></div>
+        <div class="step-grid">
+          <div class="cell"><div class="lab">Do</div><p>Log in (Supabase auth). Land on the case list — stat cards up top (open cases, findings pending review), the case table below with type, lead investigator, doc count, risk score.</p></div>
+          <div class="cell"><div class="lab">Say</div><p>"This is the investigator's home. Every case is a workspace. Notice 'findings pending review' — the system never auto-concludes; a human signs off."</p></div>
+          <div class="proves"><span class="lab">Proves →</span> <b>It's a real product with real state</b>, not a notebook. Multi-case, multi-user, authenticated.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-top"><span class="step-n">2</span><span class="step-title">Create a case &amp; pick a type</span><span class="step-screen">New Case</span></div>
+        <div class="step-grid">
+          <div class="cell"><div class="lab">Do</div><p>Create a case. Choose a case type (Procurement Fraud, Financial Crime, Corruption, Conflict of Interest, Communication Intelligence, Payment Tracing, Audit, General). The extraction schema auto-loads for that type.</p></div>
+          <div class="cell"><div class="lab">Say</div><p>"The case type decides what the AI looks for. Each one ships with a preset extraction schema — the specific fields that matter for that kind of investigation."</p></div>
+          <div class="proves"><span class="lab">Proves →</span> <b>The platform is opinionated per domain</b> but not hard-coded — foreshadows the customization story in section 5.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-top"><span class="step-n">3</span><span class="step-title">Upload documents &amp; extract</span><span class="step-screen">Workspace · Left panel</span></div>
+        <div class="step-grid">
+          <div class="cell"><div class="lab">Do</div><p>Drag in a few documents. Hit Extract (or bulk-extract several). Watch the status dots move Uploaded → Queued → Processing → Done as the pipeline runs in the background.</p></div>
+          <div class="cell"><div class="lab">Say</div><p>"LandingAI's document engine parses each page into structured markdown, then pulls our schema fields out of messy real-world layouts — scanned invoices, tables, letterheads."</p></div>
+          <div class="proves"><span class="lab">Proves →</span> <b>Ingestion is hands-off and handles real documents</b>, not clean CSVs. Async pipeline, live status.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-top"><span class="step-n">4</span><span class="step-title">Open a document — click a field, watch the PDF jump</span><span class="step-screen">Workspace · Viewer</span></div>
+        <div class="step-grid">
+          <div class="cell"><div class="lab">Do</div><p>Select a document. The viewer shows the extracted fields beside the source PDF. <b>Click an extracted field</b> — the viewer jumps to that page and highlights exactly where the value came from.</p></div>
+          <div class="cell"><div class="lab">Say</div><p>"This is visual grounding. The AI didn't just tell you the vendor is 'Apex Consulting' — it shows you the pixel on page 2 where it read that. That traceability is what makes it admissible."</p></div>
+          <div class="proves"><span class="lab">Proves →</span> <b>The trust story.</b> This is the moment to slow down — it's the single most convincing thing in the demo.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-top"><span class="step-n">5</span><span class="step-title">Ask the Case Assistant a question</span><span class="step-screen">Workspace · Right panel</span></div>
+        <div class="step-grid">
+          <div class="cell"><div class="lab">Do</div><p>In the assistant, ask something that spans documents — "Which payments went to accounts shared by more than one vendor?" The answer comes back with inline citations; <b>click a citation</b> and it jumps to that spot in the PDF.</p></div>
+          <div class="cell"><div class="lab">Say</div><p>"This is retrieval-grounded Q&amp;A over the case. It only answers from the actual evidence, and every sentence is cited back to a source. If it's not in the documents, it says so."</p></div>
+          <div class="proves"><span class="lab">Proves →</span> <b>Natural-language access to the whole corpus</b> — with the same no-black-box discipline as the findings.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-top"><span class="step-n">6</span><span class="step-title">Run analysis → review Findings</span><span class="step-screen">Findings tab</span></div>
+        <div class="step-grid">
+          <div class="cell"><div class="lab">Do</div><p>Trigger Run Analysis. Open the Findings tab: each finding has a severity (high/med/low), a confidence, the supporting documents, and a source tag (AI reasoning vs. rule). <b>Confirm one, dismiss another</b> with a reason.</p></div>
+          <div class="cell"><div class="lab">Say</div><p>"The AI reasons across every document at once — a vendor formed right before it won a tender, circular payments, a director shared with the approving officer. But it proposes; the investigator disposes. Nothing is a 'conclusion' until a human confirms it."</p></div>
+          <div class="proves"><span class="lab">Proves →</span> <b>Human-in-the-loop + defensibility.</b> Severity, confidence, evidence links, and an audit trail on every decision.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-top"><span class="step-n">7</span><span class="step-title">Entity Graph &amp; Timeline</span><span class="step-screen">Entity Graph · Timeline tabs</span></div>
+        <div class="step-grid">
+          <div class="cell"><div class="lab">Do</div><p>Flip to the Entity Graph (people, companies, accounts and how they connect across the case) and the Timeline (events reconstructed and ordered from dates found across all documents).</p></div>
+          <div class="cell"><div class="lab">Say</div><p>"The same facts, two lenses. The graph answers 'who is connected to whom'; the timeline answers 'what happened in what order' — both stitched from evidence that lived in separate files."</p></div>
+          <div class="proves"><span class="lab">Proves →</span> <b>Case-wide synthesis</b> — the thing no single-document tool (or ChatGPT-on-one-PDF) can do.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-top"><span class="step-n">8</span><span class="step-title">Generate the report</span><span class="step-screen">Report tab</span></div>
+        <div class="step-grid">
+          <div class="cell"><div class="lab">Do</div><p>Generate the investigation report. It's assembled <b>only from confirmed findings</b> — Executive Summary, Background, Key Findings, Risk Assessment, Recommendations — branded and export-ready.</p></div>
+          <div class="cell"><div class="lab">Say</div><p>"Weeks of manual cross-referencing become a reviewed, sourced report. And because it's built from confirmed findings only, nothing unverified ever makes it into the record."</p></div>
+          <div class="proves"><span class="lab">Proves →</span> <b>The payoff / ROI moment.</b> Close the demo here — from raw documents to a defensible deliverable.</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- 2 / MOAT -->
+  <section id="moat">
+    <div class="sec-head">
+      <span class="num">03</span>
+      <h2>What makes it defensible</h2>
+      <span class="sub">The five things a generic "AI + PDFs" demo can't say.</span>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h3>Visual grounding <span class="tag">trust</span></h3>
+        <p>Every extracted value and every chat citation carries the source page and bounding box. Click it, see it highlighted on the original document. For legal and forensic work, "show me where" is non-negotiable — most tools can't.</p>
+      </div>
+      <div class="card">
+        <h3>AI-first, rules as a safety net <span class="tag">reliability</span></h3>
+        <p>LLM cross-document reasoning is the primary engine. When the model is unavailable, deterministic, unit-tested rules (duplicate invoices, shared bank accounts, split payments, budget-ceiling proximity) take over. The system degrades gracefully instead of going dark.</p>
+      </div>
+      <div class="card">
+        <h3>Anti-hallucination guardrails <span class="tag">integrity</span></h3>
+        <p>Any AI output that cites a document, entity, or fact we didn't actually send is dropped before it's ever stored. The model can connect the evidence we have — it cannot invent evidence we don't.</p>
+      </div>
+      <div class="card">
+        <h3>Human-in-the-loop + audit <span class="tag">governance</span></h3>
+        <p>Findings stay "pending" until an investigator confirms or dismisses them with a reason. Reports use confirmed findings only. Every step — extraction, analysis, review — is written to an audit log.</p>
+      </div>
+      <div class="card">
+        <h3>Domain-configurable extraction <span class="tag">reach</span></h3>
+        <p>What the system pulls from each document is defined by a schema you edit in the UI — a field name plus a plain-English description. Add "beneficiary_iban" or "policy_number" and the engine extracts it. No redeploy.</p>
+      </div>
+      <div class="card">
+        <h3>Provider-swappable AI core <span class="tag">flexibility</span></h3>
+        <p>All model access runs through one router. Reasoning, classification, and embeddings each point at a configurable model string — swap Groq for an on-prem or client-hosted model without touching the pipeline. Matters for regulated buyers.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 / ARCHITECTURE -->
+  <section id="arch">
+    <div class="sec-head">
+      <span class="num">04</span>
+      <h2>Under the hood</h2>
+      <span class="sub">Enough to answer the co-founder without opening an IDE.</span>
+    </div>
+
+    <div class="eyebrow" style="margin-bottom:10px;">The stack</div>
+    <div class="stack-row">
+      <div class="stack-item"><span class="role">Frontend</span><b>React + TypeScript</b> · Vite · Tailwind</div>
+      <div class="stack-item"><span class="role">API</span><b>FastAPI</b> · async background pipeline</div>
+      <div class="stack-item"><span class="role">Data + storage</span><b>Supabase</b> · Postgres · pgvector · Auth</div>
+      <div class="stack-item"><span class="role">Extraction</span><b>LandingAI ADE</b> · parse + schema extract</div>
+      <div class="stack-item"><span class="role">AI router</span><b>LiteLLM</b> → Groq Llama-3.3-70B · Gemini embeddings</div>
+      <div class="stack-item"><span class="role">Deploy</span><b>Docker</b> · CI images · Railway + Vercel</div>
+    </div>
+
+    <div class="eyebrow" style="margin:22px 0 10px;">The pipeline — one document in, a whole case understood</div>
+    <div class="pipe">
+      <div class="stage"><div class="sn">01</div><div class="st">Classify</div><div class="sd">Identify the document type.</div></div>
+      <div class="stage"><div class="sn">02</div><div class="st">Extract</div><div class="sd">Parse pages, pull schema fields, index for search.</div></div>
+      <div class="stage"><div class="sn">03</div><div class="st">Resolve entities</div><div class="sd">Dedupe people, firms, accounts across docs.</div></div>
+      <div class="stage"><div class="sn">04</div><div class="st">Relationships</div><div class="sd">Map how entities connect.</div></div>
+      <div class="stage"><div class="sn">05</div><div class="st">Timeline</div><div class="sd">Order events from dates found everywhere.</div></div>
+      <div class="stage"><div class="sn">06</div><div class="st">Findings</div><div class="sd">Cross-document anomaly reasoning.</div></div>
+      <div class="stage"><div class="sn">07</div><div class="st">Summarise</div><div class="sd">Case-level risk &amp; narrative.</div></div>
+    </div>
+    <p style="margin-top:16px; font-size:13.5px; color:var(--ink-2);">Steps 1–2 run per document the moment it's uploaded. Steps 3–7 run case-wide on "Run Analysis," reasoning over every extraction at once — that's the part ChatGPT-on-a-PDF fundamentally cannot do, because it has no concept of the case.</p>
+  </section>
+
+  <!-- 4 / CUSTOMIZATION -->
+  <section id="custom">
+    <div class="sec-head">
+      <span class="num">05</span>
+      <h2>Customizing for other use cases</h2>
+      <span class="sub">The horizontal play — the same engine, new verticals.</span>
+    </div>
+    <p>The instinct in the room will be "this is a fraud tool." It isn't — it's a <strong>cross-document reasoning engine</strong> that currently ships a fraud-investigation configuration. Everything except the extraction schema and a handful of domain rules is generic. Here's how much effort each level of customization actually takes.</p>
+
+    <div class="levels">
+      <div class="level l1">
+        <span class="badge">Level 1 · no code</span>
+        <h3>Reconfigure the schema</h3>
+        <div class="eff">Effort: minutes, in the UI</div>
+        <p>Define a new case type and its extraction fields — each a name plus a plain-English description of what to pull. The entire pipeline (extract → entities → relationships → timeline → findings → chat → report) works unchanged. This is the lever to demo live.</p>
+      </div>
+      <div class="level l2">
+        <span class="badge">Level 2 · prompt tuning</span>
+        <h3>Retarget the reasoning</h3>
+        <div class="eff">Effort: hours</div>
+        <p>Adjust the analysis prompts so the AI hunts for a domain's specific red flags — inflated claims, coverage gaps, coding mismatches — and add document classes. No architectural change; it's editing the questions the engine asks.</p>
+      </div>
+      <div class="level l3">
+        <span class="badge">Level 3 · engineering</span>
+        <h3>Add rules &amp; integrations</h3>
+        <div class="eff">Effort: days+</div>
+        <p>Codify domain-specific deterministic checks that must survive audit, wire in external data (sanctions lists, registries, claims systems), and add bespoke report/export templates for the client's process.</p>
+      </div>
+    </div>
+
+    <div class="eyebrow" style="margin-bottom:10px;">Adjacent verticals — mostly reuse</div>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Vertical</th><th>What we'd extract &amp; look for</th><th>What's reused</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Insurance claims</td><td>Claim, policy, payout fields; duplicate / inflated claims; fraud rings via shared bank &amp; address</td><td class="reuse">~90% · schema only</td></tr>
+          <tr><td>Legal &amp; eDiscovery</td><td>Parties, clauses, dates; contradictions between documents; reconstructed timelines of who-knew-what-when</td><td class="reuse">~85% · schema + prompts</td></tr>
+          <tr><td>KYC / AML compliance</td><td>Beneficial owners, counterparties, account webs; sanctions/PEP linkage; layering patterns</td><td class="reuse">~80% · + list integration</td></tr>
+          <tr><td>Healthcare claims / records</td><td>Diagnoses, procedures, dates; coding vs. documentation mismatch; utilization outliers</td><td class="reuse">~85% · schema + prompts</td></tr>
+          <tr><td>Tax &amp; financial audit</td><td>Ledgers, invoices, approvals; ghost vendors, reconciliation gaps, threshold splitting</td><td class="reuse">~90% · schema only</td></tr>
+          <tr><td>HR / internal investigations</td><td>Communications, participants, intent signals; policy breaches; escalation timelines</td><td class="reuse">~85% · already a case type</td></tr>
+          <tr><td>Supply-chain / vendor risk</td><td>Suppliers, ownership, contract terms; concentration risk, related-party awards</td><td class="reuse">~85% · schema + prompts</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:14px; font-size:13px; color:var(--ink-mute);">Reuse % is a directional estimate of shared platform vs. new work — a talking-point, not a quote. The point: every one of these is a schema-and-prompt exercise on a platform that already exists, not a new build.</p>
+  </section>
+
+  <!-- 5 / Q&A -->
+  <section id="qa">
+    <div class="sec-head">
+      <span class="num">06</span>
+      <h2>Executive Q&amp;A bank</h2>
+      <span class="sub">The questions they'll actually ask — with honest answers.</span>
+    </div>
+    <div class="persona-key">
+      <span class="pk"><b>TECH</b> — Co-founder</span>
+      <span class="pk"><b>GROWTH</b> — Chief Growth Officer</span>
+      <span class="pk"><b>SOLUTIONS</b> — Chief Solutions Officer</span>
+      <span class="pk"><b>DELIVERY</b> — Manager</span>
+    </div>
+
+    <div class="qa">
+      <div class="q">
+        <span class="who tech">Tech</span>
+        <p class="ask">"How do you stop it from hallucinating findings? That's a lawsuit in this domain."</p>
+        <p class="ans">Two layers. <strong>Grounding:</strong> any AI output citing a document, entity, or fact we didn't send is discarded before storage — the model can only connect evidence we actually have. <strong>Human gate:</strong> findings are proposals, not conclusions; nothing reaches a report until an investigator confirms it, with every extraction traceable to a highlighted spot in the source. We treat the AI as a very fast junior analyst whose work is always checked.</p>
+      </div>
+
+      <div class="q">
+        <span class="who tech">Tech</span>
+        <p class="ask">"Why not just give an investigator ChatGPT and a folder of PDFs?"</p>
+        <p class="ans">A chat model reasons over what you paste into one window — it has <strong>no concept of the case</strong>. It can't resolve that "A. Zulkifli" in one file and "Ahmad Zulkifli bin Hassan" in another are one person, can't build a graph or timeline across a hundred documents, can't show you the pixel a claim came from, and keeps no audit trail. Our value is precisely the case-wide layer on top of extraction — plus the governance a regulated buyer requires.</p>
+      </div>
+
+      <div class="q">
+        <span class="who tech">Tech</span>
+        <p class="ask">"What's real today versus staged for this demo?"</p>
+        <p class="ans"><strong>Real and working:</strong> auth, upload, extraction, the full 7-stage pipeline, visual grounding, RAG chat, findings review, entity graph, timeline, and report generation — end to end. <strong>Honest caveats:</strong> it runs on developer infrastructure and free-tier AI quotas, so it's a working system, not yet hardened for paying customers. Section 7 lists exactly what's left — I'd rather you hear it from me than find it later.</p>
+      </div>
+
+      <div class="q">
+        <span class="who growth">Growth</span>
+        <p class="ask">"Who buys this, and how big is the market beyond fraud investigators?"</p>
+        <p class="ans">Anyone whose work is "read a stack of documents and find what connects them": corporate investigations, insurers, banks (KYC/AML), audit &amp; forensic accounting firms, legal &amp; eDiscovery, compliance teams, regulators. The fraud config is our <strong>wedge</strong>, not our ceiling — section 5 shows most adjacent verticals are a schema-and-prompt exercise on the platform we've already built, which is what makes the expansion story credible.</p>
+      </div>
+
+      <div class="q">
+        <span class="who growth">Growth</span>
+        <p class="ask">"What's the demo-able wow that closes a prospect?"</p>
+        <p class="ans">Clicking a finding and watching the source PDF jump and highlight the exact evidence. It reframes AI from "trust me" to "check me" in one gesture — and it's the thing competitors relying on raw LLM output structurally can't do. Lead every prospect demo with it (step 4), not with the report.</p>
+      </div>
+
+      <div class="q">
+        <span class="who solutions">Solutions</span>
+        <p class="ask">"How fast can we stand this up for a specific client's use case?"</p>
+        <p class="ans">A new document type with its own extraction fields is a <strong>same-day, no-code</strong> change in the UI — the whole pipeline just works against it. Retargeting the AI's red-flag reasoning is hours of prompt work. Only truly bespoke deterministic rules, external-system integrations, or client-specific report formats are a multi-day engineering effort. So a credible pilot in a new vertical is weeks, not a rebuild.</p>
+      </div>
+
+      <div class="q">
+        <span class="who solutions">Solutions</span>
+        <p class="ask">"Data security — clients will have highly sensitive documents. Where does it go?"</p>
+        <p class="ans">Evidence sits in the client's storage; access is authenticated. The AI layer is <strong>provider-swappable through a single router</strong> — for a sensitive client we can point reasoning and embeddings at an on-prem or client-hosted model with no pipeline change. Being straight: today's config uses external AI providers and permissive dev settings, so tenant isolation and a security review are prerequisites before onboarding a real client (section 7). The architecture supports the lockdown; we haven't thrown the switch yet.</p>
+      </div>
+
+      <div class="q">
+        <span class="who delivery">Delivery</span>
+        <p class="ask">"What does it cost to run per case, and does it scale?"</p>
+        <p class="ans">Cost is dominated by document extraction and AI calls, both roughly linear in pages and documents — predictable and per-case attributable. It runs comfortably on free/low tiers today; production means paid extraction and AI quotas, sized per client. Scaling is straightforward: the pipeline already runs as async background work and the services are containerized, so we scale horizontally rather than re-architect.</p>
+      </div>
+
+      <div class="q">
+        <span class="who delivery">Delivery</span>
+        <p class="ask">"What are the biggest risks to a paid rollout, and what's the plan?"</p>
+        <p class="ans">Three, all tracked in section 7: <strong>(1)</strong> per-tenant access control before external users; <strong>(2)</strong> moving off free-tier extraction/AI quotas onto sized paid plans; <strong>(3)</strong> extraction accuracy validation on each client's real document set. None are architectural rewrites — they're a hardening sprint. I can put timeboxes against each after this meeting.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 / RISKS -->
+  <section id="risks">
+    <div class="sec-head">
+      <span class="num">07</span>
+      <h2>Honest status &amp; what's left</h2>
+      <span class="sub">Say this before they find it. Candor buys credibility.</span>
+    </div>
+    <div class="risk">
+      <ul>
+        <li>
+          <div><div class="rname">Per-tenant access control</div><span class="rsev hi">Blocker for external users</span></div>
+          <div class="rdesc">Login is enforced, but every authenticated user currently sees every case. <b>Row-level isolation per user/team is required before any real client touches it.</b> Straightforward to add on Supabase — just not done yet.</div>
+        </li>
+        <li>
+          <div><div class="rname">Free-tier AI &amp; extraction quotas</div><span class="rsev hi">Blocker for scale</span></div>
+          <div class="rdesc">Runs on free/low tiers of the document-extraction and language-model providers, which rate-limit and can stall large cases. <b>Production needs sized paid plans</b> — a budgeting decision, not an engineering one.</div>
+        </li>
+        <li>
+          <div><div class="rname">Rule findings suppressed when AI answers</div><span class="rsev med">Design tension</span></div>
+          <div class="rdesc">Current wiring is AI-first: the provable rule-based checks (duplicate invoice, shared bank account) only run when the AI returns nothing. <b>We likely want both to run and merge</b> so the deterministic, audit-safe findings always appear. Known; fixable.</div>
+        </li>
+        <li>
+          <div><div class="rname">Extraction accuracy varies by document</div><span class="rsev med">Needs validation</span></div>
+          <div class="rdesc">Accuracy depends on document quality (scans, unusual layouts). <b>Each new client needs a validation pass on their real documents</b> before we quote accuracy. Visual grounding makes errors easy to spot and correct — but a human still verifies.</div>
+        </li>
+        <li>
+          <div><div class="rname">Permissive dev configuration</div><span class="rsev lo">Housekeeping</span></div>
+          <div class="rdesc">Cross-origin access is wide open and secrets live in local config — <b>fine for a demo, tightened before deployment.</b> Standard pre-production checklist.</div>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 7 / CHECKLIST -->
+  <section id="checklist">
+    <div class="sec-head">
+      <span class="num">08</span>
+      <h2>Demo-day checklist</h2>
+      <span class="sub">Run this an hour before. Don't wing the live parts.</span>
+    </div>
+    <div class="checklist">
+      <div class="col">
+        <h3>Pre-flight</h3>
+        <ul>
+          <li><b>Seed a compelling case</b> in advance — 4–6 varied documents that actually trigger cross-document findings (shared account, duplicate invoice, a suspicious timeline). A boring case is a boring demo.</li>
+          <li><b>Pre-run the extraction and analysis</b> so findings, graph, and timeline are already populated — then re-run one piece live for effect.</li>
+          <li><b>Verify AI keys and quotas are live</b> today. Confirm at least one full analysis pass completes without hitting a rate limit.</li>
+          <li><b>Rehearse the field-click-to-PDF-highlight</b> (step 4) until it's smooth. It's the money shot.</li>
+          <li><b>Have the report pre-generated</b> in a second tab as a fallback in case live generation is slow.</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>Live-demo discipline</h3>
+        <ul>
+          <li><b>Lead with grounding, close with the report.</b> Wow early, ROI last.</li>
+          <li><b>Narrate the "why," not the UI.</b> They don't care about buttons; they care what each moment proves.</li>
+          <li><b>Volunteer the limitations</b> from section 7 before they probe — it makes every claim more believable.</li>
+          <li><b>Keep the corpus small on screen.</b> Enough to be impressive, few enough to stay legible.</li>
+          <li><b>Park deep-tech tangents.</b> "Great question — let me show one more thing, then go deep." Protect the arc.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="fallback">
+      <h3>If something breaks live</h3>
+      <p>Don't debug in front of the room. Switch to the pre-run case and pre-generated report, say "let me show you the completed version," and keep the narrative moving. The story survives a failed API call; a five-minute silence in front of the co-founder does not.</p>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Investigation Intelligence · Agentic Document Intelligence Platform</span>
+    <span class="mono">Prepared for leadership demo · derived from the live codebase</span>
+  </div>
+</footer>
+
+</body>
+</html>
