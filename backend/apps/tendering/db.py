@@ -574,12 +574,9 @@ def upsert_evidence_link(data: dict) -> dict | None:
     same as "no matches". Database errors now propagate and the caller reports them.
     """
     client = get_client()
-    # Normalise caller-side field names to match DB column names.
-    if "score" in data and "match_score" not in data:
-        data = {**data, "match_score": data.pop("score")}
     existing = (
         client.table("evidence_links")
-        .select("evidence_link_id, human_review_status")
+        .select("id, human_review_status")
         .eq("req_id", data["req_id"])
         .eq("doc_id", data["doc_id"])
         .limit(1)
@@ -589,13 +586,11 @@ def upsert_evidence_link(data: dict) -> dict | None:
     if existing:
         if existing[0].get("human_review_status") != "pending":
             return None
-        key_map = {"score": "match_score"}
-        refresh = {key_map.get(key, key): data[key]
-                   for key in ("score", "rationale", "matched_chunk_id") if key in data}
+        refresh = {key: data[key] for key in ("score", "rationale", "matched_chunk_id") if key in data}
         rows = (
             client.table("evidence_links")
             .update(refresh)
-            .eq("evidence_link_id", existing[0]["evidence_link_id"])
+            .eq("id", existing[0]["id"])
             .execute()
             .data
         )
