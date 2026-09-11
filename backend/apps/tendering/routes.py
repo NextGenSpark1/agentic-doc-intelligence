@@ -509,6 +509,23 @@ async def add_library_document(
     return library_doc
 
 
+@router.get("/library/{doc_id}/extraction")
+async def get_library_document_extraction(doc_id: str, user: dict = Depends(get_current_user)):
+    """Return ADE-extracted text for a library document (concatenated from vault chunks)."""
+    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    docs = await asyncio.to_thread(db.list_library_documents, org_id)
+    if not any(d["doc_id"] == doc_id for d in docs):
+        raise HTTPException(404, "Document not found")
+    supplier_doc = await asyncio.to_thread(db.get_supplier_document_by_library_doc, doc_id)
+    if not supplier_doc:
+        raise HTTPException(404, "No vault entry — extract the document first")
+    if supplier_doc.get("extraction_status") != "done":
+        raise HTTPException(404, "Extraction not complete")
+    chunks = await asyncio.to_thread(db.list_supplier_chunks, supplier_doc["supplier_document_id"])
+    text = "\n\n".join(c["text"] for c in chunks if c.get("text"))
+    return {"text": text, "chunk_count": len(chunks)}
+
+
 @router.post("/library/{doc_id}/extract", status_code=202)
 async def extract_library_document(
     doc_id: str,

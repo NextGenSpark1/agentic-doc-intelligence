@@ -711,3 +711,15 @@ def delete_supplier_chunks(supplier_document_id: str) -> None:
     get_client().table("supplier_document_chunks").delete().eq(
         "supplier_document_id", supplier_document_id
     ).execute()
+
+
+def list_supplier_chunks(supplier_document_id: str) -> list[dict]:
+    return (
+        get_client()
+        .table("supplier_document_chunks")
+        .select("chunk_id, text, page")
+        .eq("supplier_document_id", supplier_document_id)
+        .order("page", nullsfirst=True)
+        .execute()
+        .data
+    ) or []
