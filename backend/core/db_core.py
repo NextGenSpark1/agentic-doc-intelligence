@@ -9,12 +9,14 @@ loop unblocked without dragging in an async DB driver for the MVP.
 from __future__ import annotations
 
 import hashlib
-from functools import lru_cache
+import threading
 from typing import Any, Optional
 
 from supabase import Client, create_client
 
 from .config import get_settings
+
+_thread_local = threading.local()
 
 
 def _content_hash(*parts: object) -> str:
@@ -29,14 +31,18 @@ def _is_unique_violation(err: Exception) -> bool:
     return getattr(err, "code", None) == "23505" or "duplicate key" in str(err).lower()
 
 
-@lru_cache
 def get_client() -> Client:
-    s = get_settings()
-    if not s.supabase_url or not s.supabase_service_key:
-        raise RuntimeError(
-            "Supabase credentials missing. Set SUPABASE_URL and SUPABASE_SERVICE_KEY in .env."
-        )
-    return create_client(s.supabase_url, s.supabase_service_key)
+    # Each thread gets its own Supabase client so their HTTP/2 connection pools
+    # never interfere. A shared singleton causes RemoteProtocolError when the
+    # background analysis task and request handlers hit Supabase concurrently.
+    if not hasattr(_thread_local, "client"):
+        s = get_settings()
+        if not s.supabase_url or not s.supabase_service_key:
+            raise RuntimeError(
+                "Supabase credentials missing. Set SUPABASE_URL and SUPABASE_SERVICE_KEY in .env."
+            )
+        _thread_local.client = create_client(s.supabase_url, s.supabase_service_key)
+    return _thread_local.client
 
 
 # ----------------------------- Cases -----------------------------
