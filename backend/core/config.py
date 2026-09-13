@@ -33,12 +33,22 @@ class Settings(BaseSettings):
     mock_ade: bool = False
 
     # --- LLM routing (LiteLLM model strings). Swap freely; agents don't care. ---
+    #
+    # Currently using Gemini (via GEMINI_API_KEY). Switched away from Groq in Sept 2026 because
+    # all the Llama models we relied on (llama-3.1-8b-instant, llama-3.3-70b-versatile) were
+    # deprecated and their endpoints started returning 404. Groq free tier is still active but
+    # the available text-generation models changed. If switching back to Groq, use one of these
+    # LiteLLM strings (GROQ_API_KEY must be set):
+    #   "groq/openai/gpt-oss-20b"   — 30 RPM, 1 000 RPD free
+    #   "groq/openai/gpt-oss-120b"  — 30 RPM, 1 000 RPD free, more capable
+    #   "groq/qwen/qwen3.8-27b"     — 30 RPM, 1 000 RPD free
+    # Check the live list at console.groq.com/docs/rate-limits before switching.
     llm_reasoning_model: str = "gemini/gemini-2.5-flash"  # summaries, anomaly reasoning, chat
     llm_fast_model: str = "gemini/gemini-2.5-flash"  # classification, cheap calls
     llm_embedding_model: str = "gemini/gemini-embedding-001"  # RAG embeddings (Gemini)
     # Whole-case cross-document reasoning (entities/relationships/timeline/findings LLM pass).
     # Separate from the "reasoning" tier above so it can be tuned independently (bigger prompts,
-    # different model) even though both currently point at the same Groq model.
+    # different model) even though both currently point at the same model.
     llm_case_reasoning_model: str = "gemini/gemini-2.5-flash"
 
     # --- API Keys (LiteLLM reads these from os.environ) ---
