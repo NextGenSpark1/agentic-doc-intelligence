@@ -180,8 +180,12 @@ export function RequirementsTab({ requirements: initialRequirements }: { require
 
                 <div className="flex items-center gap-3 flex-shrink-0">
                   <div className="text-right hidden sm:block">
-                    <p className="text-xs text-text-mute">AI confidence</p>
-                    <p className="text-xs font-semibold text-text-mid">{req.confidence}%</p>
+                    <p className="text-xs text-text-mute">
+                      {req.source === 'rule' ? 'Rule-based' : 'AI confidence'}
+                    </p>
+                    <p className="text-xs font-semibold text-text-mid">
+                      {req.source === 'rule' ? '—' : `${req.confidence ?? 0}%`}
+                    </p>
                   </div>
                   {!isEditing && (
                     <button

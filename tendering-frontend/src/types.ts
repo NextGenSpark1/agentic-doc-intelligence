@@ -134,8 +134,22 @@ export interface Requirement {
   clause?: string;
   mandatory?: boolean;
   confidence?: number;
+  source?: 'rule' | 'llm' | 'manual';
   evidence_doc_ids?: string[];
   matched_doc_ids?: string[];
+}
+
+export interface EvidenceLink {
+  id: string;
+  workspace_id: string;
+  req_id: string;
+  doc_id: string;
+  score: number;
+  rationale?: string;
+  human_review_status: 'pending' | 'confirmed' | 'dismissed';
+  matched_chunk_id?: string;
+  source?: string;
+  created_at?: string;
 }
 
 export interface BidDecisionReport {

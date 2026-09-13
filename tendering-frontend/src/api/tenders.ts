@@ -7,6 +7,7 @@ import type {
   LibraryDocument,
   DashboardStats,
   OrgMember,
+  EvidenceLink,
 } from '../types';
 
 const api = axios.create({ baseURL: import.meta.env.VITE_API_URL });
@@ -511,6 +512,12 @@ export const getDashboardStats = (): Promise<DashboardStats> =>
 
 export const getLibraryDocuments = (): Promise<LibraryDocument[]> =>
   withMockFallback(() => api.get<LibraryDocument[]>('/tendering/library').then((response) => response.data), MOCK_LIBRARY);
+
+export const getEvidenceLinks = (workspaceId: string): Promise<EvidenceLink[]> =>
+  api.get<EvidenceLink[]>(`/tendering/workspaces/${workspaceId}/evidence-links`).then((response) => response.data);
+
+export const reviewEvidenceLink = (linkId: string, status: 'confirmed' | 'dismissed'): Promise<void> =>
+  api.patch(`/tendering/evidence-links/${linkId}`, { status }).then(() => undefined);
 
 export const createWorkspace = (data: {
   title: string;

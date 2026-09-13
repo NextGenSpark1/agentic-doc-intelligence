@@ -1,7 +1,7 @@
 import { useState, type ReactElement } from 'react';
-import { CheckCircle2, XCircle, AlertCircle, Circle, BarChart3 } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertCircle, Circle, BarChart3, Check, X } from 'lucide-react';
 import { RequirementCategoryBadge } from '../Badge';
-import type { Requirement, RequirementStatus, LibraryDocument } from '../../types';
+import type { Requirement, RequirementStatus, LibraryDocument, EvidenceLink } from '../../types';
 
 const STATUS_CONFIG: Record<RequirementStatus, { icon: ReactElement; label: string; bar: string }> = {
   met: {
@@ -66,12 +66,24 @@ const SUMMARY_CARDS: {
 export function ComplianceMatrixTab({
   requirements,
   libraryDocs = [],
+  evidenceLinks = [],
+  onReviewLink,
 }: {
   requirements: Requirement[];
   libraryDocs?: LibraryDocument[];
+  evidenceLinks?: EvidenceLink[];
+  onReviewLink?: (linkId: string, status: 'confirmed' | 'dismissed') => Promise<void>;
 }) {
   const libraryDocMap = Object.fromEntries(libraryDocs.map((doc) => [doc.doc_id, doc.title]));
   const [statusFilter, setStatusFilter] = useState<RequirementStatus | 'all'>('all');
+  const [reviewing, setReviewing] = useState<string | null>(null);
+
+  // Group evidence links by req_id
+  const evidenceByReq: Record<string, EvidenceLink[]> = {};
+  for (const link of evidenceLinks) {
+    if (!evidenceByReq[link.req_id]) evidenceByReq[link.req_id] = [];
+    evidenceByReq[link.req_id].push(link);
+  }
 
   const counts = {
     met: requirements.filter((requirement) => requirement.status === 'met').length,
@@ -82,6 +94,16 @@ export function ComplianceMatrixTab({
 
   const filtered =
     statusFilter === 'all' ? requirements : requirements.filter((requirement) => requirement.status === statusFilter);
+
+  async function handleReview(linkId: string, status: 'confirmed' | 'dismissed') {
+    if (!onReviewLink) return;
+    setReviewing(linkId);
+    try {
+      await onReviewLink(linkId, status);
+    } finally {
+      setReviewing(null);
+    }
+  }
 
   if (requirements.length === 0) {
     return (
@@ -123,22 +145,24 @@ export function ComplianceMatrixTab({
               <tr className="bg-panel-2 border-b border-border">
                 <th className="text-left text-[11px] font-semibold text-text-mute uppercase tracking-wide py-3 pl-5 pr-3 w-8">#</th>
                 <th className="text-left text-[11px] font-semibold text-text-mute uppercase tracking-wide py-3 px-3">Requirement</th>
-                <th className="text-left text-[11px] font-semibold text-text-mute uppercase tracking-wide py-3 px-3 w-36">Category</th>
+                <th className="text-left text-[11px] font-semibold text-text-mute uppercase tracking-wide py-3 px-3 w-32">Category</th>
                 <th className="text-left text-[11px] font-semibold text-text-mute uppercase tracking-wide py-3 px-3 w-24">Mandatory</th>
                 <th className="text-left text-[11px] font-semibold text-text-mute uppercase tracking-wide py-3 px-3 w-28">Status</th>
-                <th className="text-left text-[11px] font-semibold text-text-mute uppercase tracking-wide py-3 pl-3 pr-5 w-52">Covered By</th>
+                <th className="text-left text-[11px] font-semibold text-text-mute uppercase tracking-wide py-3 pl-3 pr-5">Evidence</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.map((req, index) => {
                 const { icon, label } = STATUS_CONFIG[req.status];
                 const barColour = STATUS_CONFIG[req.status].bar;
-                const coveredBy = req.matched_doc_ids ?? [];
+                const reqLinks = evidenceByReq[req.req_id] ?? [];
+                const confirmedLinks = reqLinks.filter((link) => link.human_review_status === 'confirmed');
+                const pendingLinks = reqLinks.filter((link) => link.human_review_status === 'pending');
 
                 return (
-                  <tr key={req.req_id} className="group hover:bg-panel-2 transition-colors">
-                    {/* Left accent bar via first cell border */}
-                    <td className={`pl-5 pr-3 py-4 align-top border-l-2 ${
+                  <tr key={req.req_id} className="group hover:bg-panel-2 transition-colors align-top">
+                    {/* Left accent bar */}
+                    <td className={`pl-5 pr-3 py-4 border-l-2 ${
                       req.status === 'met' ? 'border-l-green' :
                       req.status === 'partial' ? 'border-l-amber' :
                       req.status === 'gap' ? 'border-l-red' :
@@ -148,7 +172,7 @@ export function ComplianceMatrixTab({
                     </td>
 
                     {/* Requirement description */}
-                    <td className="px-3 py-4 align-top">
+                    <td className="px-3 py-4">
                       <p className="text-xs text-text leading-relaxed">{req.description}</p>
                       {req.notes && (
                         <p className="text-[11px] text-text-mute mt-1 leading-relaxed italic">{req.notes}</p>
@@ -156,55 +180,94 @@ export function ComplianceMatrixTab({
                     </td>
 
                     {/* Category */}
-                    <td className="px-3 py-4 align-top">
+                    <td className="px-3 py-4">
                       <RequirementCategoryBadge category={req.category} />
                     </td>
 
                     {/* Mandatory */}
-                    <td className="px-3 py-4 align-top">
+                    <td className="px-3 py-4">
                       {req.mandatory ? (
-                        <span className="text-[11px] px-2 py-0.5 bg-red-bg text-red rounded font-medium">
-                          Required
-                        </span>
+                        <span className="text-[11px] px-2 py-0.5 bg-red-bg text-red rounded font-medium">Required</span>
                       ) : (
                         <span className="text-[11px] text-text-mute">Optional</span>
                       )}
                     </td>
 
                     {/* Status */}
-                    <td className="px-3 py-4 align-top">
+                    <td className="px-3 py-4">
                       <div className="flex items-center gap-1.5">
                         {icon}
                         <span className="text-[11px] text-text-mid font-medium">{label}</span>
                       </div>
-                      {/* Mini progress bar */}
                       <div className="mt-1.5 w-16 h-1 bg-canvas-deep rounded-full overflow-hidden">
                         <div
                           className={`h-full rounded-full ${barColour} ${
                             req.status === 'met' ? 'w-full' :
-                            req.status === 'partial' ? 'w-1/2' :
-                            req.status === 'gap' ? 'w-0' : 'w-0'
+                            req.status === 'partial' ? 'w-1/2' : 'w-0'
                           }`}
                         />
                       </div>
                     </td>
 
-                    {/* Covered By */}
-                    <td className="pl-3 pr-5 py-4 align-top">
-                      {coveredBy.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {coveredBy.map((docId) => (
-                            <span
-                              key={docId}
-                              className="text-[11px] px-2 py-0.5 bg-teal/10 text-teal rounded font-medium whitespace-nowrap"
-                            >
-                              {libraryDocMap[docId] ?? docId}
+                    {/* Evidence column */}
+                    <td className="pl-3 pr-5 py-4">
+                      <div className="space-y-2">
+                        {/* Confirmed links */}
+                        {confirmedLinks.map((link) => (
+                          <div key={link.id} className="flex items-center gap-1.5">
+                            <CheckCircle2 size={11} className="text-green flex-shrink-0" />
+                            <span className="text-[11px] text-green font-medium truncate max-w-[160px]">
+                              {libraryDocMap[link.doc_id] ?? 'Vault document'}
                             </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-[11px] text-text-mute">—</span>
-                      )}
+                            <button
+                              onClick={() => handleReview(link.id, 'dismissed')}
+                              disabled={reviewing === link.id}
+                              className="ml-auto text-[10px] text-text-mute hover:text-red transition-colors flex-shrink-0"
+                              title="Dismiss"
+                            >
+                              <X size={10} />
+                            </button>
+                          </div>
+                        ))}
+
+                        {/* Pending proposals */}
+                        {pendingLinks.map((link) => (
+                          <div key={link.id} className="bg-amber-bg border border-amber/20 rounded-lg px-2 py-1.5">
+                            <p className="text-[11px] font-medium text-amber-700 truncate max-w-[180px] mb-1">
+                              {libraryDocMap[link.doc_id] ?? 'Vault document'}
+                            </p>
+                            {link.rationale && (
+                              <p className="text-[10px] text-text-mute leading-snug mb-1.5 line-clamp-2">
+                                {link.rationale}
+                              </p>
+                            )}
+                            <div className="flex gap-1.5">
+                              <button
+                                onClick={() => handleReview(link.id, 'confirmed')}
+                                disabled={reviewing === link.id}
+                                className="flex items-center gap-1 px-2 py-0.5 bg-green text-white text-[10px] font-semibold rounded disabled:opacity-50 hover:opacity-90 transition-opacity"
+                              >
+                                <Check size={9} /> Confirm
+                              </button>
+                              <button
+                                onClick={() => handleReview(link.id, 'dismissed')}
+                                disabled={reviewing === link.id}
+                                className="flex items-center gap-1 px-2 py-0.5 bg-panel-3 border border-border text-text-mute text-[10px] font-medium rounded disabled:opacity-50 hover:bg-panel transition-colors"
+                              >
+                                <X size={9} /> Dismiss
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* No evidence */}
+                        {reqLinks.length === 0 && (
+                          <span className="text-[11px] text-text-mute">—</span>
+                        )}
+                        {reqLinks.length > 0 && confirmedLinks.length === 0 && pendingLinks.length === 0 && (
+                          <span className="text-[11px] text-text-mute italic">All proposals dismissed</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -214,7 +277,7 @@ export function ComplianceMatrixTab({
         </div>
       </div>
 
-      {/* Critical gaps callout — only shown when not already filtered to met */}
+      {/* Critical gaps callout */}
       {counts.gap > 0 && statusFilter !== 'met' && (
         <div className="bg-red-bg border border-red/20 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">

@@ -131,6 +131,10 @@ class WorkspaceChatIn(BaseModel):
     history: list[dict] = []
 
 
+class ReviewEvidenceLinkIn(BaseModel):
+    status: str  # 'confirmed' | 'dismissed'
+
+
 # ── Dashboard stats ────────────────────────────────────────────────────────────
 
 @router.get("/my-team")
@@ -439,6 +443,37 @@ async def get_bid_decision(workspace_id: str, user: dict = Depends(get_current_u
     if not decision:
         raise HTTPException(404, "No bid decision for this workspace")
     return decision
+
+
+# ── Evidence links ─────────────────────────────────────────────────────────────
+
+@router.get("/workspaces/{workspace_id}/evidence-links")
+async def list_workspace_evidence_links(workspace_id: str, user: dict = Depends(get_current_user)):
+    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
+    if not workspace or workspace["org_id"] != org_id:
+        raise HTTPException(404, "Workspace not found")
+    return await asyncio.to_thread(db.list_evidence_links, workspace_id)
+
+
+@router.patch("/evidence-links/{link_id}")
+async def review_evidence_link(
+    link_id: str,
+    body: ReviewEvidenceLinkIn,
+    user: dict = Depends(get_current_user),
+):
+    if body.status not in ("confirmed", "dismissed"):
+        raise HTTPException(400, "status must be 'confirmed' or 'dismissed'")
+    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    link = await asyncio.to_thread(db.get_evidence_link, link_id)
+    if not link:
+        raise HTTPException(404, "Evidence link not found")
+    workspace = await asyncio.to_thread(db.get_tendering_workspace, link["workspace_id"])
+    if not workspace or workspace["org_id"] != org_id:
+        raise HTTPException(404, "Evidence link not found")
+    await asyncio.to_thread(db.update_evidence_link_status, link_id, body.status)
+    await asyncio.to_thread(db.recalculate_requirement_status_from_evidence, link["req_id"])
+    return {"id": link_id, "status": body.status}
 
 
 # ── Requirements ───────────────────────────────────────────────────────────────

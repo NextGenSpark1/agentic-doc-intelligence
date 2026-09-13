@@ -559,6 +559,52 @@ def list_evidence_links(workspace_id: str) -> list[dict]:
     ) or []
 
 
+def get_evidence_link(link_id: str) -> dict | None:
+    rows = get_client().table("evidence_links").select("*").eq("id", link_id).execute().data
+    return rows[0] if rows else None
+
+
+def update_evidence_link_status(link_id: str, status: str) -> None:
+    get_client().table("evidence_links").update(
+        {"human_review_status": status}
+    ).eq("id", link_id).execute()
+
+
+def recalculate_requirement_status_from_evidence(req_id: str) -> None:
+    """Set requirement status to 'met' when any evidence link is confirmed, or reset
+    to 'unchecked' when the last confirmed link is dismissed."""
+    links = (
+        get_client().table("evidence_links")
+        .select("human_review_status")
+        .eq("req_id", req_id)
+        .execute()
+        .data
+    ) or []
+    confirmed_count = sum(1 for link in links if link.get("human_review_status") == "confirmed")
+
+    req_rows = (
+        get_client().table("workspace_requirements")
+        .select("status")
+        .eq("req_id", req_id)
+        .execute()
+        .data
+    ) or []
+    if not req_rows:
+        return
+    current_status = req_rows[0].get("status", "unchecked")
+
+    if confirmed_count > 0:
+        new_status = "met"
+    elif current_status == "met":
+        new_status = "unchecked"
+    else:
+        return
+
+    get_client().table("workspace_requirements").update(
+        {"status": new_status}
+    ).eq("req_id", req_id).execute()
+
+
 def upsert_evidence_link(data: dict) -> dict | None:
     """Save an AI evidence proposal without ever overwriting a person's decision.
 

@@ -5,7 +5,7 @@ import {
   ArrowLeft, FileText, Loader2,
   ClipboardCheck, BarChart3, ThumbsUp, MessageSquare,
 } from 'lucide-react';
-import { getWorkspace, getRequirements, getBidDecision, getLibraryDocuments } from '../api/tenders';
+import { getWorkspace, getRequirements, getBidDecision, getLibraryDocuments, getEvidenceLinks, reviewEvidenceLink } from '../api/tenders';
 import { StageBadge, BidDecisionBadge } from '../components/Badge';
 import { SummaryTab } from '../components/workspace/SummaryTab';
 import { RequirementsTab } from '../components/workspace/RequirementsTab';
@@ -52,6 +52,11 @@ export function TenderDetailPage() {
     queryKey: ['library-docs'],
     queryFn: getLibraryDocuments,
   });
+  const { data: evidenceLinks = [], refetch: refetchEvidence } = useQuery({
+    queryKey: ['evidence-links', id],
+    queryFn: () => getEvidenceLinks(id!),
+    enabled: !!id,
+  });
 
   const loading = loadingWorkspace || loadingRequirements || loadingBid;
 
@@ -72,6 +77,7 @@ export function TenderDetailPage() {
       if (stageJustCompleted && id) {
         queryClient.invalidateQueries({ queryKey: ['requirements', id] });
         queryClient.invalidateQueries({ queryKey: ['bid-report', id] });
+        queryClient.invalidateQueries({ queryKey: ['evidence-links', id] });
       }
       return updated;
     });
@@ -187,7 +193,18 @@ export function TenderDetailPage() {
       <div className="max-w-6xl mx-auto px-6 py-6">
         {activeTab === 'summary' && <SummaryTab workspace={workspace} onWorkspaceChange={handleWorkspaceChange} />}
         {activeTab === 'requirements' && <RequirementsTab requirements={requirements} />}
-        {activeTab === 'compliance' && <ComplianceMatrixTab requirements={requirements} libraryDocs={libraryDocs} />}
+        {activeTab === 'compliance' && (
+          <ComplianceMatrixTab
+            requirements={requirements}
+            libraryDocs={libraryDocs}
+            evidenceLinks={evidenceLinks}
+            onReviewLink={async (linkId, status) => {
+              await reviewEvidenceLink(linkId, status);
+              queryClient.invalidateQueries({ queryKey: ['requirements', id] });
+              refetchEvidence();
+            }}
+          />
+        )}
         {activeTab === 'bid' && <BidDecisionTab report={bidReport} workspace={workspace} onWorkspaceChange={handleWorkspaceChange} />}
         {activeTab === 'chat' && <ChatTab workspace={workspace} />}
       </div>
