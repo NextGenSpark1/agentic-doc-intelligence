@@ -42,14 +42,16 @@ class Settings(BaseSettings):
     #   "groq/openai/gpt-oss-20b"   — 30 RPM, 1 000 RPD free
     #   "groq/openai/gpt-oss-120b"  — 30 RPM, 1 000 RPD free, more capable
     #   "groq/qwen/qwen3.8-27b"     — 30 RPM, 1 000 RPD free
+    # Gemini model history: gemini-2.5-flash → not available; gemini-3.6-flash confirmed by
+    # the Gemini API error message when gemini-2.0-flash was tried.
     # Check the live list at console.groq.com/docs/rate-limits before switching.
-    llm_reasoning_model: str = "gemini/gemini-2.5-flash"  # summaries, anomaly reasoning, chat
-    llm_fast_model: str = "gemini/gemini-2.5-flash"  # classification, cheap calls
+    llm_reasoning_model: str = "gemini/gemini-3.6-flash"  # summaries, anomaly reasoning, chat
+    llm_fast_model: str = "gemini/gemini-3.6-flash"  # classification, cheap calls
     llm_embedding_model: str = "gemini/gemini-embedding-001"  # RAG embeddings (Gemini)
     # Whole-case cross-document reasoning (entities/relationships/timeline/findings LLM pass).
     # Separate from the "reasoning" tier above so it can be tuned independently (bigger prompts,
     # different model) even though both currently point at the same model.
-    llm_case_reasoning_model: str = "gemini/gemini-2.5-flash"
+    llm_case_reasoning_model: str = "gemini/gemini-3.6-flash"
 
     # --- API Keys (LiteLLM reads these from os.environ) ---
     groq_api_key: str = ""
