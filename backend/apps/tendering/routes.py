@@ -408,8 +408,12 @@ async def analyse_workspace(
 
     def _run_pipeline() -> None:
         from .pipeline import run_workspace_analysis
-        result = run_workspace_analysis(workspace_id)
-        next_stage = "new" if "error" in result else "preparing"
+        try:
+            result = run_workspace_analysis(workspace_id)
+            next_stage = "new" if "error" in result else "preparing"
+        except Exception:
+            traceback.print_exc()
+            next_stage = "new"
         db.update_workspace(workspace_id, {"stage": next_stage})
 
     background_tasks.add_task(_run_pipeline)
