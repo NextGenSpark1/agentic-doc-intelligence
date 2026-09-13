@@ -412,12 +412,14 @@ async def analyse_workspace(
 
     def _run_pipeline() -> None:
         from .pipeline import run_workspace_analysis
+        from backend.core.db_core import _reset_client
         try:
             result = run_workspace_analysis(workspace_id)
             next_stage = "new" if "error" in result else "preparing"
         except Exception:
             traceback.print_exc()
             next_stage = "new"
+            _reset_client()  # flush stale HTTP/2 connection before the status update
         db.update_workspace(workspace_id, {"stage": next_stage})
 
     background_tasks.add_task(_run_pipeline)

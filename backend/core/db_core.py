@@ -31,17 +31,48 @@ def _is_unique_violation(err: Exception) -> bool:
     return getattr(err, "code", None) == "23505" or "duplicate key" in str(err).lower()
 
 
+def _make_client() -> Client:
+    s = get_settings()
+    if not s.supabase_url or not s.supabase_service_key:
+        raise RuntimeError(
+            "Supabase credentials missing. Set SUPABASE_URL and SUPABASE_SERVICE_KEY in .env."
+        )
+    client = create_client(s.supabase_url, s.supabase_service_key)
+    _patch_to_http1(client)
+    return client
+
+
+def _patch_to_http1(client: Client) -> None:
+    # Supabase load balancers periodically send HTTP/2 GOAWAY frames (error_code:0,
+    # graceful rotation) which httpcore surfaces as RemoteProtocolError. HTTP/1.1
+    # handles connection close transparently, so swapping the postgrest session
+    # eliminates the error class entirely. If postgrest-py internals change the
+    # attribute name, we skip silently and keep HTTP/2 (better than crashing).
+    try:
+        import httpx
+        old = client.postgrest.session
+        client.postgrest.session = httpx.Client(
+            base_url=str(old.base_url),
+            headers=dict(old.headers),
+            timeout=old.timeout,
+            http2=False,
+        )
+    except Exception:
+        pass
+
+
+def _reset_client() -> None:
+    """Drop the current thread's client so the next get_client() rebuilds with a fresh connection."""
+    if hasattr(_thread_local, "client"):
+        del _thread_local.client
+
+
 def get_client() -> Client:
-    # Each thread gets its own Supabase client so their HTTP/2 connection pools
-    # never interfere. A shared singleton causes RemoteProtocolError when the
-    # background analysis task and request handlers hit Supabase concurrently.
+    # Each thread gets its own Supabase client so their connection pools never
+    # interfere. A shared singleton caused RemoteProtocolError when the background
+    # analysis task and request handlers hit Supabase concurrently.
     if not hasattr(_thread_local, "client"):
-        s = get_settings()
-        if not s.supabase_url or not s.supabase_service_key:
-            raise RuntimeError(
-                "Supabase credentials missing. Set SUPABASE_URL and SUPABASE_SERVICE_KEY in .env."
-            )
-        _thread_local.client = create_client(s.supabase_url, s.supabase_service_key)
+        _thread_local.client = _make_client()
     return _thread_local.client
 
 
