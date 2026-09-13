@@ -189,9 +189,10 @@ async def get_my_org(user: dict = Depends(get_current_user), platform: str = Dep
 
 
 @router.get("/orgs/{org_id}/members")
-async def list_members(org_id: str, user: dict = Depends(get_current_user)):
+async def list_members(org_id: str, user: dict = Depends(get_current_user),
+                       platform: str = Depends(_get_platform)):
     if not _is_platform_admin(user):
-        m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+        m = await asyncio.to_thread(db.get_user_membership, user["user_id"], platform)
         if not m or m["org_id"] != org_id:
             raise HTTPException(403, "access denied")
     members = await asyncio.to_thread(db.list_org_members, org_id)
@@ -201,7 +202,7 @@ async def list_members(org_id: str, user: dict = Depends(get_current_user)):
 @router.post("/orgs/{org_id}/invite", status_code=201)
 async def invite_member(org_id: str, body: InviteBody, user: dict = Depends(get_current_user),
                         platform: str = Depends(_get_platform)):
-    m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+    m = await asyncio.to_thread(db.get_user_membership, user["user_id"], platform)
     if not m or m["org_id"] != org_id:
         raise HTTPException(403, "access denied")
 
@@ -244,9 +245,10 @@ async def invite_member(org_id: str, body: InviteBody, user: dict = Depends(get_
 
 
 @router.get("/orgs/{org_id}/invitations")
-async def list_invitations(org_id: str, user: dict = Depends(get_current_user)):
+async def list_invitations(org_id: str, user: dict = Depends(get_current_user),
+                           platform: str = Depends(_get_platform)):
     if not _is_platform_admin(user):
-        m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+        m = await asyncio.to_thread(db.get_user_membership, user["user_id"], platform)
         if not m or m["org_id"] != org_id or m["role"] not in ("org_admin", "supervisor"):
             raise HTTPException(403, "access denied")
     invites = await asyncio.to_thread(db.list_pending_invitations, org_id)
@@ -254,9 +256,10 @@ async def list_invitations(org_id: str, user: dict = Depends(get_current_user)):
 
 
 @router.delete("/orgs/{org_id}/invitations/{token}", status_code=204)
-async def cancel_invitation(org_id: str, token: str, user: dict = Depends(get_current_user)):
+async def cancel_invitation(org_id: str, token: str, user: dict = Depends(get_current_user),
+                            platform: str = Depends(_get_platform)):
     if not _is_platform_admin(user):
-        m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+        m = await asyncio.to_thread(db.get_user_membership, user["user_id"], platform)
         if not m or m["org_id"] != org_id or m["role"] != "org_admin":
             raise HTTPException(403, "Only org admin can cancel invitations")
     invite = await asyncio.to_thread(db.get_invitation_by_token, token)
@@ -269,7 +272,7 @@ async def cancel_invitation(org_id: str, token: str, user: dict = Depends(get_cu
 async def resend_invitation(org_id: str, token: str, user: dict = Depends(get_current_user),
                             platform: str = Depends(_get_platform)):
     if not _is_platform_admin(user):
-        m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+        m = await asyncio.to_thread(db.get_user_membership, user["user_id"], platform)
         if not m or m["org_id"] != org_id or m["role"] not in ("org_admin", "supervisor"):
             raise HTTPException(403, "access denied")
     invite = await asyncio.to_thread(db.get_invitation_by_token, token)
@@ -291,8 +294,10 @@ async def resend_invitation(org_id: str, token: str, user: dict = Depends(get_cu
 
 
 @router.patch("/orgs/{org_id}/members/{member_user_id}")
-async def change_member_role(org_id: str, member_user_id: str, body: dict, user: dict = Depends(get_current_user)):
-    m = await asyncio.to_thread(db.get_user_membership, user["user_id"])
+async def change_member_role(org_id: str, member_user_id: str, body: dict,
+                             user: dict = Depends(get_current_user),
+                             platform: str = Depends(_get_platform)):
+    m = await asyncio.to_thread(db.get_user_membership, user["user_id"], platform)
     if not m or m["org_id"] != org_id or m["role"] != "org_admin":
         raise HTTPException(403, "Only org admin can change roles")
     if member_user_id == user["user_id"]:
