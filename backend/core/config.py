@@ -34,26 +34,21 @@ class Settings(BaseSettings):
 
     # --- LLM routing (LiteLLM model strings). Swap freely; agents don't care. ---
     #
-    # Currently using Gemini (via GEMINI_API_KEY). Switched away from Groq in Sept 2026 because
-    # all the Llama models we relied on (llama-3.1-8b-instant, llama-3.3-70b-versatile) were
-    # deprecated and their endpoints started returning 404. Groq free tier is still active but
-    # the available text-generation models changed. If switching back to Groq, use one of these
-    # LiteLLM strings (GROQ_API_KEY must be set):
+    # Currently using OpenAI (via OPENAI_API_KEY). Switched in Sept 2026 after Groq deprecated
+    # their free Llama models and the replacement free-tier models hit a 1K RPD cap that a single
+    # analysis run exhausted. If switching back to Groq (GROQ_API_KEY must be set):
     #   "groq/openai/gpt-oss-20b"   — 30 RPM, 1 000 RPD free
     #   "groq/openai/gpt-oss-120b"  — 30 RPM, 1 000 RPD free, more capable
-    #   "groq/qwen/qwen3.8-27b"     — 30 RPM, 1 000 RPD free
-    # Gemini model history: gemini-2.5-flash → not available; gemini-3.6-flash confirmed by
-    # the Gemini API error message when gemini-2.0-flash was tried.
-    # Check the live list at console.groq.com/docs/rate-limits before switching.
-    llm_reasoning_model: str = "groq/openai/gpt-oss-120b"  # summaries, anomaly reasoning, chat
-    llm_fast_model: str = "groq/openai/gpt-oss-20b"  # classification, cheap calls
-    llm_embedding_model: str = "gemini/gemini-embedding-001"  # RAG embeddings (Gemini)
+    # Embeddings switched from gemini/gemini-embedding-001 (768 dims) to
+    # openai/text-embedding-3-small (1536 dims) — vector columns in DB must match.
+    llm_reasoning_model: str = "openai/gpt-5.6-terra"          # summaries, anomaly reasoning, chat
+    llm_fast_model: str = "openai/gpt-5.6-luna"                # classification, cheap calls
+    llm_embedding_model: str = "openai/text-embedding-3-small"  # RAG embeddings (1536 dims)
     # Whole-case cross-document reasoning (entities/relationships/timeline/findings LLM pass).
-    # Separate from the "reasoning" tier above so it can be tuned independently (bigger prompts,
-    # different model) even though both currently point at the same model.
-    llm_case_reasoning_model: str = "groq/openai/gpt-oss-120b"
+    llm_case_reasoning_model: str = "openai/gpt-5.6-terra"
 
     # --- API Keys (LiteLLM reads these from os.environ) ---
+    openai_api_key: str = ""
     groq_api_key: str = ""
     gemini_api_key: str = ""
 
@@ -118,6 +113,8 @@ def get_settings() -> Settings:
     if s.landingai_api_key and not os.getenv("VISION_AGENT_API_KEY"):
         os.environ["VISION_AGENT_API_KEY"] = s.landingai_api_key
     # LiteLLM reads provider keys directly from os.environ — bridge from pydantic settings.
+    if s.openai_api_key and not os.getenv("OPENAI_API_KEY"):
+        os.environ["OPENAI_API_KEY"] = s.openai_api_key
     if s.groq_api_key and not os.getenv("GROQ_API_KEY"):
         os.environ["GROQ_API_KEY"] = s.groq_api_key
     if s.gemini_api_key and not os.getenv("GEMINI_API_KEY"):
