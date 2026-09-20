@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     # RAG
     rag_top_k: int = 8
 
+    # Rate limiting (backend/core/ratelimit.py). Off only for local experiments — the limits
+    # are what stops a retry loop spending the OpenAI and LandingAI budget in an afternoon.
+    rate_limit_enabled: bool = True
+
     # --- Hybrid retrieval (dense + keyword, fused with RRF) ---
     # Off by default: it needs the match_chunks_candidates migration in schema.sql. Flip
     # RAG_HYBRID_ENABLED=true once that has run. If the RPC is missing or errors, retrieval

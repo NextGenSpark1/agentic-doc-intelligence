@@ -350,6 +350,9 @@ def _run_match(monkeypatch, upsert):
     requirements = [{"req_id": f"R{i}", "description": f"requirement {i}"} for i in (1, 2)]
     monkeypatch.setattr(db, "get_tendering_workspace", lambda wid: {"id": wid, "org_id": "org-1"})
     monkeypatch.setattr(db, "list_workspace_requirements_raw", lambda wid: requirements)
+    # No confirmed evidence yet, so every requirement is adjudicated. Unpatched, this reads the
+    # real database — which is how these two tests started failing without a .env.
+    monkeypatch.setattr(db, "list_evidence_links", lambda wid: [])
     monkeypatch.setattr(llm, "embed", lambda texts: [[0.1, 0.2]])
     monkeypatch.setattr(db, "match_supplier_docs", lambda *a, **k: [
         {"supplier_document_id": "SUP-1", "library_doc_id": "D1", "chunk_id": "c1",

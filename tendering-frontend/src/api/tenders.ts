@@ -583,7 +583,9 @@ export const addLibraryDocument = (data: {
 export const deleteLibraryDocument = (docId: string): Promise<void> =>
   api.delete(`/tendering/library/${docId}`).then(() => undefined);
 
-export const replaceLibraryDocument = (docId: string, data: { url: string; filename?: string }): Promise<LibraryDocument> =>
+// storage_path is what the backend actually downloads — without it a replacement updates the
+// preview only, and Extract goes on reading the previous file.
+export const replaceLibraryDocument = (docId: string, data: { url: string; filename?: string; storage_path?: string }): Promise<LibraryDocument> =>
   api.patch<LibraryDocument>(`/tendering/library/${docId}`, data).then((r) => r.data);
 
 export const extractLibraryDocument = (docId: string): Promise<{ status: string }> =>

@@ -161,9 +161,10 @@ def _payload(requirement: dict, candidates: list[dict]) -> dict:
 def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
     """Propose vault evidence for a tender's requirements.
 
-    Every requirement in the workspace is matched (requirements have no dismissed state), and
-    every proposal is born `pending` (Rule 3) — matching suggests, a human approves before it
-    counts toward a submission. Pass `requirement_ids` to re-match a subset, e.g. after a vault upload.
+    Every requirement in the workspace is matched (requirements have no dismissed state) except
+    those a person has already confirmed evidence for, and every proposal is born `pending`
+    (Rule 3) — matching suggests, a human approves before it counts toward a submission. Pass
+    `requirement_ids` to re-match a subset, e.g. after a vault upload.
     """
     from backend.core import llm, llm_reasoning
 
@@ -183,13 +184,26 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
         if (requirement_ids is None or r["req_id"] in requirement_ids)
     ]
 
+    # A requirement a person has already confirmed evidence for needs no second opinion. Every
+    # re-analysis used to re-adjudicate the whole set: one embedding plus one LLM call per
+    # requirement, for an answer that cannot change anything — the proposal would be born
+    # pending next to a confirmed link. On a tender with fifty requirements that is most of the
+    # run's cost and most of its rate-limit pressure.
+    confirmed_req_ids = {
+        link["req_id"] for link in db.list_evidence_links(tender_id)
+        if link.get("human_review_status") == "confirmed" and link.get("req_id")
+    }
+
     proposed = skipped = ungrounded = matched_requirements = no_candidates = 0
-    left_unchanged = save_errors = 0
+    left_unchanged = save_errors = already_confirmed = 0
     first_save_error: str | None = None
 
     for requirement in requirements:
         description = requirement.get("description") or ""
         if not description.strip():
+            continue
+        if requirement["req_id"] in confirmed_req_ids:
+            already_confirmed += 1
             continue
 
         # 1. Retrieve — org-scoped in SQL, expired documents excluded at the source.
@@ -251,6 +265,7 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
     result = {
         "proposed": proposed,
         "skipped": skipped,
+        "already_confirmed": already_confirmed,
         "left_unchanged": left_unchanged,
         "save_errors": save_errors,
         "ungrounded_dropped": ungrounded,

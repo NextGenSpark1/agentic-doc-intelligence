@@ -18,6 +18,7 @@ from backend.core.auth import get_current_user
 from backend.core.config import get_settings
 from backend.core.db_core import get_user_membership, list_team_member_ids, list_org_members
 from backend.core.orgs import check_org_not_suspended
+from backend.core.ratelimit import rate_limit
 from . import db
 
 router = APIRouter(prefix="/tendering", tags=["tendering"])
@@ -153,8 +154,11 @@ class UpdateWorkspaceIn(BaseModel):
     contract_value: Optional[float] = None
     currency: Optional[str] = None
     stage: Optional[str] = None
-    bid_decision: Optional[str] = None
-    readiness_score: Optional[int] = None
+    # bid_decision stays client-settable: it is a human's call, which is the whole point of
+    # Rule 3. readiness_score does not — it is computed by the readiness review from the
+    # requirements and evidence, and a client that could write it could show a green 100%
+    # over a workspace with unmet mandatory requirements. The pipeline still writes it through
+    # db.update_workspace, which is not reachable from this request body.
     description: Optional[str] = None
     team_members: Optional[list[str]] = None
 
@@ -169,6 +173,9 @@ class UpdateLibraryDocumentIn(BaseModel):
     tags: Optional[list[str]] = None
     url: Optional[str] = None
     verification_status: Optional[str] = None
+    # Sent when the file itself is replaced. It belongs to the vault row rather than the library
+    # row, so the route applies it separately — library_documents has no storage_path column.
+    storage_path: Optional[str] = None
 
 
 class UpdateRequirementIn(BaseModel):
@@ -369,7 +376,8 @@ async def add_workspace_document(
     return workspace_doc
 
 
-@router.post("/workspaces/{workspace_id}/documents/{doc_id}/extract", status_code=202)
+@router.post("/workspaces/{workspace_id}/documents/{doc_id}/extract", status_code=202,
+             dependencies=[Depends(rate_limit("extraction", 60, 3600))])
 async def extract_workspace_document(
     workspace_id: str,
     doc_id: str,
@@ -445,7 +453,8 @@ async def get_document_extraction(
     return {"markdown": markdown}
 
 
-@router.post("/workspaces/{workspace_id}/analyse", status_code=202)
+@router.post("/workspaces/{workspace_id}/analyse", status_code=202,
+             dependencies=[Depends(rate_limit("analysis", 10, 3600))])
 async def analyse_workspace(
     workspace_id: str,
     background_tasks: BackgroundTasks,
@@ -562,13 +571,30 @@ async def update_library_document(
     org_id = await asyncio.to_thread(_get_tendering_org_id, user)
     if body.url and not is_http_url(body.url):
         raise HTTPException(400, "url must be an http(s) link")
+    if body.storage_path:
+        if not is_safe_storage_path(body.storage_path):
+            raise HTTPException(400, "invalid storage_path")
+        claimed = await asyncio.to_thread(db.get_supplier_document_by_storage_path, body.storage_path)
+        if claimed and claimed.get("org_id") != org_id:
+            raise HTTPException(409, "That file is already registered to another organisation")
     docs = await asyncio.to_thread(db.list_library_documents, org_id)
     if not any(d["doc_id"] == doc_id for d in docs):
         raise HTTPException(404, "Document not found")
-    updated = await asyncio.to_thread(db.update_library_document, doc_id, body.model_dump(exclude_none=True))
-    if not updated:
-        raise HTTPException(500, "Update failed")
-    return updated
+
+    # storage_path lives on the vault row; everything else on the library row. A replace that
+    # sends nothing but the new path is valid, so an empty metadata patch is not an error.
+    patch = body.model_dump(exclude_none=True)
+    patch.pop("storage_path", None)
+    if patch:
+        updated = await asyncio.to_thread(db.update_library_document, doc_id, patch)
+        if not updated:
+            raise HTTPException(500, "Update failed")
+
+    if body.storage_path:
+        await asyncio.to_thread(db.repoint_supplier_document, doc_id, body.storage_path, body.filename)
+
+    refreshed = await asyncio.to_thread(db.list_library_documents, org_id)
+    return next((d for d in refreshed if d["doc_id"] == doc_id), None)
 
 
 @router.post("/library", status_code=201)
@@ -625,7 +651,8 @@ async def get_library_document_extraction(doc_id: str, user: dict = Depends(get_
     return {"text": text, "chunk_count": len(chunks)}
 
 
-@router.post("/library/{doc_id}/extract", status_code=202)
+@router.post("/library/{doc_id}/extract", status_code=202,
+             dependencies=[Depends(rate_limit("extraction", 60, 3600))])
 async def extract_library_document(
     doc_id: str,
     background_tasks: BackgroundTasks,
@@ -668,7 +695,8 @@ async def delete_library_document(
 
 # ── Workspace AI chat ───────────────────────────────────────────────────────────
 
-@router.post("/workspaces/{workspace_id}/chat")
+@router.post("/workspaces/{workspace_id}/chat",
+             dependencies=[Depends(rate_limit("chat", 30, 60))])
 async def workspace_chat(
     workspace_id: str,
     body: WorkspaceChatIn,

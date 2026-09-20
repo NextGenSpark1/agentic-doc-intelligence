@@ -25,6 +25,7 @@ from backend.core import db_core as db, llm, orgs as orgs_module
 from backend.core.access import load_case_or_403 as _load_case_or_403
 from backend.core.auth import get_current_user
 from backend.core.config import get_settings
+from backend.core.ratelimit import rate_limit
 
 
 @asynccontextmanager
@@ -264,7 +265,8 @@ async def save_graph_state(case_id: str, body: GraphStatePayload, user: dict = D
 
 
 # ---------------------------- documents ---------------------------
-@app.post("/cases/{case_id}/documents", status_code=201)
+@app.post("/cases/{case_id}/documents", status_code=201,
+          dependencies=[Depends(rate_limit("upload", 120, 3600))])
 async def upload_document(case_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     case = await _load_case_or_403(case_id, user)
 
@@ -298,7 +300,8 @@ async def upload_document(case_id: str, file: UploadFile = File(...), user: dict
     return created
 
 
-@app.post("/cases/{case_id}/documents/{document_id}/extract", status_code=202)
+@app.post("/cases/{case_id}/documents/{document_id}/extract", status_code=202,
+          dependencies=[Depends(rate_limit("extraction", 60, 3600))])
 async def trigger_extraction(case_id: str, document_id: str, background: BackgroundTasks, user: dict = Depends(get_current_user)):
     await _load_case_or_403(case_id, user)
     doc = await asyncio.to_thread(db.get_document, document_id)

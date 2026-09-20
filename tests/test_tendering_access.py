@@ -236,6 +236,24 @@ def test_document_registration_accepts_the_workspaces_own_path(client, monkeypat
     assert "create_workspace_document" in calls
 
 
+def test_readiness_score_cannot_be_set_through_the_api(client, monkeypatch):
+    """It is computed from requirements and evidence — a client-set 100% would be a lie.
+
+    The readiness review still writes it through db.update_workspace, which this request body
+    cannot reach.
+    """
+    api, _calls = client
+    _assign_member(api)
+    patches: list[dict] = []
+    monkeypatch.setattr(routes.db, "update_workspace",
+                        lambda workspace_id, patch: patches.append(patch) or {"id": workspace_id})
+
+    api.patch(f"/tendering/workspaces/{WS}", json={"readiness_score": 100, "buyer": "Ministry"})
+
+    assert patches and "readiness_score" not in patches[0]
+    assert patches[0]["buyer"] == "Ministry"      # the rest of the edit still applies
+
+
 def test_vault_upload_refuses_a_file_another_org_already_registered(client, monkeypatch):
     api, calls = client
     monkeypatch.setattr(routes.db, "get_supplier_document_by_storage_path",

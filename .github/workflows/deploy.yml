@@ -19,8 +19,34 @@ permissions:
   packages: write
 
 jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          pip install pytest
+
+      # No secrets are provided on purpose: every test must run without a database, an API key
+      # or a network call. Two guardrail tests used to reach the real Supabase and would have
+      # failed here — that is exactly what this gate is for.
+      - name: Run tests
+        run: python -m pytest -q
+
   build-backend:
     name: Build and push backend image
+    needs: test
     runs-on: ubuntu-latest
 
     steps:
@@ -49,6 +75,7 @@ jobs:
 
   build-frontend:
     name: Build and push frontend image
+    needs: test
     runs-on: ubuntu-latest
 
     steps:

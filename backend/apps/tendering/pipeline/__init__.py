@@ -51,6 +51,9 @@ def process_workspace_document(workspace_doc_id: str) -> None:
         # Persist the full markdown so the summarise stage can pass real document text to the
         # LLM for metadata extraction (buyer, closing date, contract value). Without this the
         # markdown is discarded after chunking and backfill never has anything to read.
+        # Extract can be run again on a document that is already done, so the previous row goes
+        # first — reads take the newest, but the old copies of the markdown just pile up.
+        core_db.delete_extractions_for_document(core_document_id)
         core_db.get_client().table("extractions").insert({
             "extraction_id": str(uuid.uuid4()),
             "document_id": core_document_id,

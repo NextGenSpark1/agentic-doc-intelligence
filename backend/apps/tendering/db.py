@@ -778,6 +778,30 @@ def reset_stuck_supplier_extractions() -> list[dict]:
     ) or []
 
 
+def repoint_supplier_document(library_doc_id: str, storage_path: str,
+                              filename: str | None = None) -> dict | None:
+    """Point a vault entry at a replacement file and drop what was indexed from the old one.
+
+    Replacing a document used to update only the library row's `url`, so supplier_documents kept
+    the previous `storage_path`: the preview showed the new file while Extract re-read the old
+    one and evidence matching went on proposing its text. Wrong evidence on a live bid.
+
+    The old chunks go with it. Confirmed evidence links are deliberately kept — a replacement is
+    normally a renewed version of the same certificate, and a person's approval is not ours to
+    discard — but the text behind the link has to be re-extracted rather than silently staying
+    the old file's, so the status returns to `uploaded`.
+    """
+    supplier_doc = get_supplier_document_by_library_doc(library_doc_id)
+    if not supplier_doc:
+        return None
+    supplier_document_id = supplier_doc["supplier_document_id"]
+    delete_supplier_chunks(supplier_document_id)
+    patch = {"storage_path": storage_path, "extraction_status": "uploaded"}
+    if filename:
+        patch["filename"] = filename
+    return update_supplier_document(supplier_document_id, patch)
+
+
 def update_supplier_document(supplier_document_id: str, patch: dict) -> dict | None:
     row = (
         get_client()
@@ -814,6 +838,25 @@ def delete_supplier_chunks(supplier_document_id: str) -> None:
     get_client().table("supplier_document_chunks").delete().eq(
         "supplier_document_id", supplier_document_id
     ).execute()
+
+
+def list_supplier_chunks_missing_embeddings(limit: int = 200) -> list[dict]:
+    """Vault chunks stored without a vector — see list_chunks_missing_embeddings."""
+    return (
+        get_client()
+        .table("supplier_document_chunks")
+        .select("chunk_id, supplier_document_id, text")
+        .is_("embedding", "null")
+        .limit(limit)
+        .execute()
+        .data
+    ) or []
+
+
+def set_supplier_chunk_embedding(chunk_id: str, embedding: list[float]) -> None:
+    get_client().table("supplier_document_chunks").update(
+        {"embedding": embedding}
+    ).eq("chunk_id", chunk_id).execute()
 
 
 def list_supplier_chunks(supplier_document_id: str) -> list[dict]:

@@ -8,12 +8,18 @@ from __future__ import annotations
 
 import jwt
 from jwt import PyJWKClient
+from jwt.exceptions import PyJWKClientError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .config import get_settings
 
 _bearer = HTTPBearer(auto_error=True)
+
+# Asymmetric algorithms we accept. The algorithm must never be whatever the token claims: that is
+# how "alg: none" and algorithm-confusion attacks get in. HS256 is handled separately below,
+# against the project secret.
+_ASYMMETRIC_ALGORITHMS = ("RS256", "RS384", "RS512", "ES256", "ES384", "ES512")
 
 # Cached per supabase_url so we don't recreate on every request
 _jwks_clients: dict[str, PyJWKClient] = {}
@@ -50,6 +56,9 @@ def get_current_user(
             )
         else:
             # RS256 (or any asymmetric alg) — verify via Supabase JWKS
+            if alg not in _ASYMMETRIC_ALGORITHMS:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                    detail="Invalid token.")
             if not s.supabase_url:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -60,7 +69,7 @@ def get_current_user(
             payload = jwt.decode(
                 token,
                 signing_key.key,
-                algorithms=[alg],
+                algorithms=list(_ASYMMETRIC_ALGORITHMS),
                 audience="authenticated",
             )
 
@@ -68,9 +77,17 @@ def get_current_user(
         raise
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired.")
+    except PyJWKClientError as exc:
+        # An unknown `kid`, or a JWKS endpoint that would not answer. This is not a
+        # PyJWT InvalidTokenError, so it used to escape as a 500 — a bad token reported as a
+        # server fault, which also hides real key-service outages in the noise.
+        print(f"[auth] JWKS lookup failed: {exc}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
     except jwt.InvalidTokenError as exc:
+        # Logged in full, returned as a fixed string: the parser's message describes our
+        # verification (audience, algorithm, claims) and is not the caller's business.
         print(f"[auth] JWT decode failed: {exc}")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {exc}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
 
     return {
         "user_id": payload.get("sub"),

@@ -154,7 +154,13 @@ create table if not exists chunks (
     text        text,
     page        int,
     bbox        jsonb,
-    embedding   vector(768)             -- embedding dimension varies by provider: Gemini text-embedding-004=768, OpenAI text-embedding-3-small=1536
+    embedding   vector(1536)            -- MUST match llm.embed(), which requests 1536 dimensions
+                                        -- (openai/text-embedding-3-small today; Gemini's
+                                        -- embedding-001 was also requested at 1536). A database
+                                        -- created from an older copy of this file has vector(768)
+                                        -- here and rejects every chunk insert:
+                                        --   alter table chunks alter column embedding type vector(1536);
+                                        -- drops existing vectors, so re-extract afterwards.
 );
 create index if not exists chunks_case_idx on chunks(case_id);
 create index if not exists chunks_embedding_idx on chunks

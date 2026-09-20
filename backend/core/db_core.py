@@ -163,6 +163,16 @@ def insert_extraction(data: dict) -> dict:
     return get_client().table("extractions").insert(data).execute().data[0]
 
 
+def delete_extractions_for_document(document_id: str) -> None:
+    """Drop a document's previous extraction rows before writing a new one.
+
+    Reads already take the most recent row, so stale rows were never served — but a document
+    re-extracted a few times accumulated a full copy of its markdown per run.
+    """
+    if document_id:
+        get_client().table("extractions").delete().eq("document_id", document_id).execute()
+
+
 def get_extraction_by_document(document_id: str) -> Optional[dict]:
     rows = (
         get_client()
@@ -208,6 +218,28 @@ def list_extractions(case_id: str) -> list[dict]:
 def insert_chunks(rows: list[dict]) -> None:
     if rows:
         get_client().table("chunks").insert(rows).execute()
+
+
+def list_chunks_missing_embeddings(limit: int = 200) -> list[dict]:
+    """Chunks whose text is stored but whose vector is not.
+
+    Indexing degrades to text-only when an embedding call fails, so the document still reads
+    fine while part of it is invisible to search — with nothing on the row to say so. This is
+    how those chunks get found again (see backend/core/reindex.py).
+    """
+    return (
+        get_client()
+        .table("chunks")
+        .select("id, document_id, text")
+        .is_("embedding", "null")
+        .limit(limit)
+        .execute()
+        .data
+    ) or []
+
+
+def set_chunk_embedding(row_id: int, embedding: list[float]) -> None:
+    get_client().table("chunks").update({"embedding": embedding}).eq("id", row_id).execute()
 
 
 def delete_chunks_for_document(document_id: str) -> None:
