@@ -528,12 +528,19 @@ def delete_workspace_requirements(workspace_id: str, pending_only: bool = False)
 
 
 def insert_workspace_requirement(data: dict) -> dict | None:
+    """Insert one requirement. None means "already there"; anything else raises.
+
+    Every failure used to come back as None, and the caller counts None as
+    `duplicates_skipped` — so when Supabase dropped connections mid-analysis on 13 Sept,
+    requirements that were never saved were reported as duplicates and nobody saw an error.
+    Only a unique violation is genuinely a duplicate.
+    """
     try:
         return get_client().table("workspace_requirements").insert(data).execute().data[0]
     except Exception as exc:
-        import traceback
-        traceback.print_exc()
-        return None
+        if _is_unique_violation(exc):
+            return None
+        raise
 
 
 def list_workspace_requirements_raw(workspace_id: str) -> list[dict]:
@@ -721,6 +728,54 @@ def get_supplier_document(supplier_document_id: str) -> dict | None:
         .data
     )
     return rows[0] if rows else None
+
+
+def get_supplier_document_by_storage_path(storage_path: str) -> dict | None:
+    """The vault row that already claims this file, if any — deliberately NOT org-filtered.
+
+    Used to refuse an upload that registers a file another org already owns, so the query has
+    to be able to see the other org's row.
+    """
+    if not storage_path:
+        return None
+    rows = (
+        get_client()
+        .table("supplier_documents")
+        .select("supplier_document_id, org_id, storage_path")
+        .eq("storage_path", storage_path)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None
+
+
+def reset_stuck_analyses() -> list[dict]:
+    """Put every workspace still marked 'analysing' back to 'new'. Returns the rows changed.
+
+    Only safe at startup, when no analysis of ours can be running yet — see
+    backend/core/recovery.py for why this exists and the single-instance assumption it rests on.
+    """
+    return (
+        get_client()
+        .table("tender_workspaces")
+        .update({"stage": "new"})
+        .eq("stage", "analysing")
+        .execute()
+        .data
+    ) or []
+
+
+def reset_stuck_supplier_extractions() -> list[dict]:
+    """Mark vault documents left mid-extraction as failed, so Extract can be clicked again."""
+    return (
+        get_client()
+        .table("supplier_documents")
+        .update({"extraction_status": "failed"})
+        .in_("extraction_status", ["queued", "processing"])
+        .execute()
+        .data
+    ) or []
 
 
 def update_supplier_document(supplier_document_id: str, patch: dict) -> dict | None:

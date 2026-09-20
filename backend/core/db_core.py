@@ -125,6 +125,22 @@ def list_documents(case_id: str) -> list[dict]:
     return get_client().table("documents").select("*").eq("case_id", case_id).execute().data
 
 
+def reset_stuck_extractions() -> list[dict]:
+    """Mark documents left mid-extraction as failed, so Extract can be clicked again.
+
+    Only safe at startup, when no extraction of ours can be running yet — see
+    backend/core/recovery.py.
+    """
+    return (
+        get_client()
+        .table("documents")
+        .update({"extraction_status": "failed"})
+        .in_("extraction_status", ["queued", "processing"])
+        .execute()
+        .data
+    ) or []
+
+
 def count_documents(case_id: str) -> int:
     """Row count only — no payload transferred (for list views that just need the number)."""
     res = (
@@ -192,6 +208,12 @@ def list_extractions(case_id: str) -> list[dict]:
 def insert_chunks(rows: list[dict]) -> None:
     if rows:
         get_client().table("chunks").insert(rows).execute()
+
+
+def delete_chunks_for_document(document_id: str) -> None:
+    """Drop a document's indexed chunks, so re-indexing replaces rather than appends."""
+    if document_id:
+        get_client().table("chunks").delete().eq("document_id", document_id).execute()
 
 
 def list_chunks(document_id: str) -> list[dict]:

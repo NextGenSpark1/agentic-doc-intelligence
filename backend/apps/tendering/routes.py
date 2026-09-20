@@ -60,6 +60,78 @@ def _can_access_workspace(workspace: dict, user_id: str, role: str, org_id: str)
     )
 
 
+async def _load_workspace_or_404(
+    workspace_id: str, user: dict, detail: str = "Workspace not found"
+) -> dict:
+    """Load a workspace and enforce BOTH org and role scope.
+
+    EVERY workspace-scoped route must go through this. Most routes used to check only that the
+    workspace belonged to the caller's org, so the role rule applied to the tender list and the
+    tender page but to nothing else: a member who was never assigned — or who was removed from
+    the team — could still delete the workspace, edit it, or read its requirements, evidence and
+    documents straight from the API, because the workspace id in the URL was all it took.
+
+    404 rather than 403 throughout: a caller who may not reach a workspace does not get to learn
+    that it exists.
+    """
+    membership = await asyncio.to_thread(_get_tendering_membership, user)
+    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
+    if not workspace or workspace["org_id"] != membership["org_id"]:
+        raise HTTPException(404, detail)
+    # _can_access_workspace hits the DB for supervisors (list_team_member_ids) — keep it off the
+    # event loop like every other DB call in this module.
+    allowed = await asyncio.to_thread(
+        _can_access_workspace, workspace, user["user_id"], membership["role"], membership["org_id"]
+    )
+    if not allowed:
+        raise HTTPException(404, detail)
+    return workspace
+
+
+# ── Storage paths ──────────────────────────────────────────────────────────────
+# Uploads go straight from the browser to Supabase Storage, so the client is what tells us
+# where the file landed. The backend then downloads that path with the service key, which
+# bypasses every storage policy — so an unchecked path is an instruction to fetch any file in
+# the bucket on the caller's behalf. These two functions are the check.
+
+_MAX_STORAGE_PATH_CHARS = 512
+
+
+def is_safe_storage_path(storage_path: str) -> bool:
+    """True if `storage_path` looks like a plain key inside the bucket.
+
+    Rejects traversal (`..`), absolute paths and URLs, backslashes, empty segments and
+    control characters — anything that could resolve somewhere other than where it reads.
+    """
+    path = storage_path or ""
+    if not path or path != path.strip() or len(path) > _MAX_STORAGE_PATH_CHARS:
+        return False
+    if path.startswith("/") or "\\" in path or "//" in path or "://" in path:
+        return False
+    segments = path.split("/")
+    if any(segment in ("", ".", "..") for segment in segments):
+        return False
+    return all(character.isprintable() for character in path)
+
+
+def is_storage_path_within(storage_path: str, folder: str) -> bool:
+    """True if `storage_path` is a file inside `folder`'s own directory in the bucket."""
+    if not folder or not is_safe_storage_path(storage_path):
+        return False
+    return storage_path.startswith(f"{folder}/")
+
+
+def is_http_url(url: str) -> bool:
+    """True for an ordinary http(s) link, which is all a document `url` is ever meant to be.
+
+    The client sends this alongside the upload and the UI puts it straight into `<iframe src>`
+    and `<a href>`. A `javascript:` or `data:` value there runs as script for the next colleague
+    who opens the document, so anything that is not plain http(s) is refused on the way in.
+    """
+    candidate = (url or "").strip().lower()
+    return candidate.startswith("https://") or candidate.startswith("http://")
+
+
 # ── Request models ─────────────────────────────────────────────────────────────
 
 class CreateWorkspaceIn(BaseModel):
@@ -223,14 +295,7 @@ async def create_workspace(body: CreateWorkspaceIn, user: dict = Depends(get_cur
 
 @router.get("/workspaces/{workspace_id}")
 async def get_workspace(workspace_id: str, user: dict = Depends(get_current_user)):
-    membership = await asyncio.to_thread(_get_tendering_membership, user)
-    org_id = membership["org_id"]
-    role = membership["role"]
-    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
-    if not workspace or workspace["org_id"] != org_id:
-        raise HTTPException(404, "Workspace not found")
-    if not _can_access_workspace(workspace, user["user_id"], role, org_id):
-        raise HTTPException(404, "Workspace not found")
+    workspace = await _load_workspace_or_404(workspace_id, user)
     workspace["documents"] = await asyncio.to_thread(db.list_workspace_documents, workspace_id)
     return workspace
 
@@ -241,10 +306,7 @@ async def update_workspace(
     body: UpdateWorkspaceIn,
     user: dict = Depends(get_current_user),
 ):
-    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
-    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
-    if not workspace or workspace["org_id"] != org_id:
-        raise HTTPException(404, "Workspace not found")
+    await _load_workspace_or_404(workspace_id, user)
     updated = await asyncio.to_thread(
         db.update_workspace, workspace_id, body.model_dump(exclude_none=True, mode='json')
     )
@@ -255,10 +317,10 @@ async def update_workspace(
 
 @router.delete("/workspaces/{workspace_id}", status_code=204)
 async def delete_workspace(workspace_id: str, user: dict = Depends(get_current_user)):
-    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
-    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
-    if not workspace or workspace["org_id"] != org_id:
-        raise HTTPException(404, "Workspace not found")
+    # Who *should* be allowed to delete a tender (creator only? org_admin only?) is a product
+    # decision still open with the team. Until it lands, deletion at least follows the same rule
+    # as viewing: a member who cannot open the tender can no longer delete it either.
+    await _load_workspace_or_404(workspace_id, user)
     await asyncio.to_thread(db.delete_workspace, workspace_id)
 
 
@@ -268,10 +330,14 @@ async def add_workspace_document(
     body: CreateWorkspaceDocumentIn,
     user: dict = Depends(get_current_user),
 ):
-    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
-    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
-    if not workspace or workspace["org_id"] != org_id:
-        raise HTTPException(404, "Workspace not found")
+    await _load_workspace_or_404(workspace_id, user)
+    # The browser uploads to `<workspace_id>/<file>` and then tells us the path. Without this
+    # check it could name any file in the bucket — including another org's tender — and Extract
+    # would fetch it with the service key and expose its text in this workspace.
+    if body.storage_path and not is_storage_path_within(body.storage_path, workspace_id):
+        raise HTTPException(400, "storage_path must be a file inside this workspace's folder")
+    if body.url and not is_http_url(body.url):
+        raise HTTPException(400, "url must be an http(s) link")
 
     workspace_doc = await asyncio.to_thread(
         db.create_workspace_document, workspace_id, body.model_dump()
@@ -315,10 +381,7 @@ async def extract_workspace_document(
     Returns 202 immediately; extraction runs in the background.
     Only works if the doc was registered with a storage_path.
     """
-    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
-    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
-    if not workspace or workspace["org_id"] != org_id:
-        raise HTTPException(404, "Workspace not found")
+    await _load_workspace_or_404(workspace_id, user)
 
     workspace_doc = await asyncio.to_thread(db.get_workspace_document, doc_id)
     if not workspace_doc or workspace_doc["workspace_id"] != workspace_id:
@@ -348,10 +411,7 @@ async def delete_workspace_document(
     doc_id: str,
     user: dict = Depends(get_current_user),
 ):
-    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
-    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
-    if not workspace or workspace["org_id"] != org_id:
-        raise HTTPException(404, "Workspace not found")
+    await _load_workspace_or_404(workspace_id, user)
 
     workspace_doc = await asyncio.to_thread(db.get_workspace_document, doc_id)
     if not workspace_doc or workspace_doc["workspace_id"] != workspace_id:
@@ -367,10 +427,7 @@ async def get_document_extraction(
     user: dict = Depends(get_current_user),
 ):
     """Return the ADE-extracted markdown for a workspace document."""
-    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
-    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
-    if not workspace or workspace["org_id"] != org_id:
-        raise HTTPException(404, "Workspace not found")
+    await _load_workspace_or_404(workspace_id, user)
 
     workspace_doc = await asyncio.to_thread(db.get_workspace_document, doc_id)
     if not workspace_doc or workspace_doc["workspace_id"] != workspace_id:
@@ -399,14 +456,12 @@ async def analyse_workspace(
     Returns immediately (202); the pipeline runs in a background task. The workspace
     stage is set to 'analysing' at once so the UI can show progress.
     """
-    membership = await asyncio.to_thread(_get_tendering_membership, user)
-    org_id = membership["org_id"]
-    role = membership["role"]
-    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
-    if not workspace or workspace["org_id"] != org_id:
-        raise HTTPException(404, "Workspace not found")
-    if not _can_access_workspace(workspace, user["user_id"], role, org_id):
-        raise HTTPException(404, "Workspace not found")
+    workspace = await _load_workspace_or_404(workspace_id, user)
+    # Two runs at once both delete the pending requirements and then insert their own, so the
+    # workspace ends up with duplicates. The UI disables its button, but that does not cover two
+    # people (or two tabs) starting a run within the same few seconds.
+    if workspace.get("stage") == "analysing":
+        raise HTTPException(409, "Analysis is already running for this workspace")
 
     await asyncio.to_thread(db.update_workspace, workspace_id, {"stage": "analysing"})
 
@@ -428,19 +483,13 @@ async def analyse_workspace(
 
 @router.get("/workspaces/{workspace_id}/requirements")
 async def list_requirements(workspace_id: str, user: dict = Depends(get_current_user)):
-    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
-    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
-    if not workspace or workspace["org_id"] != org_id:
-        raise HTTPException(404, "Workspace not found")
+    await _load_workspace_or_404(workspace_id, user)
     return await asyncio.to_thread(db.list_workspace_requirements, workspace_id)
 
 
 @router.get("/workspaces/{workspace_id}/bid-decision")
 async def get_bid_decision(workspace_id: str, user: dict = Depends(get_current_user)):
-    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
-    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
-    if not workspace or workspace["org_id"] != org_id:
-        raise HTTPException(404, "Workspace not found")
+    await _load_workspace_or_404(workspace_id, user)
     decision = await asyncio.to_thread(db.get_workspace_bid_decision, workspace_id)
     if not decision:
         raise HTTPException(404, "No bid decision for this workspace")
@@ -451,10 +500,7 @@ async def get_bid_decision(workspace_id: str, user: dict = Depends(get_current_u
 
 @router.get("/workspaces/{workspace_id}/evidence-links")
 async def list_workspace_evidence_links(workspace_id: str, user: dict = Depends(get_current_user)):
-    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
-    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
-    if not workspace or workspace["org_id"] != org_id:
-        raise HTTPException(404, "Workspace not found")
+    await _load_workspace_or_404(workspace_id, user)
     return await asyncio.to_thread(db.list_evidence_links, workspace_id)
 
 
@@ -466,13 +512,10 @@ async def review_evidence_link(
 ):
     if body.status not in ("confirmed", "dismissed"):
         raise HTTPException(400, "status must be 'confirmed' or 'dismissed'")
-    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
     link = await asyncio.to_thread(db.get_evidence_link, link_id)
     if not link:
         raise HTTPException(404, "Evidence link not found")
-    workspace = await asyncio.to_thread(db.get_tendering_workspace, link["workspace_id"])
-    if not workspace or workspace["org_id"] != org_id:
-        raise HTTPException(404, "Evidence link not found")
+    await _load_workspace_or_404(link["workspace_id"], user, "Evidence link not found")
     await asyncio.to_thread(db.update_evidence_link_status, link_id, body.status)
     await asyncio.to_thread(db.recalculate_requirement_status_from_evidence, link["req_id"])
     return {"id": link_id, "status": body.status}
@@ -486,13 +529,12 @@ async def update_requirement(
     body: UpdateRequirementIn,
     user: dict = Depends(get_current_user),
 ):
-    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
     requirement = await asyncio.to_thread(db.get_requirement, req_id)
     if not requirement:
         raise HTTPException(404, "Requirement not found")
-    workspace = await asyncio.to_thread(db.get_tendering_workspace, requirement["workspace_id"])
-    if not workspace or workspace["org_id"] != org_id:
-        raise HTTPException(404, "Requirement not found")
+    workspace = await _load_workspace_or_404(
+        requirement["workspace_id"], user, "Requirement not found"
+    )
     updated = await asyncio.to_thread(
         db.update_requirement, req_id, body.model_dump(exclude_none=True)
     )
@@ -518,6 +560,8 @@ async def update_library_document(
     user: dict = Depends(get_current_user),
 ):
     org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    if body.url and not is_http_url(body.url):
+        raise HTTPException(400, "url must be an http(s) link")
     docs = await asyncio.to_thread(db.list_library_documents, org_id)
     if not any(d["doc_id"] == doc_id for d in docs):
         raise HTTPException(404, "Document not found")
@@ -533,6 +577,19 @@ async def add_library_document(
     user: dict = Depends(get_current_user),
 ):
     org_id = await asyncio.to_thread(_get_tendering_org_id, user)
+    if body.url and not is_http_url(body.url):
+        raise HTTPException(400, "url must be an http(s) link")
+    if body.storage_path:
+        if not is_safe_storage_path(body.storage_path):
+            raise HTTPException(400, "invalid storage_path")
+        # Vault uploads still land in one shared `general/` folder, so there is no per-org
+        # prefix to check against (moving them under `<org_id>/` is the pending storage change,
+        # together with making the buckets private). Until then, refuse a path another org has
+        # already registered: that is the case where claiming a path means reading their file.
+        claimed = await asyncio.to_thread(db.get_supplier_document_by_storage_path, body.storage_path)
+        if claimed and claimed.get("org_id") != org_id:
+            raise HTTPException(409, "That file is already registered to another organisation")
+
     data = body.model_dump(mode='json')
     library_doc = await asyncio.to_thread(db.create_library_document, org_id, data)
 
@@ -619,10 +676,7 @@ async def workspace_chat(
 ):
     from backend.core import llm
 
-    org_id = await asyncio.to_thread(_get_tendering_org_id, user)
-    workspace = await asyncio.to_thread(db.get_tendering_workspace, workspace_id)
-    if not workspace or workspace["org_id"] != org_id:
-        raise HTTPException(404, "Workspace not found")
+    workspace = await _load_workspace_or_404(workspace_id, user)
 
     # Retrieve relevant chunks from extracted documents
     chunks: list[dict] = []
