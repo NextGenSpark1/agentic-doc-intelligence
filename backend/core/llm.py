@@ -18,9 +18,26 @@ _LLM_MAX_RETRIES = 3
 _LLM_RETRY_BACKOFF = (10, 20)  # seconds between attempt 0→1 and attempt 1→2
 
 
+def _quieten_litellm() -> None:
+    """Stop LiteLLM printing its help banner on every failed call.
+
+    One banner per failure sounds harmless until a requirement-extraction run makes a call per
+    batch and per requirement: on 13 Sept the API blew past Railway's 500 lines/second limit and
+    Railway dropped 1,869 log lines, taking real errors with them. Guarded with getattr so a
+    LiteLLM release that renames the flag cannot break model calls.
+    """
+    try:
+        import litellm
+        if hasattr(litellm, "suppress_debug_info"):
+            litellm.suppress_debug_info = True
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def complete(messages: list[dict], tier: str = "reasoning", **kwargs: Any) -> str:
     from litellm import completion
 
+    _quieten_litellm()
     s = get_settings()
     models = {
         "fast": s.llm_fast_model,
@@ -59,6 +76,7 @@ def _is_retryable(exc: Exception) -> bool:
 def embed(texts: list[str]) -> list[list[float]]:
     from litellm import embedding
 
+    _quieten_litellm()
     s = get_settings()
     # dimensions=1536 matches the vector(1536) DB column. LiteLLM maps this to
     # output_dimensionality for Gemini (supported values: 256, 768, 1536, 3072).

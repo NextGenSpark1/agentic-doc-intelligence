@@ -135,11 +135,14 @@ def validate_matches(raw: object, candidate_index: dict[str, dict],
 
 
 def _payload(requirement: dict, candidates: list[dict]) -> dict:
+    # `mandatory` is the column name on workspace_requirements. Reading `is_mandatory` here (the
+    # name the extraction prompt uses in its own output) meant the adjudicator was told None for
+    # every requirement, so it could not tell a must-have from a nice-to-have.
     return {
         "requirement": {
             "description": requirement.get("description"),
             "category": requirement.get("category"),
-            "is_mandatory": requirement.get("is_mandatory"),
+            "is_mandatory": requirement.get("mandatory"),
             "required_evidence": requirement.get("required_evidence"),
         },
         "candidate_documents": [

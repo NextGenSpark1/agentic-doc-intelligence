@@ -82,9 +82,20 @@ def process_workspace_document(workspace_doc_id: str) -> None:
 
 
 def _index_workspace_chunks(workspace_id: str, document_id: str, chunks: list[dict]) -> None:
-    """Embed chunk text and store with workspace_id for workspace-scoped vector search."""
+    """Embed chunk text and store with workspace_id for workspace-scoped vector search.
+
+    Replaces rather than appends, exactly as the vault indexer does. Extract can be clicked
+    again on a document that is already `done`, and each run used to add a second full set of
+    chunks: retrieval then favoured re-extracted documents (more chunks, more chances at top-k)
+    and mixed stale text with fresh. It also matters after an embedding-model change, when
+    re-extracting is how a document's vectors get rebuilt — leaving the old vectors alongside
+    the new ones would keep returning nonsense.
+
+    The delete happens only after the new chunks are embedded, so an embedding failure leaves the
+    previous working index in place rather than an empty one.
+    """
     from backend.core import llm
-    from backend.core.db_core import insert_chunks
+    from backend.core.db_core import delete_chunks_for_document, insert_chunks
 
     texts = [chunk["text"] for chunk in chunks if chunk.get("text")]
     if not texts:
@@ -119,6 +130,7 @@ def _index_workspace_chunks(workspace_id: str, document_id: str, chunks: list[di
         rows.append(row)
         vector_index += 1
 
+    delete_chunks_for_document(document_id)
     insert_chunks(rows)
 
 

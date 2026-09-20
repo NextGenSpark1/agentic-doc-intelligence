@@ -113,7 +113,7 @@ def test_match_score_is_clamped():
     index = {"SUP-1": _candidate("SUP-1")}
     raw = {"matches": [{"supplier_document_id": "SUP-1", "match_score": 3.0,
                         "rationale": "exact match"}]}
-    assert validate_matches(raw, index)[0]["match_score"] == 1.0
+    assert validate_matches(raw, index)[0]["score"] == 1.0
 
 
 def test_unparseable_score_is_dropped_not_defaulted():
