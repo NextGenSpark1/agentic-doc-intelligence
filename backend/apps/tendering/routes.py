@@ -475,6 +475,7 @@ async def review_evidence_link(
         raise HTTPException(404, "Evidence link not found")
     await asyncio.to_thread(db.update_evidence_link_status, link_id, body.status)
     await asyncio.to_thread(db.recalculate_requirement_status_from_evidence, link["req_id"])
+    await asyncio.to_thread(db.recalculate_workspace_readiness, link["workspace_id"])
     return {"id": link_id, "status": body.status}
 
 
