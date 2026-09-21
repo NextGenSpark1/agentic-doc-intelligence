@@ -490,10 +490,7 @@ export const getWorkspaces = (): Promise<TenderWorkspace[]> =>
   api.get<TenderWorkspace[]>('/tendering/workspaces').then((response) => response.data);
 
 export const getWorkspace = (id: string): Promise<TenderWorkspace> =>
-  withMockFallback(
-    () => api.get<TenderWorkspace>(`/tendering/workspaces/${id}`).then((response) => response.data),
-    MOCK_WORKSPACES.find((workspace) => workspace.id === id) ?? MOCK_WORKSPACES[0],
-  );
+  api.get<TenderWorkspace>(`/tendering/workspaces/${id}`).then((response) => response.data);
 
 export const getRequirements = (tenderId: string): Promise<Requirement[]> =>
   withMockFallback(
