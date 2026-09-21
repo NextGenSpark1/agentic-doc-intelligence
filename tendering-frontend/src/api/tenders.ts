@@ -487,7 +487,7 @@ async function withMockFallback<T>(fn: () => Promise<T>, mock: T): Promise<T> {
 // ─── API functions ────────────────────────────────────────────────────────────
 
 export const getWorkspaces = (): Promise<TenderWorkspace[]> =>
-  withMockFallback(() => api.get<TenderWorkspace[]>('/tendering/workspaces').then((response) => response.data), MOCK_WORKSPACES);
+  api.get<TenderWorkspace[]>('/tendering/workspaces').then((response) => response.data);
 
 export const getWorkspace = (id: string): Promise<TenderWorkspace> =>
   withMockFallback(
