@@ -499,7 +499,7 @@ export const getBidDecision = (tenderId: string): Promise<BidDecisionReport | nu
   api.get<BidDecisionReport | null>(`/tendering/workspaces/${tenderId}/bid-decision`).then((response) => response.data);
 
 export const getDashboardStats = (): Promise<DashboardStats> =>
-  withMockFallback(() => api.get<DashboardStats>('/tendering/stats').then((response) => response.data), MOCK_STATS);
+  api.get<DashboardStats>('/tendering/stats').then((response) => response.data);
 
 export const getLibraryDocuments = (): Promise<LibraryDocument[]> =>
   withMockFallback(() => api.get<LibraryDocument[]>('/tendering/library').then((response) => response.data), MOCK_LIBRARY);
