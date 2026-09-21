@@ -496,10 +496,7 @@ export const getRequirements = (tenderId: string): Promise<Requirement[]> =>
   api.get<Requirement[]>(`/tendering/workspaces/${tenderId}/requirements`).then((response) => response.data);
 
 export const getBidDecision = (tenderId: string): Promise<BidDecisionReport | null> =>
-  withMockFallback(
-    () => api.get<BidDecisionReport>(`/tendering/workspaces/${tenderId}/bid-decision`).then((response) => response.data),
-    MOCK_BID_DECISIONS[tenderId] ?? null,
-  );
+  api.get<BidDecisionReport | null>(`/tendering/workspaces/${tenderId}/bid-decision`).then((response) => response.data);
 
 export const getDashboardStats = (): Promise<DashboardStats> =>
   withMockFallback(() => api.get<DashboardStats>('/tendering/stats').then((response) => response.data), MOCK_STATS);
