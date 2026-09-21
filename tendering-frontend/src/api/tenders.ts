@@ -507,6 +507,14 @@ export const getBidDecision = (tenderId: string): Promise<BidDecisionReport | nu
     MOCK_BID_DECISIONS[tenderId] ?? null,
   );
 
+// Generates a fresh recommendation from the current evidence position and stores it. No mock
+// fallback: a recommendation that did not come from the backend is exactly the kind of thing
+// nobody should be reading off this screen. The team's own bid/no-bid stays with updateWorkspace.
+export const generateBidDecision = (tenderId: string): Promise<BidDecisionReport> =>
+  api
+    .post<BidDecisionReport>(`/tendering/workspaces/${tenderId}/generate-bid-decision`)
+    .then((response) => response.data);
+
 export const getDashboardStats = (): Promise<DashboardStats> =>
   withMockFallback(() => api.get<DashboardStats>('/tendering/stats').then((response) => response.data), MOCK_STATS);
 

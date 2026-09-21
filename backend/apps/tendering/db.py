@@ -244,6 +244,18 @@ def recalculate_workspace_readiness(workspace_id: str) -> int:
     return score
 
 
+def save_workspace_bid_decision(workspace_id: str, record: dict) -> dict | None:
+    """Store a generated recommendation, replacing the previous one for this workspace.
+
+    Reads already take the newest row, so the delete is about not keeping a pile of superseded
+    arguments around a decision the team is still making.
+    """
+    client = get_client()
+    client.table("workspace_bid_decisions").delete().eq("workspace_id", workspace_id).execute()
+    rows = client.table("workspace_bid_decisions").insert(record).execute().data
+    return rows[0] if rows else None
+
+
 def get_workspace_bid_decision(workspace_id: str) -> dict | None:
     rows = (
         get_client()
@@ -578,33 +590,44 @@ def update_evidence_link_status(link_id: str, status: str) -> None:
 
 
 def recalculate_requirement_status_from_evidence(req_id: str) -> None:
-    """Set requirement status to 'met' when any evidence link is confirmed, or reset
-    to 'unchecked' when the last confirmed link is dismissed."""
+    """Re-derive a requirement's status after someone confirms or dismisses its evidence.
+
+    What this used to do, and why both halves were wrong:
+
+      * dismissing the last confirmed link reset the requirement to `unchecked`, which says
+        nobody has reviewed it. A person had just reviewed it and rejected the evidence, so the
+        truthful answer is `gap` — and readiness treats the two very differently, `gap` on a
+        mandatory requirement being a blocker while `unchecked` is only a warning.
+      * anything other than a confirmed link, or a `met` being cleared, returned without a
+        write. Dismissing one of two pending proposals, or confirming then dismissing inside one
+        session, left whatever happened to be stored.
+
+    The rule now lives in status_rules.status_from_evidence, shared with matching so the two
+    cannot drift apart again.
+    """
+    from .status_rules import status_from_evidence
+
     links = (
         get_client().table("evidence_links")
-        .select("human_review_status")
+        .select("human_review_status, score")
         .eq("req_id", req_id)
         .execute()
         .data
     ) or []
-    confirmed_count = sum(1 for link in links if link.get("human_review_status") == "confirmed")
 
     req_rows = (
         get_client().table("workspace_requirements")
-        .select("status")
+        .select("status, completion_status")
         .eq("req_id", req_id)
         .execute()
         .data
     ) or []
     if not req_rows:
         return
-    current_status = req_rows[0].get("status", "unchecked")
 
-    if confirmed_count > 0:
-        new_status = "met"
-    elif current_status == "met":
-        new_status = "unchecked"
-    else:
+    current_status = req_rows[0].get("status") or "unchecked"
+    new_status = status_from_evidence(links, req_rows[0].get("completion_status") or "")
+    if new_status == current_status:
         return
 
     get_client().table("workspace_requirements").update(

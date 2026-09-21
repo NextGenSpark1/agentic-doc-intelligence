@@ -505,6 +505,32 @@ async def get_bid_decision(workspace_id: str, user: dict = Depends(get_current_u
     return decision
 
 
+@router.post("/workspaces/{workspace_id}/generate-bid-decision", status_code=201,
+             dependencies=[Depends(rate_limit("bid_decision", 20, 3600))])
+async def generate_bid_decision(workspace_id: str, user: dict = Depends(get_current_user)):
+    """Generate (and store) a bid/no-bid recommendation for this workspace.
+
+    Synchronous: it is one LLM call over a report we already hold, and the caller wants the
+    answer on screen. Returns the stored recommendation, in the same shape as GET bid-decision.
+
+    It writes `workspace_bid_decisions.recommendation` only. The team's own `bid_decision` on the
+    workspace stays where it is — a recommendation is an argument, and accepting it is a click a
+    person makes (Rule 3).
+    """
+    await _load_workspace_or_404(workspace_id, user)
+    from .pipeline import bid_decision
+
+    try:
+        return await asyncio.to_thread(bid_decision.generate, workspace_id)
+    except Exception as exc:  # noqa: BLE001
+        traceback.print_exc()
+        await asyncio.to_thread(
+            db.write_workspace_audit, workspace_id, user.get("email") or "user",
+            "bid_decision_generation_failed", {"error": f"{type(exc).__name__}: {exc}"[:500]},
+        )
+        raise HTTPException(502, "Could not generate a bid recommendation — please try again.")
+
+
 # ── Evidence links ─────────────────────────────────────────────────────────────
 
 @router.get("/workspaces/{workspace_id}/evidence-links")

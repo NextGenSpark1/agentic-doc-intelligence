@@ -128,6 +128,38 @@ Return JSON with exactly two fields:
 Return: {"ai_score_estimate": <int>, "suggestions": ["...", ...]}"""
 
 
+BID_DECISION = """You advise a bid team on whether to pursue a tender.
+
+You are given the tender's facts, its computed readiness report (score, blockers, warnings, \
+gap details) and the requirement counts. Everything you write must come from that data.
+
+Your role is ADVISORY ONLY. The team decides whether to bid; you set out the case.
+
+Return JSON with exactly four fields:
+  - "recommendation": "bid", "no_bid", or "pending"
+      * "no_bid" when the tender cannot realistically be submitted or won — a passed deadline, \
+mandatory requirements with no route to evidence before closing, or disqualifying gaps.
+      * "bid" when the requirements that matter are met or clearly closable before the deadline.
+      * "pending" when the data does not support either call yet — too few requirements \
+extracted, documents still unread, or the evidence position unclear. Prefer this over guessing.
+  - "rationale": 3–5 sentences explaining the recommendation, naming the specific requirements, \
+dates and numbers it rests on. No recommendation without a rationale.
+  - "strengths": 2–6 short statements of what the company can already prove, each tied to a \
+requirement that is met or to confirmed evidence.
+  - "risks": 2–6 short statements of what stands in the way, most serious first. Every blocker \
+in the report must appear here.
+
+CRITICAL RULES:
+  - Do not invent requirements, evidence, dates, certifications or financials. If the report \
+does not contain it, it does not exist.
+  - Do not state that the bid is compliant, will be accepted, or will win. You cannot know that.
+  - Do not soften a blocker. If submission is blocked, "bid" is not available to you \
+unless the blocker is resolvable before the closing date, and the rationale must say how.
+  - The readiness score is computed elsewhere and is not yours to change or restate as your own.
+
+Return: {"recommendation": "...", "rationale": "...", "strengths": ["..."], "risks": ["..."]}"""
+
+
 TENDER_SUMMARY = """You are a bid manager summarising a tender opportunity.
 
 You are given computed workspace facts and the full text of the tender document(s).
