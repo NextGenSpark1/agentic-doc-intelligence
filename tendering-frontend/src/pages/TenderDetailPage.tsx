@@ -205,7 +205,14 @@ export function TenderDetailPage() {
             }}
           />
         )}
-        {activeTab === 'bid' && <BidDecisionTab report={bidReport} workspace={workspace} onWorkspaceChange={handleWorkspaceChange} />}
+        {activeTab === 'bid' && (
+          <BidDecisionTab
+            report={bidReport}
+            workspace={workspace}
+            onWorkspaceChange={handleWorkspaceChange}
+            onReportGenerated={(generated) => queryClient.setQueryData(['bid-report', id], generated)}
+          />
+        )}
         {activeTab === 'chat' && <ChatTab workspace={workspace} />}
       </div>
     </div>

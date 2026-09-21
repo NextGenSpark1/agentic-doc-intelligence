@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Loader2, Sparkles, ThumbsUp, ThumbsDown, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { updateWorkspace } from '../../api/tenders';
+import { updateWorkspace, generateBidDecision } from '../../api/tenders';
 import { BidDecisionBadge } from '../Badge';
 import { formatDate, formatCurrency } from '../../lib/utils';
 import type { BidDecisionReport, TenderWorkspace } from '../../types';
@@ -10,14 +10,17 @@ export function BidDecisionTab({
   report,
   workspace,
   onWorkspaceChange,
+  onReportGenerated,
 }: {
   report: BidDecisionReport | null;
   workspace: TenderWorkspace;
   onWorkspaceChange?: (patch: Partial<TenderWorkspace>) => void;
+  onReportGenerated?: (report: BidDecisionReport) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState<'bid' | 'no_bid' | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   async function handleExport() {
     if (!report) return;
@@ -63,6 +66,19 @@ export function BidDecisionTab({
 
     setExporting(false);
     toast.success('Report downloaded');
+  }
+
+  async function handleGenerate() {
+    setGenerating(true);
+    try {
+      const generated = await generateBidDecision(workspace.id);
+      onReportGenerated?.(generated);
+      toast.success('Bid decision report generated');
+    } catch {
+      toast.error('Failed to generate bid decision — ensure analysis has completed');
+    } finally {
+      setGenerating(false);
+    }
   }
 
   async function handleConfirm(decision: 'bid' | 'no_bid') {
@@ -116,7 +132,15 @@ export function BidDecisionTab({
         <div className="bg-panel border border-border rounded-xl p-10 text-center">
           <Sparkles size={28} className="text-text-mute mx-auto mb-3" />
           <p className="text-sm font-medium text-text mb-1">No bid analysis generated yet</p>
-          <p className="text-xs text-text-mute">Complete the requirements and compliance review first.</p>
+          <p className="text-xs text-text-mute mb-5">Run analysis and review requirements first, then generate the AI bid decision report.</p>
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal text-white text-sm font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
+          >
+            {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            {generating ? 'Generating…' : 'Generate Bid Decision'}
+          </button>
         </div>
       ) : (
         <>
