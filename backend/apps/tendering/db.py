@@ -492,46 +492,51 @@ def delete_workspace_requirements(workspace_id: str, pending_only: bool = False)
     """Delete requirements for a workspace.
 
     With pending_only, deletes only requirements nobody has worked on yet, so re-running
-    analysis can refresh them. A requirement counts as worked on if its status is no longer
-    'unchecked', or if a person has given it an owner, written notes, or confirmed or dismissed
-    evidence for it. Those are kept.
+    analysis can refresh them. A requirement is safe to delete when:
+      - Status is not 'met' (met is a human's declaration, never a pipeline output)
+      - No owner has been assigned
+      - No notes have been written
+      - No confirmed evidence exists for it
 
-    "Status is unchecked" alone used to be the test, which deleted an unchecked requirement's
-    owner and notes on every run — and, since evidence_links cascade on delete, would also
-    erase any evidence a person had confirmed for it.
+    The previous version only queried status='unchecked', which caused re-analysis to produce
+    duplicates: evidence matching sets requirements to 'partial' or 'gap' during the same run,
+    so on the next analysis run nothing matched the 'unchecked' filter, nothing was deleted,
+    and the new extraction inserted fresh rows alongside the old ones.
     """
     client = get_client()
     if not pending_only:
         client.table("workspace_requirements").delete().eq("workspace_id", workspace_id).execute()
         return
 
-    unchecked = (
+    # Select all non-met requirements — the pipeline may have set them to partial/gap, but
+    # that does not count as human work. met is excluded because only a human produces it.
+    pipeline_owned = (
         client.table("workspace_requirements")
         .select("req_id, owner, notes")
         .eq("workspace_id", workspace_id)
-        .eq("status", "unchecked")
+        .neq("status", "met")
         .execute()
         .data
     ) or []
-    if not unchecked:
+    if not pipeline_owned:
         return
 
-    reviewed_evidence = (
+    confirmed_evidence = (
         client.table("evidence_links")
         .select("req_id")
         .eq("workspace_id", workspace_id)
-        .in_("human_review_status", ["confirmed", "dismissed"])
+        .eq("human_review_status", "confirmed")
         .execute()
         .data
     ) or []
-    has_reviewed_evidence = {str(link["req_id"]) for link in reviewed_evidence}
+    has_confirmed_evidence = {str(link["req_id"]) for link in confirmed_evidence}
 
     deletable = [
         str(requirement["req_id"])
-        for requirement in unchecked
+        for requirement in pipeline_owned
         if not (requirement.get("owner") or "").strip()
         and not (requirement.get("notes") or "").strip()
-        and str(requirement["req_id"]) not in has_reviewed_evidence
+        and str(requirement["req_id"]) not in has_confirmed_evidence
     ]
     for start in range(0, len(deletable), _DELETE_BATCH):
         client.table("workspace_requirements").delete().in_(
