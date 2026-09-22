@@ -25,6 +25,25 @@ from . import db
 router = APIRouter(prefix="/tendering", tags=["tendering"])
 
 
+import re as _re
+
+def _clean_chunk_text(text: str, max_chars: int = 350) -> str:
+    """Strip HTML and markdown artifacts from a chunk before showing it as a citation excerpt."""
+    cleaned = _strip_html(text)
+    # Remove markdown heading markers (## Introduction, # Title, etc.)
+    cleaned = _re.sub(r'^#{1,6}\s+', '', cleaned, flags=_re.MULTILINE)
+    # Remove anchor-style ids left by ADE (e.g. {#section-1})
+    cleaned = _re.sub(r'\{#[^}]+\}', '', cleaned)
+    # Collapse multiple blank lines / leading whitespace
+    cleaned = _re.sub(r'\n{2,}', ' ', cleaned).strip()
+    if len(cleaned) <= max_chars:
+        return cleaned
+    # Cut at the last sentence boundary within the limit
+    truncated = cleaned[:max_chars]
+    last_stop = max(truncated.rfind('. '), truncated.rfind('.\n'))
+    return (truncated[:last_stop + 1] if last_stop > max_chars // 2 else truncated).strip()
+
+
 def _is_platform_admin(user: dict) -> bool:
     return user.get("email", "").lower() in [
         address.lower() for address in get_settings().platform_admin_emails
@@ -793,7 +812,7 @@ async def workspace_chat(
         {
             "document_id": c.get("document_id", ""),
             "page": c.get("page") or 0,
-            "quoted_text": _strip_html(c.get("text") or "")[:200],
+            "quoted_text": _clean_chunk_text(c.get("text") or ""),
             "chunk_id": c.get("chunk_id", ""),
         }
         for c in chunks
