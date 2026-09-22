@@ -137,6 +137,36 @@ export function ComplianceMatrixTab({
         ))}
       </div>
 
+      {/* Filter pills */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => setStatusFilter('all')}
+          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+            statusFilter === 'all'
+              ? 'bg-teal text-white'
+              : 'bg-panel-3 border border-border text-text-mute hover:text-text'
+          }`}
+        >
+          All ({requirements.length})
+        </button>
+        {SUMMARY_CARDS.map(({ key, label, countKey }) => (
+          <button
+            key={key}
+            onClick={() => setStatusFilter(statusFilter === key ? 'all' : key)}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              statusFilter === key
+                ? key === 'met' ? 'bg-green text-white'
+                  : key === 'partial' ? 'bg-amber text-white'
+                  : key === 'gap' ? 'bg-red text-white'
+                  : 'bg-panel-3 border border-border text-text'
+                : 'bg-panel-3 border border-border text-text-mute hover:text-text'
+            }`}
+          >
+            {label} ({counts[countKey]})
+          </button>
+        ))}
+      </div>
+
       {/* Table */}
       <div className="bg-panel border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
