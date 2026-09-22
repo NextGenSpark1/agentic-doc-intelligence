@@ -4,13 +4,13 @@ import { chatWithWorkspace } from '../../api/tenders';
 import type { ChatCitation } from '../../api/tenders';
 import type { TenderWorkspace } from '../../types';
 
-interface ChatMsg {
+export interface ChatMsg {
   role: 'user' | 'assistant';
   text: string;
   citations?: ChatCitation[];
 }
 
-const STARTER: ChatMsg[] = [
+export const CHAT_STARTER: ChatMsg[] = [
   {
     role: 'assistant',
     text: "Hi! I'm your AI assistant for this tender. Once you've extracted at least one document, ask me anything — specific clauses, how to address a gap, what a requirement means, or how to structure your proposal.",
@@ -23,8 +23,15 @@ const PROMPTS = [
   'Summarise the key technical requirements.',
 ];
 
-export function ChatTab({ workspace }: { workspace: TenderWorkspace }) {
-  const [messages, setMessages] = useState<ChatMsg[]>(STARTER);
+export function ChatTab({
+  workspace,
+  messages,
+  onMessages,
+}: {
+  workspace: TenderWorkspace;
+  messages: ChatMsg[];
+  onMessages: (updater: (previous: ChatMsg[]) => ChatMsg[]) => void;
+}) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -33,7 +40,7 @@ export function ChatTab({ workspace }: { workspace: TenderWorkspace }) {
     if (!input.trim() || loading) return;
     const userText = input.trim();
     setInput('');
-    setMessages((previous) => [...previous, { role: 'user', text: userText }]);
+    onMessages((previous) => [...previous, { role: 'user', text: userText }]);
     setLoading(true);
 
     const history = messages
@@ -42,12 +49,12 @@ export function ChatTab({ workspace }: { workspace: TenderWorkspace }) {
 
     try {
       const response = await chatWithWorkspace(workspace.id, userText, history);
-      setMessages((previous) => [
+      onMessages((previous) => [
         ...previous,
         { role: 'assistant', text: response.answer, citations: response.citations },
       ]);
     } catch {
-      setMessages((previous) => [
+      onMessages((previous) => [
         ...previous,
         { role: 'assistant', text: 'Something went wrong. Make sure documents have been extracted before asking questions.' },
       ]);

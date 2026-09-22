@@ -11,7 +11,8 @@ import { SummaryTab } from '../components/workspace/SummaryTab';
 import { RequirementsTab } from '../components/workspace/RequirementsTab';
 import { ComplianceMatrixTab } from '../components/workspace/ComplianceMatrixTab';
 import { BidDecisionTab } from '../components/workspace/BidDecisionTab';
-import { ChatTab } from '../components/workspace/ChatTab';
+import { ChatTab, CHAT_STARTER } from '../components/workspace/ChatTab';
+import type { ChatMsg } from '../components/workspace/ChatTab';
 import { daysUntil } from '../lib/utils';
 import type { TenderWorkspace } from '../types';
 
@@ -31,6 +32,7 @@ export function TenderDetailPage() {
   const queryClient = useQueryClient();
   const [workspace, setWorkspace] = useState<TenderWorkspace | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('summary');
+  const [chatMessages, setChatMessages] = useState<ChatMsg[]>(CHAT_STARTER);
   const prevStageRef = useRef<string | null>(null);
 
   const { data: fetchedWorkspace, isLoading: loadingWorkspace } = useQuery({
@@ -218,7 +220,13 @@ export function TenderDetailPage() {
             onReportGenerated={(generated) => queryClient.setQueryData(['bid-report', id], generated)}
           />
         )}
-        {activeTab === 'chat' && <ChatTab workspace={workspace} />}
+        {activeTab === 'chat' && (
+          <ChatTab
+            workspace={workspace}
+            messages={chatMessages}
+            onMessages={setChatMessages}
+          />
+        )}
       </div>
     </div>
   );
