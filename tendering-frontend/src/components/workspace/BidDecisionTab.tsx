@@ -25,47 +25,115 @@ export function BidDecisionTab({
   async function handleExport() {
     if (!report) return;
     setExporting(true);
-    await new Promise((resolve) => setTimeout(resolve, 800));
 
-    const lines = [
-      `BID DECISION REPORT`,
-      `===================`,
-      ``,
-      `Tender:       ${workspace.title}`,
-      `Reference:    ${workspace.reference}`,
-      `Buyer:        ${workspace.buyer}`,
-      `Value:        ${formatCurrency(workspace.contract_value, workspace.currency)}`,
-      `Closing:      ${workspace.closing_date}`,
-      `Generated:    ${formatDate(report.generated_at ?? report.analysed_at ?? '', { day: 'numeric', month: 'long', year: 'numeric' })}`,
-      ``,
-      `AI SCORE: ${report.score}/100`,
-      `RECOMMENDATION: ${report.recommendation.toUpperCase()}`,
-      ``,
-      `RATIONALE`,
-      `---------`,
-      report.rationale,
-      ``,
-      `STRENGTHS`,
-      `---------`,
-      ...report.strengths.map((strength) => `  ✓ ${strength}`),
-      ``,
-      `RISKS`,
-      `-----`,
-      ...report.risks.map((risk) => `  ! ${risk}`),
-      ``,
-      `TEAM DECISION: ${(confirmed ?? workspace.bid_decision).toUpperCase()}`,
-    ];
+    const teamDecision = confirmed ?? workspace.bid_decision;
+    const decisionLabel = teamDecision === 'bid' ? 'BID' : teamDecision === 'no_bid' ? 'NO BID' : 'PENDING';
+    const decisionColour = teamDecision === 'bid' ? '#2E7D52' : teamDecision === 'no_bid' ? '#B91C1C' : '#92400E';
+    const scoreColour = report.score >= 70 ? '#2E7D52' : report.score >= 50 ? '#0F766E' : '#C77A12';
+    const recLabel = report.recommendation === 'bid' ? 'BID' : report.recommendation === 'no_bid' ? 'NO BID' : report.recommendation.toUpperCase();
+    const generatedDate = formatDate(report.generated_at ?? report.analysed_at ?? '', { day: 'numeric', month: 'long', year: 'numeric' });
 
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `bid-report-${workspace.reference || workspace.id}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const strengthsHtml = report.strengths.map((s) =>
+      `<li><span style="color:#2E7D52;font-weight:700;margin-right:6px">✓</span>${s}</li>`
+    ).join('');
+    const risksHtml = report.risks.map((r) =>
+      `<li><span style="color:#B91C1C;font-weight:700;margin-right:6px">!</span>${r}</li>`
+    ).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bid Decision Report — ${workspace.title}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#111;background:#fff;padding:40px 48px;max-width:820px;margin:0 auto}
+  @media print{body{padding:20px 28px}@page{margin:18mm 18mm}}
+  .header{border-bottom:3px solid #0F766E;padding-bottom:16px;margin-bottom:24px}
+  .logo{font-size:11px;font-weight:700;letter-spacing:.12em;color:#0F766E;text-transform:uppercase;margin-bottom:8px}
+  h1{font-size:20px;font-weight:700;line-height:1.3;color:#0B1525;margin-bottom:4px}
+  .meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 32px;margin-top:14px}
+  .meta-row{display:flex;gap:8px;font-size:12px}
+  .meta-label{color:#6B7280;min-width:80px;font-weight:600}
+  .score-row{display:flex;align-items:center;gap:24px;margin:24px 0;padding:20px;background:#F8FAFC;border-radius:12px;border:1px solid #E5E7EB}
+  .score-circle{width:80px;height:80px;border-radius:50%;border:5px solid ${scoreColour};display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0}
+  .score-num{font-size:26px;font-weight:800;color:${scoreColour};line-height:1}
+  .score-denom{font-size:11px;color:#9CA3AF}
+  .rec-badge{display:inline-block;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;background:${report.recommendation === 'bid' ? '#DCFCE7' : report.recommendation === 'no_bid' ? '#FEE2E2' : '#FEF3C7'};color:${report.recommendation === 'bid' ? '#166534' : report.recommendation === 'no_bid' ? '#991B1B' : '#92400E'}}
+  .rationale{font-size:13px;color:#374151;line-height:1.7;margin-top:10px}
+  .section-title{font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;padding-bottom:4px;border-bottom:1px solid #E5E7EB}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:20px 0}
+  .card{border-radius:10px;padding:16px}
+  .card-green{background:#F0FDF4;border:1px solid #BBF7D0}
+  .card-red{background:#FEF2F2;border:1px solid #FECACA}
+  .card-title{font-size:12px;font-weight:700;margin-bottom:10px}
+  .card-title-green{color:#166534}
+  .card-title-red{color:#991B1B}
+  ul{list-style:none;padding:0}
+  li{font-size:12px;color:#374151;line-height:1.6;padding:2px 0}
+  .decision-box{margin-top:24px;padding:18px;border-radius:10px;border:2px solid ${decisionColour};background:${teamDecision === 'bid' ? '#F0FDF4' : teamDecision === 'no_bid' ? '#FEF2F2' : '#FFFBEB'}}
+  .decision-label{font-size:11px;color:#6B7280;font-weight:600;margin-bottom:4px}
+  .decision-value{font-size:22px;font-weight:800;color:${decisionColour}}
+  .footer{margin-top:32px;font-size:10px;color:#9CA3AF;border-top:1px solid #E5E7EB;padding-top:12px;display:flex;justify-content:space-between}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="logo">NG Tendering Platform</div>
+  <h1>${workspace.title}</h1>
+  <div class="meta">
+    <div class="meta-row"><span class="meta-label">Reference</span>${workspace.reference || '—'}</div>
+    <div class="meta-row"><span class="meta-label">Buyer</span>${workspace.buyer || '—'}</div>
+    <div class="meta-row"><span class="meta-label">Value</span>${formatCurrency(workspace.contract_value, workspace.currency)}</div>
+    <div class="meta-row"><span class="meta-label">Closing</span>${workspace.closing_date || '—'}</div>
+  </div>
+</div>
+
+<div class="score-row">
+  <div class="score-circle">
+    <span class="score-num">${report.score}</span>
+    <span class="score-denom">/ 100</span>
+  </div>
+  <div>
+    <div style="font-size:11px;color:#6B7280;font-weight:600;margin-bottom:6px">AI Recommendation</div>
+    <span class="rec-badge">${recLabel}</span>
+    <p class="rationale">${report.rationale}</p>
+  </div>
+</div>
+
+<div class="cols">
+  <div class="card card-green">
+    <div class="section-title card-title card-title-green">✓ Strengths</div>
+    <ul>${strengthsHtml}</ul>
+  </div>
+  <div class="card card-red">
+    <div class="section-title card-title card-title-red">! Risks</div>
+    <ul>${risksHtml}</ul>
+  </div>
+</div>
+
+<div class="decision-box">
+  <div class="decision-label">Team Decision</div>
+  <div class="decision-value">${decisionLabel}</div>
+</div>
+
+<div class="footer">
+  <span>Generated ${generatedDate}</span>
+  <span>Confidential — NG Tendering Platform</span>
+</div>
+
+<script>window.onload = function(){ window.print(); }<\/script>
+</body>
+</html>`;
+
+    const popup = window.open('', '_blank', 'width=900,height=700');
+    if (popup) {
+      popup.document.write(html);
+      popup.document.close();
+    }
 
     setExporting(false);
-    toast.success('Report downloaded');
+    toast.success('Print dialog opened — save as PDF');
   }
 
   async function handleGenerate() {
