@@ -146,6 +146,7 @@ export interface EvidenceLink {
   doc_id: string;
   score: number;
   rationale?: string;
+  matched_text?: string;
   human_review_status: 'pending' | 'confirmed' | 'dismissed';
   matched_chunk_id?: string;
   source?: string;

@@ -667,7 +667,7 @@ def upsert_evidence_link(data: dict) -> dict | None:
     if existing:
         if existing[0].get("human_review_status") != "pending":
             return None
-        refresh = {key: data[key] for key in ("score", "rationale", "matched_chunk_id") if key in data}
+        refresh = {key: data[key] for key in ("score", "rationale", "matched_chunk_id", "matched_text") if key in data}
         rows = (
             client.table("evidence_links")
             .update(refresh)

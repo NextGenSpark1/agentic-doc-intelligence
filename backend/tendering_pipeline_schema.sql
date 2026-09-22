@@ -69,3 +69,6 @@ $$;
 
 -- 7. tenant_id column on audit_log so pipeline audit entries can be traced to a workspace.
 ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES tender_workspaces(id) ON DELETE SET NULL;
+
+-- 8. Store the exact matched passage from the library document so the frontend can show it.
+ALTER TABLE evidence_links ADD COLUMN IF NOT EXISTS matched_text TEXT DEFAULT '';

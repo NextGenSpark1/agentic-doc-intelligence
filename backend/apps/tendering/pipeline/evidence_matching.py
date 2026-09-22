@@ -130,6 +130,7 @@ def validate_matches(raw: object, candidate_index: dict[str, dict],
             "score": score,
             "rationale": rationale,
             "matched_chunk_id": candidate.get("chunk_id"),
+            "matched_text": _strip_html(candidate.get("text") or "")[:600],
             "source": "llm",
         })
     return kept

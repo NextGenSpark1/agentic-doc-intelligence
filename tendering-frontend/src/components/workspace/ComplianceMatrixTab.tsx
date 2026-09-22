@@ -263,13 +263,18 @@ export function ComplianceMatrixTab({
                         {/* Pending proposals */}
                         {pendingLinks.map((link) => (
                           <div key={link.id} className="bg-amber-bg border border-amber/20 rounded-lg px-2 py-1.5">
-                            <p className="text-[11px] font-medium text-amber-700 truncate max-w-[180px] mb-1">
+                            <p className="text-[11px] font-medium text-amber-700 mb-1">
                               {libraryDocMap[link.doc_id] ?? 'Vault document'}
                             </p>
                             {link.rationale && (
-                              <p className="text-[10px] text-text-mute leading-snug mb-1.5 line-clamp-2">
+                              <p className="text-[10px] text-text-mute leading-snug mb-1">
                                 {link.rationale}
                               </p>
+                            )}
+                            {link.matched_text && (
+                              <blockquote className="text-[10px] text-text-mute leading-snug mb-1.5 pl-2 border-l-2 border-amber/40 italic">
+                                "{link.matched_text.length > 200 ? link.matched_text.slice(0, 200) + '…' : link.matched_text}"
+                              </blockquote>
                             )}
                             <div className="flex gap-1.5">
                               <button
