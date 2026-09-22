@@ -94,6 +94,7 @@ def compute_rule_requirements(chunks: list[dict]) -> list[dict]:
                 "required_evidence": "",
                 "source_doc": chunk.get("document_id", ""),
                 "source_page": chunk.get("page"),
+                "chunk_id": str(chunk.get("chunk_id") or ""),
                 "clause": "",
                 "source_text": sentence,
                 "confidence": 50,
@@ -240,12 +241,26 @@ def extract(workspace_id: str) -> dict:
         rule_rows = compute_rule_requirements(chunks)
         rule_count += len(rule_rows)
 
-        llm_rows: list[dict] = []
+        unified_rows: list[dict] = []
+        any_llm_succeeded = False
         for batch in _batch(chunks):
+            batch_chunk_ids = {str(chunk.get("chunk_id")) for chunk in batch}
+            # Only send the LLM drafts it can reference — those grounded in this batch's chunks.
+            batch_drafts = [
+                {
+                    "chunk_id": row["chunk_id"],
+                    "description": row["description"],
+                    "category": row["category"],
+                    "is_mandatory": row["mandatory"],
+                }
+                for row in rule_rows
+                if str(row.get("chunk_id", "")) in batch_chunk_ids
+            ]
             chunk_index = {str(chunk.get("chunk_id")): chunk for chunk in batch}
             payload = {
                 "document_name": document.get("filename") or document.get("name"),
                 "document_type": document.get("document_type"),
+                "draft_requirements": batch_drafts,
                 "excerpts": [
                     {
                         "chunk_id": chunk.get("chunk_id"),
@@ -257,15 +272,24 @@ def extract(workspace_id: str) -> dict:
             }
             answer = llm_reasoning.ask(REQUIREMENT_EXTRACTION, payload, workspace_id=workspace_id)
             if answer is None:
+                # LLM failed for this batch — fall back to the rule rows for this batch only.
+                for row in rule_rows:
+                    if str(row.get("chunk_id", "")) in batch_chunk_ids:
+                        unified_rows.append(row)
                 continue
+            any_llm_succeeded = True
             validated = validate_llm_requirements(answer, chunk_index)
             raw_count = len(answer.get("requirements") or []) if isinstance(answer, dict) else 0
             ungrounded += max(0, raw_count - len(validated))
-            llm_rows.extend(validated)
+            unified_rows.extend(validated)
 
-        llm_count += len(llm_rows)
+        # If LLM never responded at all, fall back to the full rule list.
+        if not any_llm_succeeded:
+            unified_rows = list(rule_rows)
 
-        new_rows, dropped = drop_already_present(merge(rule_rows, llm_rows), present)
+        llm_count += len(unified_rows)
+
+        new_rows, dropped = drop_already_present(unified_rows, present)
         already_present += dropped
         for row in new_rows:
             try:
@@ -298,8 +322,8 @@ def extract(workspace_id: str) -> dict:
         "duplicates_skipped": skipped,
         "insert_errors": insert_errors,
         "ungrounded_dropped": ungrounded,
-        "from_rules": rule_count,
-        "from_llm": llm_count,
+        "from_rules_draft": rule_count,
+        "from_unified": llm_count,
     }
     if first_insert_error:
         result["first_insert_error"] = first_insert_error

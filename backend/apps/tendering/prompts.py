@@ -15,43 +15,49 @@ from .schemas import REQUIREMENT_CATEGORIES
 
 _CATEGORY_LIST = ", ".join(REQUIREMENT_CATEGORIES)
 
-REQUIREMENT_EXTRACTION = f"""You extract requirements from tender documents for a company \
-deciding whether and how to bid.
+REQUIREMENT_EXTRACTION = f"""You extract and quality-control requirements from tender \
+documents for a company deciding whether and how to bid.
+
+You are given two inputs:
+  1. DOCUMENT EXCERPTS — the actual tender text you must work from.
+  2. DRAFT REQUIREMENTS (may be empty) — candidates found by an automated pattern matcher \
+from the same excerpts. Drafts may include genuine obligations, section headings that look \
+like obligations, fragmented sentences, or near-duplicates of each other.
 
 A REQUIREMENT is anything the bidder must do, supply, hold, or comply with to submit a valid \
-and competitive bid. Examples: a licence the bidder must hold, a form that must be returned, \
-a bond that must accompany the bid, a technical standard the goods must meet, a deadline, a \
-formatting rule for the submission.
+and competitive bid: a licence to hold, a form to return, a bond to submit, a technical \
+standard to meet, a deadline, a formatting rule.
 
 NOT requirements: background about the buyer, descriptions of the project's purpose, \
-definitions, general statements of intent, or anything the BUYER (rather than the bidder) \
-will do.
+section headings, definitions, general intent, or anything the BUYER (not the bidder) does.
 
-For each requirement you find, return an object with:
-  - "description": the obligation in one clear sentence, stated as the document states it. \
-Do not paraphrase away specifics like amounts, percentages, dates, or standard numbers.
+YOUR TASK — produce the final unified list by:
+  a) Reviewing each draft: include it if it is a genuine bidder obligation (improve the \
+wording if it is fragmented or incomplete, but keep its chunk_id). Discard it if it is a \
+section heading, buyer action, background context, or a duplicate of another draft.
+  b) Adding any genuine requirements from the excerpts that the drafts missed.
+
+For each requirement in the final list, return:
+  - "description": the obligation in one clear sentence. Do not paraphrase away specifics \
+like amounts, percentages, dates, or standard numbers.
   - "category": exactly one of [{_CATEGORY_LIST}]
-  - "is_mandatory": true if the document uses obligatory language (shall, must, is required \
-to, mandatory) or lists it among mandatory/eligibility items; false if it is optional, \
-advisory, or scored rather than pass/fail
-  - "required_evidence": what the bidder must actually supply to prove compliance, if the \
-document says. Otherwise null.
-  - "chunk_id": the id of the excerpt you read this requirement from. Copy it EXACTLY from \
-the input. This is how the requirement is traced back to the page.
-  - "source_clause": the clause or section number, if the excerpt shows one. Otherwise null.
-  - "source_text": the verbatim sentence(s) from the excerpt stating the obligation. Copy, \
-do not rewrite.
-  - "confidence": 0.0-1.0, how certain you are this is a genuine bidder obligation.
+  - "is_mandatory": true if obligatory language is used (shall, must, is required, mandatory)
+  - "required_evidence": what the bidder must supply to prove compliance, or null.
+  - "chunk_id": the EXACT chunk_id of the excerpt this requirement comes from. For adopted \
+drafts, use the same chunk_id the draft carried.
+  - "source_clause": the clause or section number from the excerpt, or null.
+  - "source_text": the verbatim sentence(s) from the excerpt. Copy, do not rewrite.
+  - "confidence": 0.0–1.0, how certain you are this is a genuine bidder obligation.
 
 CRITICAL RULES:
-  1. Every requirement MUST come from one of the provided excerpts and MUST carry that \
-excerpt's exact chunk_id. A requirement you cannot attribute to a supplied excerpt will be \
-discarded, so do not produce one.
-  2. Do not infer requirements from general knowledge of how tenders usually work. If this \
-document does not state it, it is not a requirement.
-  3. "source_text" must be copied verbatim from the excerpt. Do not summarise it.
-  4. One obligation per requirement. Split compound sentences that impose several distinct \
-obligations.
+  1. Every requirement MUST cite the exact chunk_id of an excerpt in this batch. \
+Ungrounded requirements will be discarded.
+  2. Do not infer requirements from general knowledge. If this document does not state it, \
+it is not a requirement.
+  3. "source_text" must be verbatim from the excerpt.
+  4. One obligation per requirement. Split compound sentences with multiple obligations.
+  5. Do not produce a requirement that is semantically identical to one already in the list. \
+The final list should have no duplicates.
 
 Return JSON: {{"requirements": [ ... ]}}
 If the excerpts contain no bidder obligations, return {{"requirements": []}}."""
