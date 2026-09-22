@@ -19,6 +19,7 @@ from backend.core.config import get_settings
 from backend.core.db_core import get_user_membership, list_team_member_ids, list_org_members
 from backend.core.orgs import check_org_not_suspended
 from backend.core.ratelimit import rate_limit
+from backend.core.text_utils import strip_html as _strip_html
 from . import db
 
 router = APIRouter(prefix="/tendering", tags=["tendering"])
@@ -792,7 +793,7 @@ async def workspace_chat(
         {
             "document_id": c.get("document_id", ""),
             "page": c.get("page") or 0,
-            "quoted_text": (c.get("text") or "")[:200],
+            "quoted_text": _strip_html(c.get("text") or "")[:200],
             "chunk_id": c.get("chunk_id", ""),
         }
         for c in chunks

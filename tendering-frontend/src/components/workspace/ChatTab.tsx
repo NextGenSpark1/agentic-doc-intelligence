@@ -33,19 +33,32 @@ function renderInline(text: string): ReactNode[] {
   });
 }
 
+function isTableRow(line: string) {
+  return line.trim().startsWith('|') && line.trim().endsWith('|');
+}
+
+function isSeparatorRow(line: string) {
+  return /^\|[\s\-:|]+\|/.test(line.trim());
+}
+
+function parseTableCells(line: string): string[] {
+  return line.trim().slice(1, -1).split('|').map((cell) => cell.trim());
+}
+
 function MarkdownMessage({ text }: { text: string }) {
   const lines = text.split('\n');
   const nodes: ReactNode[] = [];
   let listItems: string[] = [];
   let listType: 'ul' | 'ol' | null = null;
+  let index = 0;
 
   function flushList() {
     if (!listItems.length) return;
     const Tag = listType!;
     nodes.push(
       <Tag key={nodes.length} className={`pl-4 space-y-0.5 ${Tag === 'ul' ? 'list-disc' : 'list-decimal'} list-outside`}>
-        {listItems.map((item, index) => (
-          <li key={index}>{renderInline(item)}</li>
+        {listItems.map((item, itemIndex) => (
+          <li key={itemIndex}>{renderInline(item)}</li>
         ))}
       </Tag>
     );
@@ -53,8 +66,48 @@ function MarkdownMessage({ text }: { text: string }) {
     listType = null;
   }
 
-  for (let index = 0; index < lines.length; index++) {
+  while (index < lines.length) {
     const line = lines[index];
+
+    // Detect markdown table block
+    if (isTableRow(line) && index + 1 < lines.length && isSeparatorRow(lines[index + 1])) {
+      flushList();
+      const headers = parseTableCells(line);
+      index += 2; // skip header + separator
+      const bodyRows: string[][] = [];
+      while (index < lines.length && isTableRow(lines[index])) {
+        bodyRows.push(parseTableCells(lines[index]));
+        index++;
+      }
+      nodes.push(
+        <div key={nodes.length} className="overflow-x-auto my-2">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-panel-3 border-b border-border">
+                {headers.map((header, headerIndex) => (
+                  <th key={headerIndex} className="text-left px-3 py-2 font-semibold text-text whitespace-nowrap">
+                    {renderInline(header)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {bodyRows.map((row, rowIndex) => (
+                <tr key={rowIndex} className="border-b border-border last:border-0 hover:bg-panel-3/50">
+                  {row.map((cell, cellIndex) => (
+                    <td key={cellIndex} className="px-3 py-2 text-text-mid align-top">
+                      {renderInline(cell)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      continue;
+    }
+
     const bulletMatch = line.match(/^[-*]\s+(.*)/);
     const numberedMatch = line.match(/^\d+\.\s+(.*)/);
     const headingMatch = line.match(/^#{1,3}\s+(.*)/);
@@ -85,6 +138,7 @@ function MarkdownMessage({ text }: { text: string }) {
         nodes.push(<div key={nodes.length} className="h-1.5" />);
       }
     }
+    index++;
   }
   flushList();
   return <div className="text-sm space-y-0.5">{nodes}</div>;
