@@ -61,11 +61,16 @@ export function TenderDetailPage() {
   const loading = loadingWorkspace || loadingRequirements || loadingBid;
 
   useEffect(() => {
-    if (fetchedWorkspace && !workspace) {
-      setWorkspace(fetchedWorkspace);
-      prevStageRef.current = fetchedWorkspace.stage;
-    }
-  }, [fetchedWorkspace, workspace]);
+    if (!fetchedWorkspace) return;
+    setWorkspace((prev) => {
+      if (!prev) {
+        prevStageRef.current = fetchedWorkspace.stage;
+        return fetchedWorkspace;
+      }
+      if (prev.readiness_score === fetchedWorkspace.readiness_score) return prev;
+      return { ...prev, readiness_score: fetchedWorkspace.readiness_score };
+    });
+  }, [fetchedWorkspace]);
 
   const handleWorkspaceChange = useCallback((patch: Partial<TenderWorkspace>) => {
     setWorkspace((previous) => {
