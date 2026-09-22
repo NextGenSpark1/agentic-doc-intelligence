@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Send, Sparkles, FileText } from 'lucide-react';
+import { Send, Sparkles, FileText, Maximize2, Minimize2 } from 'lucide-react';
 import { chatWithWorkspace } from '../../api/tenders';
 import type { ChatCitation } from '../../api/tenders';
 import type { TenderWorkspace } from '../../types';
@@ -155,6 +155,7 @@ export function ChatTab({
 }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   async function handleSend() {
@@ -189,7 +190,14 @@ export function ChatTab({
   }, [messages, loading]);
 
   return (
-    <div className="bg-panel border border-border rounded-xl overflow-hidden flex flex-col" style={{ height: 'calc(100vh - 15rem)', minHeight: '420px' }}>
+    <div
+      className={`bg-panel border border-border rounded-xl overflow-hidden flex flex-col transition-all ${
+        expanded
+          ? 'fixed inset-x-4 top-[6.5rem] bottom-4 z-40 shadow-2xl'
+          : ''
+      }`}
+      style={expanded ? undefined : { height: 'calc(100vh - 15rem)', minHeight: '420px' }}
+    >
 
       {/* Header */}
       <div className="px-5 py-3.5 border-b border-border flex items-center gap-2 bg-panel-2 flex-shrink-0">
@@ -197,9 +205,16 @@ export function ChatTab({
           <Sparkles size={12} className="text-teal" />
         </div>
         <span className="text-sm font-semibold text-text">AI Tender Assistant</span>
-        <span className="ml-auto text-[11px] text-text-mute truncate max-w-[200px]">
+        <span className="ml-auto text-[11px] text-text-mute truncate max-w-[200px] mr-2">
           {workspace.title.split('—')[0].trim()}
         </span>
+        <button
+          onClick={() => setExpanded((previous) => !previous)}
+          className="flex-shrink-0 p-1 rounded hover:bg-panel-3 text-text-mute hover:text-text transition-colors"
+          title={expanded ? 'Collapse' : 'Expand'}
+        >
+          {expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+        </button>
       </div>
 
       {/* Messages */}
