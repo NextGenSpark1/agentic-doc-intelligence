@@ -188,7 +188,7 @@ export function BidDecisionTab({
                 {report.strengths.map((strength, index) => (
                   <li key={index} className="flex items-start gap-2 text-xs text-text-mid">
                     <span className="text-green mt-0.5 flex-shrink-0">✓</span>
-                    {strength}
+                    <span className="break-words min-w-0">{strength}</span>
                   </li>
                 ))}
               </ul>
@@ -202,7 +202,7 @@ export function BidDecisionTab({
                 {report.risks.map((risk, index) => (
                   <li key={index} className="flex items-start gap-2 text-xs text-text-mid">
                     <span className="text-red mt-0.5 flex-shrink-0">!</span>
-                    {risk}
+                    <span className="break-words min-w-0">{risk}</span>
                   </li>
                 ))}
               </ul>
