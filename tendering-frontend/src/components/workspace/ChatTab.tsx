@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Send, Sparkles, FileText } from 'lucide-react';
 import { chatWithWorkspace } from '../../api/tenders';
 import type { ChatCitation } from '../../api/tenders';
@@ -22,6 +22,73 @@ const PROMPTS = [
   'How can we close the biggest compliance gaps?',
   'Summarise the key technical requirements.',
 ];
+
+function renderInline(text: string): ReactNode[] {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
+}
+
+function MarkdownMessage({ text }: { text: string }) {
+  const lines = text.split('\n');
+  const nodes: ReactNode[] = [];
+  let listItems: string[] = [];
+  let listType: 'ul' | 'ol' | null = null;
+
+  function flushList() {
+    if (!listItems.length) return;
+    const Tag = listType!;
+    nodes.push(
+      <Tag key={nodes.length} className={`pl-4 space-y-0.5 ${Tag === 'ul' ? 'list-disc' : 'list-decimal'} list-outside`}>
+        {listItems.map((item, index) => (
+          <li key={index}>{renderInline(item)}</li>
+        ))}
+      </Tag>
+    );
+    listItems = [];
+    listType = null;
+  }
+
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    const bulletMatch = line.match(/^[-*]\s+(.*)/);
+    const numberedMatch = line.match(/^\d+\.\s+(.*)/);
+    const headingMatch = line.match(/^#{1,3}\s+(.*)/);
+
+    if (bulletMatch) {
+      if (listType === 'ol') flushList();
+      listType = 'ul';
+      listItems.push(bulletMatch[1]);
+    } else if (numberedMatch) {
+      if (listType === 'ul') flushList();
+      listType = 'ol';
+      listItems.push(numberedMatch[1]);
+    } else {
+      flushList();
+      if (headingMatch) {
+        nodes.push(
+          <p key={nodes.length} className="font-semibold text-text mt-1">
+            {renderInline(headingMatch[1])}
+          </p>
+        );
+      } else if (line.trim()) {
+        nodes.push(
+          <p key={nodes.length} className="leading-relaxed">
+            {renderInline(line)}
+          </p>
+        );
+      } else if (index > 0 && lines[index - 1].trim()) {
+        nodes.push(<div key={nodes.length} className="h-1.5" />);
+      }
+    }
+  }
+  flushList();
+  return <div className="text-sm space-y-0.5">{nodes}</div>;
+}
 
 export function ChatTab({
   workspace,
@@ -92,26 +159,31 @@ export function ChatTab({
             )}
             <div className="max-w-[82%] space-y-2">
               <div
-                className={`px-4 py-3 rounded-xl text-sm leading-relaxed ${
+                className={`px-4 py-3 rounded-xl ${
                   message.role === 'user'
-                    ? 'bg-navy text-white rounded-tr-sm'
+                    ? 'bg-navy text-white rounded-tr-sm text-sm leading-relaxed'
                     : 'bg-panel-2 border border-border text-text-mid rounded-tl-sm'
                 }`}
               >
-                {message.text}
+                {message.role === 'user' ? message.text : <MarkdownMessage text={message.text} />}
               </div>
 
               {/* Citations */}
               {message.citations && message.citations.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pl-1">
-                  {message.citations.slice(0, 4).map((citation, citationIndex) => (
+                  {message.citations.slice(0, 6).map((citation, citationIndex) => (
                     <div
                       key={citation.chunk_id || citationIndex}
-                      className="flex items-center gap-1 px-2 py-1 bg-panel-3 border border-border rounded-lg text-[11px] text-text-mute"
-                      title={citation.quoted_text}
+                      className="group relative flex items-center gap-1.5 px-2.5 py-1.5 bg-panel-3 border border-border rounded-lg text-[11px] text-text-mute hover:border-teal hover:text-teal transition-colors cursor-default"
                     >
-                      <FileText size={10} />
-                      <span>p.{citation.page || '?'}</span>
+                      <FileText size={10} className="flex-shrink-0" />
+                      <span className="font-medium">p.{citation.page || '?'}</span>
+                      {citation.quoted_text && (
+                        <div className="absolute bottom-full left-0 mb-1.5 w-64 bg-canvas-deep border border-border rounded-lg p-2.5 text-[11px] text-text-mid leading-snug z-10 hidden group-hover:block shadow-lg">
+                          <p className="text-[10px] text-text-mute mb-1 font-semibold uppercase tracking-wide">Source excerpt</p>
+                          <p className="line-clamp-4 italic">"{citation.quoted_text}"</p>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
