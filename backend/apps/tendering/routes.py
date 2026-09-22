@@ -27,7 +27,7 @@ router = APIRouter(prefix="/tendering", tags=["tendering"])
 
 import re as _re
 
-def _clean_chunk_text(text: str, max_chars: int = 350) -> str:
+def _clean_chunk_text(text: str, max_chars: int = 600) -> str:
     """Strip HTML and markdown artifacts from a chunk before showing it as a citation excerpt."""
     cleaned = _strip_html(text)
     # Remove markdown heading markers (## Introduction, # Title, etc.)
@@ -38,10 +38,12 @@ def _clean_chunk_text(text: str, max_chars: int = 350) -> str:
     cleaned = _re.sub(r'\n{2,}', ' ', cleaned).strip()
     if len(cleaned) <= max_chars:
         return cleaned
-    # Cut at the last sentence boundary within the limit
+    # Cut at the last full stop within the limit so it never ends mid-sentence
     truncated = cleaned[:max_chars]
     last_stop = max(truncated.rfind('. '), truncated.rfind('.\n'))
-    return (truncated[:last_stop + 1] if last_stop > max_chars // 2 else truncated).strip()
+    if last_stop > max_chars // 3:
+        return truncated[:last_stop + 1].strip()
+    return truncated.strip() + '…'
 
 
 def _is_platform_admin(user: dict) -> bool:
