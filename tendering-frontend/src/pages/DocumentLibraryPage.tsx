@@ -241,7 +241,7 @@ function ReplaceModal({
         .upload(path, file, { contentType: file.type, upsert: false });
       if (storageError) throw storageError;
       const { data: { publicUrl } } = supabase.storage.from('library-documents').getPublicUrl(path);
-      await replaceLibraryDocument(doc.doc_id, { url: publicUrl, filename: file.name });
+      await replaceLibraryDocument(doc.doc_id, { url: publicUrl, filename: file.name, storage_path: path });
       onReplaced();
       toast.success('Document replaced');
       onClose();

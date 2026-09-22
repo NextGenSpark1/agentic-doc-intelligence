@@ -3,7 +3,10 @@
 Every LLM pass (entity alias-merge, relationships, timeline flags, findings) must ground its
 output in data we actually sent — a document_id, event, or entity name it invents rather than
 cites gets dropped before it is ever treated as real. `llm_reasoning.ask` is monkeypatched so
-these tests need no network access or API key.
+these tests need no network access or API key — and neither does any DB helper they reach.
+`_llm_findings` reaches one the others do not: `db.list_chunks`. Patching only `db.get_client`
+left that call talking to the real Supabase, so these two passed locally off a developer's
+.env and failed anywhere without one, CI included.
 """
 from unittest.mock import patch
 
@@ -102,6 +105,7 @@ def test_finding_citing_unknown_document_is_dropped(sample_extractions):
     with patch(_ASK, return_value=fake), \
          patch("backend.apps.investigation.db.list_entities", return_value=[]), \
          patch("backend.apps.investigation.db.list_relationships", return_value=[]), \
+         patch("backend.apps.investigation.db.list_chunks", return_value=[]), \
          patch("backend.apps.investigation.db.get_client") as mock_client:
         mock_client.return_value.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
         findings = detect_anomalies._llm_findings("case-1", sample_extractions)
@@ -116,6 +120,7 @@ def test_finding_grounded_in_real_document_is_kept(sample_extractions):
     with patch(_ASK, return_value=fake), \
          patch("backend.apps.investigation.db.list_entities", return_value=[]), \
          patch("backend.apps.investigation.db.list_relationships", return_value=[]), \
+         patch("backend.apps.investigation.db.list_chunks", return_value=[]), \
          patch("backend.apps.investigation.db.get_client") as mock_client:
         mock_client.return_value.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
         findings = detect_anomalies._llm_findings("case-1", sample_extractions)

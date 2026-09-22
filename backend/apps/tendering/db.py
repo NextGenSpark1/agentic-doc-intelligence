@@ -244,6 +244,18 @@ def recalculate_workspace_readiness(workspace_id: str) -> int:
     return score
 
 
+def save_workspace_bid_decision(workspace_id: str, record: dict) -> dict | None:
+    """Store a generated recommendation, replacing the previous one for this workspace.
+
+    Reads already take the newest row, so the delete is about not keeping a pile of superseded
+    arguments around a decision the team is still making.
+    """
+    client = get_client()
+    client.table("workspace_bid_decisions").delete().eq("workspace_id", workspace_id).execute()
+    rows = client.table("workspace_bid_decisions").insert(record).execute().data
+    return rows[0] if rows else None
+
+
 def get_workspace_bid_decision(workspace_id: str) -> dict | None:
     rows = (
         get_client()
@@ -528,12 +540,19 @@ def delete_workspace_requirements(workspace_id: str, pending_only: bool = False)
 
 
 def insert_workspace_requirement(data: dict) -> dict | None:
+    """Insert one requirement. None means "already there"; anything else raises.
+
+    Every failure used to come back as None, and the caller counts None as
+    `duplicates_skipped` — so when Supabase dropped connections mid-analysis on 13 Sept,
+    requirements that were never saved were reported as duplicates and nobody saw an error.
+    Only a unique violation is genuinely a duplicate.
+    """
     try:
         return get_client().table("workspace_requirements").insert(data).execute().data[0]
     except Exception as exc:
-        import traceback
-        traceback.print_exc()
-        return None
+        if _is_unique_violation(exc):
+            return None
+        raise
 
 
 def list_workspace_requirements_raw(workspace_id: str) -> list[dict]:
@@ -571,33 +590,44 @@ def update_evidence_link_status(link_id: str, status: str) -> None:
 
 
 def recalculate_requirement_status_from_evidence(req_id: str) -> None:
-    """Set requirement status to 'met' when any evidence link is confirmed, or reset
-    to 'unchecked' when the last confirmed link is dismissed."""
+    """Re-derive a requirement's status after someone confirms or dismisses its evidence.
+
+    What this used to do, and why both halves were wrong:
+
+      * dismissing the last confirmed link reset the requirement to `unchecked`, which says
+        nobody has reviewed it. A person had just reviewed it and rejected the evidence, so the
+        truthful answer is `gap` — and readiness treats the two very differently, `gap` on a
+        mandatory requirement being a blocker while `unchecked` is only a warning.
+      * anything other than a confirmed link, or a `met` being cleared, returned without a
+        write. Dismissing one of two pending proposals, or confirming then dismissing inside one
+        session, left whatever happened to be stored.
+
+    The rule now lives in status_rules.status_from_evidence, shared with matching so the two
+    cannot drift apart again.
+    """
+    from .status_rules import status_from_evidence
+
     links = (
         get_client().table("evidence_links")
-        .select("human_review_status")
+        .select("human_review_status, score")
         .eq("req_id", req_id)
         .execute()
         .data
     ) or []
-    confirmed_count = sum(1 for link in links if link.get("human_review_status") == "confirmed")
 
     req_rows = (
         get_client().table("workspace_requirements")
-        .select("status")
+        .select("status, completion_status")
         .eq("req_id", req_id)
         .execute()
         .data
     ) or []
     if not req_rows:
         return
-    current_status = req_rows[0].get("status", "unchecked")
 
-    if confirmed_count > 0:
-        new_status = "met"
-    elif current_status == "met":
-        new_status = "unchecked"
-    else:
+    current_status = req_rows[0].get("status") or "unchecked"
+    new_status = status_from_evidence(links, req_rows[0].get("completion_status") or "")
+    if new_status == current_status:
         return
 
     get_client().table("workspace_requirements").update(
@@ -723,6 +753,78 @@ def get_supplier_document(supplier_document_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
+def get_supplier_document_by_storage_path(storage_path: str) -> dict | None:
+    """The vault row that already claims this file, if any — deliberately NOT org-filtered.
+
+    Used to refuse an upload that registers a file another org already owns, so the query has
+    to be able to see the other org's row.
+    """
+    if not storage_path:
+        return None
+    rows = (
+        get_client()
+        .table("supplier_documents")
+        .select("supplier_document_id, org_id, storage_path")
+        .eq("storage_path", storage_path)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None
+
+
+def reset_stuck_analyses() -> list[dict]:
+    """Put every workspace still marked 'analysing' back to 'new'. Returns the rows changed.
+
+    Only safe at startup, when no analysis of ours can be running yet — see
+    backend/core/recovery.py for why this exists and the single-instance assumption it rests on.
+    """
+    return (
+        get_client()
+        .table("tender_workspaces")
+        .update({"stage": "new"})
+        .eq("stage", "analysing")
+        .execute()
+        .data
+    ) or []
+
+
+def reset_stuck_supplier_extractions() -> list[dict]:
+    """Mark vault documents left mid-extraction as failed, so Extract can be clicked again."""
+    return (
+        get_client()
+        .table("supplier_documents")
+        .update({"extraction_status": "failed"})
+        .in_("extraction_status", ["queued", "processing"])
+        .execute()
+        .data
+    ) or []
+
+
+def repoint_supplier_document(library_doc_id: str, storage_path: str,
+                              filename: str | None = None) -> dict | None:
+    """Point a vault entry at a replacement file and drop what was indexed from the old one.
+
+    Replacing a document used to update only the library row's `url`, so supplier_documents kept
+    the previous `storage_path`: the preview showed the new file while Extract re-read the old
+    one and evidence matching went on proposing its text. Wrong evidence on a live bid.
+
+    The old chunks go with it. Confirmed evidence links are deliberately kept — a replacement is
+    normally a renewed version of the same certificate, and a person's approval is not ours to
+    discard — but the text behind the link has to be re-extracted rather than silently staying
+    the old file's, so the status returns to `uploaded`.
+    """
+    supplier_doc = get_supplier_document_by_library_doc(library_doc_id)
+    if not supplier_doc:
+        return None
+    supplier_document_id = supplier_doc["supplier_document_id"]
+    delete_supplier_chunks(supplier_document_id)
+    patch = {"storage_path": storage_path, "extraction_status": "uploaded"}
+    if filename:
+        patch["filename"] = filename
+    return update_supplier_document(supplier_document_id, patch)
+
+
 def update_supplier_document(supplier_document_id: str, patch: dict) -> dict | None:
     row = (
         get_client()
@@ -759,6 +861,25 @@ def delete_supplier_chunks(supplier_document_id: str) -> None:
     get_client().table("supplier_document_chunks").delete().eq(
         "supplier_document_id", supplier_document_id
     ).execute()
+
+
+def list_supplier_chunks_missing_embeddings(limit: int = 200) -> list[dict]:
+    """Vault chunks stored without a vector — see list_chunks_missing_embeddings."""
+    return (
+        get_client()
+        .table("supplier_document_chunks")
+        .select("chunk_id, supplier_document_id, text")
+        .is_("embedding", "null")
+        .limit(limit)
+        .execute()
+        .data
+    ) or []
+
+
+def set_supplier_chunk_embedding(chunk_id: str, embedding: list[float]) -> None:
+    get_client().table("supplier_document_chunks").update(
+        {"embedding": embedding}
+    ).eq("chunk_id", chunk_id).execute()
 
 
 def list_supplier_chunks(supplier_document_id: str) -> list[dict]:

@@ -11,10 +11,13 @@ empty because Groq was having a bad afternoon.
 from __future__ import annotations
 
 import re
+import traceback
 import uuid
 from datetime import datetime, timezone
 
 from backend.core.text_utils import strip_html as _strip_html
+
+from ..schemas import REQUIREMENT_CATEGORIES
 
 # 12k produced 15+ fragmented batches for a typical 30-page tender, meaning cross-section
 # references ("as per section 2") were extracted without their context. 80k fits most tenders
@@ -36,16 +39,27 @@ _CATEGORY_HINTS = (
                        "net worth", "credit", "bank")),
     ("legal",         ("comply", "compliance", "law", "act ", "regulation", "statutory", "clause",
                        "terms and conditions", "liability")),
-    ("technical",     ("specification", "technical", "standard", "capacity", "experience", "personnel",
+    # Experience and personnel come before technical: "similar projects" and "key personnel" are
+    # their own disqualifying categories, and lumping them under technical is what made the
+    # compliance matrix show one big technical pile.
+    ("experience",    ("experience", "track record", "similar project", "completed project",
+                       "previous contract", "past performance", "years in operation")),
+    ("personnel",     ("personnel", "key staff", "manpower", "curriculum vitae", " cv ",
+                       "site supervisor", "project manager", "qualified engineer", "technician")),
+    ("technical",     ("specification", "technical", "standard", "capacity",
                        "equipment", "methodology")),
 )
 
-# His schema allowed submission_instruction / evaluation_criterion — map to our CHECK constraint.
+# Older prompt versions offered submission_instruction / evaluation_criterion, which the database
+# CHECK constraint does not allow. Kept as a translation so a model still answering with them (or
+# a cached response) degrades to `other` instead of failing the insert.
 _CATEGORY_NORMALISE = {
     "submission_instruction": "other",
     "evaluation_criterion": "other",
 }
-_VALID_CATEGORIES = {"technical", "financial", "legal", "experience", "personnel", "certification", "other"}
+# Read from the shared constant rather than repeated here — these two lists drifting apart is
+# the bug this file used to carry.
+_VALID_CATEGORIES = set(REQUIREMENT_CATEGORIES)
 
 
 def _categorise(text: str) -> str:
@@ -210,6 +224,8 @@ def extract(workspace_id: str) -> dict:
     core_documents = db.list_core_documents_for_workspace(workspace_id)
 
     inserted = skipped = ungrounded = already_present = 0
+    insert_errors = 0
+    first_insert_error: str | None = None
     rule_count = llm_count = 0
 
     for document in core_documents:
@@ -252,17 +268,25 @@ def extract(workspace_id: str) -> dict:
         new_rows, dropped = drop_already_present(merge(rule_rows, llm_rows), present)
         already_present += dropped
         for row in new_rows:
-            created = db.insert_workspace_requirement({
-                **row,
-                "req_id": str(uuid.uuid4()),
-                "workspace_id": workspace_id,
-                "status": "unchecked",
-                "completion_status": "not_started",
-                "owner": "",
-                "notes": "",
-                "matched_doc_ids": [],
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            })
+            try:
+                created = db.insert_workspace_requirement({
+                    **row,
+                    "req_id": str(uuid.uuid4()),
+                    "workspace_id": workspace_id,
+                    "status": "unchecked",
+                    "completion_status": "not_started",
+                    "owner": "",
+                    "notes": "",
+                    "matched_doc_ids": [],
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception as exc:  # noqa: BLE001
+                # Reported, not swallowed: a requirement that failed to save must never be
+                # counted as a duplicate, or a half-written workspace looks complete.
+                traceback.print_exc()
+                insert_errors += 1
+                first_insert_error = first_insert_error or f"{type(exc).__name__}: {exc}"[:300]
+                continue
             if created is None:
                 skipped += 1
             else:
@@ -272,9 +296,12 @@ def extract(workspace_id: str) -> dict:
         "requirements_inserted": inserted,
         "already_present": already_present,
         "duplicates_skipped": skipped,
+        "insert_errors": insert_errors,
         "ungrounded_dropped": ungrounded,
         "from_rules": rule_count,
         "from_llm": llm_count,
     }
+    if first_insert_error:
+        result["first_insert_error"] = first_insert_error
     db.write_workspace_audit(workspace_id, "system", "requirements_extracted", result)
     return result

@@ -62,6 +62,7 @@ def run_extraction(document: dict, case: dict, schema_resolver: Callable[[str], 
         parsed = ade_client.parse_and_extract(content, schema)
         schema_name = schema.__name__
 
+    db.delete_extractions_for_document(document_id)
     db.insert_extraction(
         {
             "extraction_id": str(uuid.uuid4()),
@@ -117,7 +118,13 @@ def _embed_in_batches(texts: list[str], case_id: str, document_id: str) -> list[
 
 def _index_chunks(case_id: str, document_id: str, chunks: list[dict]) -> None:
     """Embed chunk text and store for retrieval. Degrades to text-only storage per-batch if
-    embedding fails (see `_embed_in_batches`)."""
+    embedding fails (see `_embed_in_batches`).
+
+    Replaces this document's chunks rather than appending to them: extraction can be retried
+    after a failure that had already indexed part of the document, and a second copy of a chunk
+    both skews retrieval and doubles what the case chat reads. The delete runs only once the new
+    text is ready, so a failure leaves the previous index in place.
+    """
     texts = [c["text"] for c in chunks if c.get("text")]
     if not texts:
         return
@@ -128,17 +135,20 @@ def _index_chunks(case_id: str, document_id: str, chunks: list[dict]) -> None:
         if not c.get("text"):
             continue
         grounding = (c.get("grounding") or [{}])[0]
-        rows.append(
-            {
-                "case_id": case_id,
-                "document_id": document_id,
-                "chunk_id": c.get("chunk_id") or str(uuid.uuid4()),
-                "text": c["text"],
-                "type": c.get("type") or "text",
-                "page": grounding.get("page"),
-                "bbox": grounding.get("bbox") or [],
-                "embedding": vectors[vector_index],
-            }
-        )
+        row = {
+            "case_id": case_id,
+            "document_id": document_id,
+            "chunk_id": c.get("chunk_id") or str(uuid.uuid4()),
+            "text": c["text"],
+            "type": c.get("type") or "text",
+            "page": grounding.get("page"),
+            "bbox": grounding.get("bbox") or [],
+        }
+        # Omit the key entirely when embedding failed, so PostgREST uses the column default
+        # rather than sending an explicit null, which some versions reject for a vector column.
+        if vectors[vector_index] is not None:
+            row["embedding"] = vectors[vector_index]
+        rows.append(row)
         vector_index += 1
+    db.delete_chunks_for_document(document_id)
     db.insert_chunks(rows)

@@ -39,6 +39,14 @@ export const getRequirements = (tenderId: string): Promise<Requirement[]> =>
 export const getBidDecision = (tenderId: string): Promise<BidDecisionReport | null> =>
   api.get<BidDecisionReport | null>(`/tendering/workspaces/${tenderId}/bid-decision`).then((response) => response.data);
 
+// Generates a fresh recommendation from the current evidence position and stores it. No mock
+// fallback: a recommendation that did not come from the backend is exactly the kind of thing
+// nobody should be reading off this screen. The team's own bid/no-bid stays with updateWorkspace.
+export const generateBidDecision = (tenderId: string): Promise<BidDecisionReport> =>
+  api
+    .post<BidDecisionReport>(`/tendering/workspaces/${tenderId}/generate-bid-decision`)
+    .then((response) => response.data);
+
 export const getDashboardStats = (): Promise<DashboardStats> =>
   api.get<DashboardStats>('/tendering/stats').then((response) => response.data);
 
@@ -115,7 +123,9 @@ export const addLibraryDocument = (data: {
 export const deleteLibraryDocument = (docId: string): Promise<void> =>
   api.delete(`/tendering/library/${docId}`).then(() => undefined);
 
-export const replaceLibraryDocument = (docId: string, data: { url: string; filename?: string }): Promise<LibraryDocument> =>
+// storage_path is what the backend actually downloads — without it a replacement updates the
+// preview only, and Extract goes on reading the previous file.
+export const replaceLibraryDocument = (docId: string, data: { url: string; filename?: string; storage_path?: string }): Promise<LibraryDocument> =>
   api.patch<LibraryDocument>(`/tendering/library/${docId}`, data).then((r) => r.data);
 
 export const extractLibraryDocument = (docId: string): Promise<{ status: string }> =>

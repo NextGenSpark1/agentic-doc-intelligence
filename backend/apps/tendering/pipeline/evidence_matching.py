@@ -20,6 +20,7 @@ are deliberately conservative — a similarity floor, a confidence floor, and ev
 """
 from __future__ import annotations
 
+import traceback
 from datetime import date, datetime, timezone
 
 from backend.core.text_utils import strip_html as _strip_html
@@ -135,11 +136,14 @@ def validate_matches(raw: object, candidate_index: dict[str, dict],
 
 
 def _payload(requirement: dict, candidates: list[dict]) -> dict:
+    # `mandatory` is the column name on workspace_requirements. Reading `is_mandatory` here (the
+    # name the extraction prompt uses in its own output) meant the adjudicator was told None for
+    # every requirement, so it could not tell a must-have from a nice-to-have.
     return {
         "requirement": {
             "description": requirement.get("description"),
             "category": requirement.get("category"),
-            "is_mandatory": requirement.get("is_mandatory"),
+            "is_mandatory": requirement.get("mandatory"),
             "required_evidence": requirement.get("required_evidence"),
         },
         "candidate_documents": [
@@ -155,12 +159,43 @@ def _payload(requirement: dict, candidates: list[dict]) -> dict:
     }
 
 
+def _apply_status(requirement: dict, links: list[dict]) -> int:
+    """Set the requirement's status from the evidence now attached to it. Returns 1 if written.
+
+    Matching used to leave every requirement on `unchecked` however much it found, so a finished
+    analysis produced a compliance matrix with nothing in the status column and a readiness score
+    that read as if nobody had looked. What it may write is bounded by status_rules: `partial`
+    when a proposal is worth reviewing, `gap` when there is nothing to show — never `met`, which
+    stays a human's word (Rule 3).
+
+    A failure here is swallowed on purpose: the evidence link is already saved, and losing the
+    whole matching run over a status write would cost more than the status is worth.
+    """
+    from .. import db
+    from ..status_rules import status_after_matching
+
+    new_status = status_after_matching(
+        links,
+        requirement.get("status") or "unchecked",
+        requirement.get("completion_status") or "",
+    )
+    if new_status is None:
+        return 0
+    try:
+        db.update_requirement(requirement["req_id"], {"status": new_status})
+        return 1
+    except Exception:  # noqa: BLE001
+        traceback.print_exc()
+        return 0
+
+
 def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
     """Propose vault evidence for a tender's requirements.
 
-    Every requirement in the workspace is matched (requirements have no dismissed state), and
-    every proposal is born `pending` (Rule 3) — matching suggests, a human approves before it
-    counts toward a submission. Pass `requirement_ids` to re-match a subset, e.g. after a vault upload.
+    Every requirement in the workspace is matched (requirements have no dismissed state) except
+    those a person has already confirmed evidence for, and every proposal is born `pending`
+    (Rule 3) — matching suggests, a human approves before it counts toward a submission. Pass
+    `requirement_ids` to re-match a subset, e.g. after a vault upload.
     """
     from backend.core import llm, llm_reasoning
 
@@ -180,13 +215,30 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
         if (requirement_ids is None or r["req_id"] in requirement_ids)
     ]
 
+    # Existing links serve two purposes: a requirement a person has already confirmed evidence
+    # for needs no second opinion (every re-analysis used to re-adjudicate the whole set — one
+    # embedding and one LLM call each, for an answer that could not change anything), and the
+    # status each requirement ends on depends on what it holds already, not only on what this
+    # run proposes.
+    links_by_req: dict[str, list[dict]] = {}
+    for link in db.list_evidence_links(tender_id):
+        if link.get("req_id"):
+            links_by_req.setdefault(link["req_id"], []).append(link)
+    confirmed_req_ids = {
+        req_id for req_id, links in links_by_req.items()
+        if any(link.get("human_review_status") == "confirmed" for link in links)
+    }
+
     proposed = skipped = ungrounded = matched_requirements = no_candidates = 0
-    left_unchanged = save_errors = 0
+    left_unchanged = save_errors = already_confirmed = statuses_set = 0
     first_save_error: str | None = None
 
     for requirement in requirements:
         description = requirement.get("description") or ""
         if not description.strip():
+            continue
+        if requirement["req_id"] in confirmed_req_ids:
+            already_confirmed += 1
             continue
 
         # 1. Retrieve — org-scoped in SQL, expired documents excluded at the source.
@@ -201,7 +253,10 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
 
         candidates = shortlist_candidates(rows)
         if not candidates:
+            # Nothing in the vault comes close. That is a finding, not a blank: the requirement
+            # becomes a gap so the matrix shows what the company cannot yet prove.
             no_candidates += 1
+            statuses_set += _apply_status(requirement, links_by_req.get(requirement["req_id"], []))
             continue
 
         # 2. Adjudicate — the model picks from what we offered and justifies each pick.
@@ -244,13 +299,20 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
                 left_unchanged += 1  # a person already confirmed or dismissed this link
             else:
                 proposed += 1
+                links_by_req.setdefault(requirement["req_id"], []).append({
+                    "human_review_status": "pending", "score": m["score"],
+                })
+
+        statuses_set += _apply_status(requirement, links_by_req.get(requirement["req_id"], []))
 
     result = {
         "proposed": proposed,
         "skipped": skipped,
+        "already_confirmed": already_confirmed,
         "left_unchanged": left_unchanged,
         "save_errors": save_errors,
         "ungrounded_dropped": ungrounded,
+        "statuses_set": statuses_set,
         "requirements_matched": matched_requirements,
         "requirements_considered": len(requirements),
         "requirements_without_candidates": no_candidates,

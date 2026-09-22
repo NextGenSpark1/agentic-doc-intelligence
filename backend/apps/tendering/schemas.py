@@ -22,13 +22,21 @@ from pydantic import BaseModel, Field, model_validator
 
 # Requirement categories. Kept as a constant so prompts, validation, and the compliance
 # matrix's grouping all read from one list rather than three drifting copies.
+#
+# This list MUST match the CHECK constraint on workspace_requirements.category in
+# tendering_schema.sql. It drifted from it once, and the drift was invisible: the model was
+# shown `submission_instruction` and `evaluation_criterion` (which the database rejects, so the
+# pipeline rewrote them to `other`) and never shown `experience` or `personnel` (so those two
+# categories, both in the database, were never produced at all). Experience and personnel
+# requirements are exactly the ones a bidder gets disqualified on, and they were all landing in
+# the "other" bucket.
 REQUIREMENT_CATEGORIES = (
     "legal",
     "financial",
     "technical",
+    "experience",
+    "personnel",
     "certification",
-    "submission_instruction",
-    "evaluation_criterion",
     "other",
 )
 
@@ -36,9 +44,9 @@ RequirementCategory = Literal[
     "legal",
     "financial",
     "technical",
+    "experience",
+    "personnel",
     "certification",
-    "submission_instruction",
-    "evaluation_criterion",
     "other",
 ]
 

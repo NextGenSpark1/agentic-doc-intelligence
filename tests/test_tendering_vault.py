@@ -235,5 +235,7 @@ def test_vault_chunks_degrade_to_text_only_when_embedding_fails(monkeypatch):
     vault._index_vault_chunks("org-1", "SUP-1", _chunks("c1"))
 
     assert inserted[0][0]["text"] == "text c1"
-    assert inserted[0][0]["embedding"] is None
+    # The key is omitted rather than sent as null, so PostgREST uses the column default: some
+    # versions reject an explicit null for a vector column.
+    assert "embedding" not in inserted[0][0]
     assert inserted[0][0]["org_id"] == "org-1"   # isolation key still set

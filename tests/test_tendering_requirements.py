@@ -7,6 +7,8 @@ by the prompt.
 import pytest
 
 from backend.apps.tendering.pipeline.extract_requirements import (
+    _BATCH_CHAR_BUDGET,
+    _MAX_CHUNK_CHARS,
     _batch,
     _categorise,
     compute_rule_requirements,
@@ -34,8 +36,8 @@ def test_rule_pass_extracts_bidder_obligations():
 
     assert len(rows) == 1
     assert rows[0]["source"] == "rule"
-    assert rows[0]["is_mandatory"] is True
-    assert rows[0]["source_document_id"] == "doc-1"
+    assert rows[0]["mandatory"] is True
+    assert rows[0]["source_doc"] == "doc-1"
     assert rows[0]["source_page"] == 1
 
 
@@ -70,8 +72,13 @@ def test_rule_pass_splits_multiple_sentences():
 @pytest.mark.parametrize("text,expected", [
     ("The bidder shall hold a valid CIDB registration certificate", "certification"),
     ("The tenderer must provide a bank guarantee for the bid bond", "financial"),
-    ("The bidder shall submit three sealed copies before the closing date", "submission_instruction"),
     ("Bidders must comply with the Occupational Safety and Health Act", "legal"),
+    # experience and personnel are their own categories — they used to be swept into technical,
+    # which hid the two things a bid is most often disqualified on.
+    ("The bidder shall have completed three similar projects in the last five years", "experience"),
+    ("The tenderer must provide key staff with a qualified engineer on site", "personnel"),
+    # Submission mechanics are not a category the database recognises — they land in `other`.
+    ("The bidder shall submit three sealed copies before the closing date", "other"),
 ])
 def test_rule_categorisation(text, expected):
     assert _categorise(text) == expected
@@ -104,7 +111,7 @@ def test_grounded_requirement_is_kept():
 
     assert len(kept) == 1
     assert kept[0]["source_page"] == 12          # taken from OUR chunk row
-    assert kept[0]["source_document_id"] == "doc-1"
+    assert kept[0]["source_doc"] == "doc-1"
     assert kept[0]["source"] == "llm"
 
 
@@ -113,12 +120,12 @@ def test_page_comes_from_our_chunk_not_the_model():
     index = {"ch-1": _chunk("ch-1", "The bidder shall submit a bond.", page=7)}
     raw = {"requirements": [{
         "description": "Submit a bond", "chunk_id": "ch-1",
-        "source_page": 999, "document_id": "doc-EVIL",   # both ignored
+        "source_page": 999, "source_doc": "doc-EVIL",   # both ignored
     }]}
     kept = validate_llm_requirements(raw, index)
 
     assert kept[0]["source_page"] == 7
-    assert kept[0]["source_document_id"] == "doc-1"
+    assert kept[0]["source_doc"] == "doc-1"
 
 
 def test_fabricated_source_text_falls_back_to_the_excerpt():
@@ -157,8 +164,10 @@ def test_confidence_is_clamped():
         {"description": "b", "chunk_id": "ch-1", "confidence": "not a number"},
     ]}
     kept = validate_llm_requirements(raw, index)
-    assert kept[0]["confidence"] == 1.0
-    assert kept[1]["confidence"] == 0.6
+    # Stored as a 0-100 integer: 5.0 clamps to the top of the range, and an unreadable value
+    # falls back to the 0.6 default.
+    assert kept[0]["confidence"] == 100
+    assert kept[1]["confidence"] == 60
 
 
 @pytest.mark.parametrize("raw", [None, [], "text", {}, {"requirements": "not a list"}])
@@ -174,9 +183,9 @@ def test_empty_description_is_dropped():
 # ------------------------------- merge -------------------------------
 def test_rule_row_wins_over_duplicate_llm_row():
     rule = [{"description": "Bidder shall hold a CIDB G7 licence", "category": "certification",
-             "source_document_id": "doc-1", "source": "rule", "confidence": 0.5}]
+             "source_doc": "doc-1", "source": "rule", "confidence": 0.5}]
     llm = [{"description": "bidder shall hold a CIDB G7 licence  ", "category": "Certification",
-            "source_document_id": "doc-1", "source": "llm", "confidence": 0.9}]
+            "source_doc": "doc-1", "source": "llm", "confidence": 0.9}]
 
     merged = merge(rule, llm)
     assert len(merged) == 1
@@ -185,9 +194,9 @@ def test_rule_row_wins_over_duplicate_llm_row():
 
 def test_llm_adds_what_rules_could_not_see():
     rule = [{"description": "Bidder shall hold a licence", "category": "certification",
-             "source_document_id": "doc-1", "source": "rule"}]
+             "source_doc": "doc-1", "source": "rule"}]
     llm = [{"description": "Pricing must remain valid for 90 days", "category": "financial",
-            "source_document_id": "doc-1", "source": "llm"}]
+            "source_doc": "doc-1", "source": "llm"}]
 
     merged = merge(rule, llm)
     assert len(merged) == 2
@@ -197,19 +206,22 @@ def test_llm_adds_what_rules_could_not_see():
 def test_merge_survives_an_llm_outage():
     """ask() returning None must still leave the rule rows standing."""
     rule = [{"description": "Bidder shall submit a bond", "category": "financial",
-             "source_document_id": "doc-1", "source": "rule"}]
+             "source_doc": "doc-1", "source": "rule"}]
     assert merge(rule, []) == rule
 
 
 # ------------------------------ batching ------------------------------
 def test_batching_splits_on_the_character_budget():
-    chunks = [_chunk(f"ch-{i}", "x" * 5000) for i in range(6)]
+    # Sized from the module's own constants: the budget has been retuned twice, and a test that
+    # hard-codes a chunk count silently stops testing the split when it changes again.
+    count = _BATCH_CHAR_BUDGET // _MAX_CHUNK_CHARS + 3
+    chunks = [_chunk(f"ch-{i}", "x" * (_MAX_CHUNK_CHARS + 500)) for i in range(count)]
     batches = _batch(chunks)
 
     assert len(batches) > 1
-    assert sum(len(b) for b in batches) == 6          # nothing lost
+    assert sum(len(b) for b in batches) == count       # nothing lost
     ids = [c["chunk_id"] for b in batches for c in b]
-    assert len(set(ids)) == 6                          # nothing duplicated
+    assert len(set(ids)) == count                      # nothing duplicated
 
 
 def test_a_single_oversized_chunk_still_gets_its_own_batch():
@@ -229,18 +241,19 @@ def test_days_until_counts_forward_and_backward():
     assert days_until("not a date", today) is None
 
 
-def test_compute_facts_excludes_dismissed_requirements():
+def test_compute_facts_counts_mandatory_and_unreviewed_requirements():
+    """Requirements have no dismissed state — `status` carries the review position instead."""
     requirements = [
-        {"category": "legal", "is_mandatory": True, "human_review_status": "confirmed"},
-        {"category": "legal", "is_mandatory": True, "human_review_status": "dismissed"},
-        {"category": "financial", "is_mandatory": False, "human_review_status": "pending"},
+        {"category": "legal", "mandatory": True, "status": "met"},
+        {"category": "legal", "mandatory": True, "status": "unchecked"},
+        {"category": "financial", "mandatory": False, "status": "unchecked"},
     ]
     facts = compute_facts({"title": "T"}, [], requirements)
 
-    assert facts["requirements_total"] == 2
-    assert facts["requirements_mandatory"] == 1
-    assert facts["requirements_pending_review"] == 1
-    assert facts["requirements_by_category"]["legal"]["total"] == 1
+    assert facts["requirements_total"] == 3
+    assert facts["requirements_mandatory"] == 2
+    assert facts["requirements_pending_review"] == 2      # 'unchecked' = nobody has reviewed it
+    assert facts["requirements_by_category"]["legal"] == {"total": 2, "mandatory": 2}
 
 
 def test_compute_facts_counts_only_processed_documents():
@@ -258,7 +271,7 @@ def test_deterministic_summary_needs_no_llm():
         {"title": "Supply of Network Equipment", "buyer": "Ministry of Works",
          "closing_date": "2026-09-10"},
         [{"extraction_status": "done"}],
-        [{"category": "certification", "is_mandatory": True, "human_review_status": "pending"}],
+        [{"category": "certification", "mandatory": True, "status": "unchecked"}],
         today=date(2026, 8, 25),
     )
     text = _deterministic_summary(facts)

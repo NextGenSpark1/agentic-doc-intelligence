@@ -14,6 +14,7 @@ import asyncio
 import hashlib
 import re
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
@@ -24,9 +25,43 @@ from backend.core import db_core as db, llm, orgs as orgs_module
 from backend.core.access import load_case_or_403 as _load_case_or_403
 from backend.core.auth import get_current_user
 from backend.core.config import get_settings
+from backend.core.ratelimit import rate_limit
 
-app = FastAPI(title="Document Intelligence API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Clean up work the previous process was killed in the middle of (deploy, restart, crash).
+
+    Runs off the event loop and never raises: if the database is unreachable at boot the API
+    must still come up, because the health check and every already-finished workspace do not
+    depend on this.
+    """
+    from backend.core.recovery import recover_interrupted_work
+
+    try:
+        summary = await asyncio.to_thread(recover_interrupted_work)
+        if any(summary.get(key) for key in
+               ("workspaces_reset", "documents_failed", "vault_documents_failed")):
+            print(f"[startup] recovered interrupted work: {summary}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[startup] recovery skipped: {type(exc).__name__}: {exc}")
+    yield
+
+
+app = FastAPI(title="Document Intelligence API", version="0.1.0", lifespan=lifespan)
 app.include_router(orgs_module.router)
+
+
+def _safe_filename(filename: str | None) -> str:
+    """Reduce an uploaded filename to a single, harmless path segment.
+
+    The name comes from the client and is pasted into the storage path, so `../` in it would
+    place the file in another case's folder. Keep the leaf name only, and never let it be empty
+    or a directory reference.
+    """
+    leaf = (filename or "").replace("\\", "/").split("/")[-1].strip()
+    leaf = "".join(character for character in leaf if character.isprintable())
+    return leaf if leaf not in ("", ".", "..") else "upload"
 
 
 def _fmt_field_value(v) -> str:
@@ -230,14 +265,15 @@ async def save_graph_state(case_id: str, body: GraphStatePayload, user: dict = D
 
 
 # ---------------------------- documents ---------------------------
-@app.post("/cases/{case_id}/documents", status_code=201)
+@app.post("/cases/{case_id}/documents", status_code=201,
+          dependencies=[Depends(rate_limit("upload", 120, 3600))])
 async def upload_document(case_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     case = await _load_case_or_403(case_id, user)
 
     content = await file.read()
     file_hash = hashlib.sha256(content).hexdigest()
     document_id = str(uuid.uuid4())
-    storage_path = f"{case_id}/{document_id}/{file.filename}"
+    storage_path = f"{case_id}/{document_id}/{_safe_filename(file.filename)}"
 
     await asyncio.to_thread(
         db.upload_evidence, storage_path, content, file.content_type or "application/octet-stream"
@@ -264,7 +300,8 @@ async def upload_document(case_id: str, file: UploadFile = File(...), user: dict
     return created
 
 
-@app.post("/cases/{case_id}/documents/{document_id}/extract", status_code=202)
+@app.post("/cases/{case_id}/documents/{document_id}/extract", status_code=202,
+          dependencies=[Depends(rate_limit("extraction", 60, 3600))])
 async def trigger_extraction(case_id: str, document_id: str, background: BackgroundTasks, user: dict = Depends(get_current_user)):
     await _load_case_or_403(case_id, user)
     doc = await asyncio.to_thread(db.get_document, document_id)
