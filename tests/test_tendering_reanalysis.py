@@ -207,9 +207,32 @@ def test_untouched_requirements_are_refreshed(store):
     assert _remaining(s) == set()
 
 
-@pytest.mark.parametrize("status", ["met", "gap", "partial"])
-def test_reviewed_requirements_are_kept(store, status):
+def test_met_requirement_is_always_kept(store):
+    """met is a human declaration (Rule 3) — never deleted by re-analysis."""
+    s = store(workspace_requirements=[_req("R1", status="met")], evidence_links=[])
+
+    db.delete_workspace_requirements("W1", pending_only=True)
+
+    assert _remaining(s) == {"R1"}
+
+
+@pytest.mark.parametrize("status", ["gap", "partial"])
+def test_pipeline_set_status_without_human_work_is_refreshed(store, status):
+    """gap and partial are set by evidence matching, not by a person.
+    Without this they survive re-analysis and the new extraction produces duplicates
+    when the LLM returns even slightly different wording (different hash, new insert)."""
     s = store(workspace_requirements=[_req("R1", status=status)], evidence_links=[])
+
+    db.delete_workspace_requirements("W1", pending_only=True)
+
+    assert _remaining(s) == set()
+
+
+@pytest.mark.parametrize("status", ["gap", "partial"])
+def test_pipeline_set_status_with_reviewed_evidence_is_kept(store, status):
+    """A person confirming or dismissing evidence is human work — keep the requirement."""
+    s = store(workspace_requirements=[_req("R1", status=status)],
+              evidence_links=[_link(status="confirmed", workspace_id="W1")])
 
     db.delete_workspace_requirements("W1", pending_only=True)
 

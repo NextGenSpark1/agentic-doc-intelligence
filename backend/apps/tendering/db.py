@@ -508,35 +508,36 @@ def delete_workspace_requirements(workspace_id: str, pending_only: bool = False)
         client.table("workspace_requirements").delete().eq("workspace_id", workspace_id).execute()
         return
 
-    # Select all non-met requirements — the pipeline may have set them to partial/gap, but
-    # that does not count as human work. met is excluded because only a human produces it.
+    # Select all pipeline-reachable statuses — partial and gap are set by evidence matching,
+    # not by a person, so they are eligible for deletion on re-analysis just like unchecked.
+    # met is the only status only a human can produce (Rule 3), so it always stays.
     pipeline_owned = (
         client.table("workspace_requirements")
         .select("req_id, owner, notes")
         .eq("workspace_id", workspace_id)
-        .neq("status", "met")
+        .in_("status", ["unchecked", "partial", "gap"])
         .execute()
         .data
     ) or []
     if not pipeline_owned:
         return
 
-    confirmed_evidence = (
+    reviewed_evidence = (
         client.table("evidence_links")
         .select("req_id")
         .eq("workspace_id", workspace_id)
-        .eq("human_review_status", "confirmed")
+        .in_("human_review_status", ["confirmed", "dismissed"])
         .execute()
         .data
     ) or []
-    has_confirmed_evidence = {str(link["req_id"]) for link in confirmed_evidence}
+    has_reviewed_evidence = {str(link["req_id"]) for link in reviewed_evidence}
 
     deletable = [
         str(requirement["req_id"])
         for requirement in pipeline_owned
         if not (requirement.get("owner") or "").strip()
         and not (requirement.get("notes") or "").strip()
-        and str(requirement["req_id"]) not in has_confirmed_evidence
+        and str(requirement["req_id"]) not in has_reviewed_evidence
     ]
     for start in range(0, len(deletable), _DELETE_BATCH):
         client.table("workspace_requirements").delete().in_(
