@@ -68,7 +68,7 @@ export function ChatTab({
   }, [messages, loading]);
 
   return (
-    <div className="bg-panel border border-border rounded-xl overflow-hidden flex flex-col" style={{ height: '560px' }}>
+    <div className="bg-panel border border-border rounded-xl overflow-hidden flex flex-col" style={{ height: 'calc(100vh - 15rem)', minHeight: '420px' }}>
 
       {/* Header */}
       <div className="px-5 py-3.5 border-b border-border flex items-center gap-2 bg-panel-2 flex-shrink-0">
