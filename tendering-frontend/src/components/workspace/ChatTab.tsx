@@ -248,9 +248,9 @@ export function ChatTab({
                       <FileText size={10} className="flex-shrink-0" />
                       <span className="font-medium">p.{citation.page || '?'}</span>
                       {citation.quoted_text && (
-                        <div className="absolute bottom-full left-0 mb-1.5 w-64 bg-canvas-deep border border-border rounded-lg p-2.5 text-[11px] text-text-mid leading-snug z-10 hidden group-hover:block shadow-lg">
+                        <div className="absolute bottom-full left-0 mb-1.5 w-80 max-h-60 overflow-y-auto bg-canvas-deep border border-border rounded-lg p-2.5 text-[11px] text-text-mid leading-snug z-10 hidden group-hover:block shadow-lg">
                           <p className="text-[10px] text-text-mute mb-1 font-semibold uppercase tracking-wide">Source excerpt</p>
-                          <p className="line-clamp-4 italic">"{citation.quoted_text}"</p>
+                          <p className="italic">"{citation.quoted_text}"</p>
                         </div>
                       )}
                     </div>
