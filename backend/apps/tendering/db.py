@@ -232,21 +232,41 @@ def update_requirement(req_id: str, patch: dict) -> dict | None:
 
 
 def recalculate_workspace_readiness(workspace_id: str) -> int:
+    """Recompute a workspace's readiness_score after a status change.
+
+    Mirrors the weighted formula in readiness_review.compute_score so a score refreshed on a
+    human confirm/dismiss agrees with one produced by a full analysis run: mandatory
+    requirements count triple, `met` earns full weight, `partial` earns half. `gap`,
+    `rejected`, and `unchecked` contribute nothing.
+    """
     requirements = (
         get_client()
         .table("workspace_requirements")
-        .select("status")
+        .select("status, mandatory")
         .eq("workspace_id", workspace_id)
         .execute()
         .data
     ) or []
-    total = len(requirements)
-    if not total:
+    if not requirements:
+        get_client().table("tender_workspaces").update(
+            {"readiness_score": 0}
+        ).eq("id", workspace_id).execute()
         return 0
-    met = sum(1 for r in requirements if r["status"] == "met")
-    partial = sum(1 for r in requirements if r["status"] == "partial")
-    score = round((met + partial * 0.5) / total * 100)
-    get_client().table("tender_workspaces").update({"readiness_score": score}).eq("id", workspace_id).execute()
+
+    earned = possible = 0.0
+    for requirement in requirements:
+        weight = 3 if requirement.get("mandatory") else 1
+        possible += weight
+        status = requirement.get("status")
+        if status == "met":
+            earned += weight
+        elif status == "partial":
+            earned += weight * 0.5
+
+    score = round((earned / possible) * 100) if possible else 0
+    get_client().table("tender_workspaces").update(
+        {"readiness_score": score}
+    ).eq("id", workspace_id).execute()
     return score
 
 

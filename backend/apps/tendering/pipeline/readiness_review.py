@@ -202,6 +202,15 @@ def compute_score(requirements: list[dict], evidence_links: list[dict],
 
     Mandatory requirements weigh triple. The score (0.0–1.0) measures progress; blockers
     are reported separately. The integer version (0–100) is written to `readiness_score`.
+
+    Satisfaction is graded:
+      * `met` (AI or human) with valid evidence → full weight
+      * `partial` (AI proposal awaiting review) → half weight
+      * everything else (`gap`, `rejected`, `unchecked`) → zero
+    So the readiness card reflects the work matching has already done, rather than reading
+    zero until every proposal is manually confirmed. Human confirm/dismiss then moves the
+    number toward the settled figure. A mandatory `partial` still counts as a blocker in the
+    gaps list — score and blockers are separate signals (see the design comment at the top).
     """
     today = today or datetime.now(timezone.utc).date()
     library_index = {doc["doc_id"]: doc for doc in library_docs}
@@ -213,10 +222,13 @@ def compute_score(requirements: list[dict], evidence_links: list[dict],
 
     if not requirements:
         return {"score": 0.0, "satisfied": 0, "total": 0,
-                "mandatory_satisfied": 0, "mandatory_total": 0}
+                "partial": 0,
+                "mandatory_satisfied": 0, "mandatory_total": 0,
+                "mandatory_partial": 0}
 
-    earned = possible = 0
-    satisfied_count = mandatory_satisfied = mandatory_total = 0
+    earned = possible = 0.0
+    satisfied_count = partial_count = 0
+    mandatory_satisfied = mandatory_partial = mandatory_total = 0
     for requirement in requirements:
         mandatory = bool(requirement.get("mandatory"))
         weight = _MANDATORY_WEIGHT if mandatory else _OPTIONAL_WEIGHT
@@ -229,12 +241,19 @@ def compute_score(requirements: list[dict], evidence_links: list[dict],
             satisfied_count += 1
             if mandatory:
                 mandatory_satisfied += 1
+        elif requirement.get("status") == "partial":
+            earned += weight * 0.5
+            partial_count += 1
+            if mandatory:
+                mandatory_partial += 1
 
     return {
         "score": round(earned / possible, 4) if possible else 0.0,
         "satisfied": satisfied_count,
+        "partial": partial_count,
         "total": len(requirements),
         "mandatory_satisfied": mandatory_satisfied,
+        "mandatory_partial": mandatory_partial,
         "mandatory_total": mandatory_total,
     }
 
