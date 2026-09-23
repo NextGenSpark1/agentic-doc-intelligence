@@ -41,7 +41,14 @@ For each requirement in the final list, return:
   - "description": the obligation in one clear sentence. Do not paraphrase away specifics \
 like amounts, percentages, dates, or standard numbers.
   - "category": exactly one of [{_CATEGORY_LIST}]
-  - "is_mandatory": true if obligatory language is used (shall, must, is required, mandatory)
+  - "is_mandatory": true when the tender expresses the bidder's obligation using shall / must \
+/ is required / mandatory, or explicitly states that non-compliance may invalidate or \
+disqualify the bid. False for conditional or discretionary instructions (e.g. "if \
+clarification is required, submit by …", "the bidder may propose alternatives", \
+"tenderers are encouraged to …"), and for background context or buyer actions. Being \
+mandatory means the requirement must actually be satisfied at submission — not just that \
+the sentence sounds formal. When unsure, prefer false: an over-mandatory matrix inflates \
+blocker counts and drowns real disqualifying gaps in noise.
   - "required_evidence": what the bidder must supply to prove compliance, or null.
   - "chunk_id": the EXACT chunk_id of the excerpt this requirement comes from. For adopted \
 drafts, use the same chunk_id the draft carried.
