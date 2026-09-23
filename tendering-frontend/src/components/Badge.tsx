@@ -58,16 +58,17 @@ const REQ_STATUS_STYLES: Record<RequirementStatus, string> = {
   met: 'bg-green-bg text-green',
   partial: 'bg-amber-bg text-amber',
   gap: 'bg-red-bg text-red',
+  rejected: 'bg-rose-50 text-rose-700',
   unchecked: 'bg-panel-3 text-text-mute',
 };
 
 const REQ_STATUS_ICONS: Record<RequirementStatus, string> = {
-  met: '✓', partial: '◐', gap: '✗', unchecked: '○',
+  met: '✓', partial: '◐', gap: '✗', rejected: '⊘', unchecked: '○',
 };
 
 export function RequirementStatusBadge({ status }: { status: RequirementStatus }) {
   const labels: Record<RequirementStatus, string> = {
-    met: 'Met', partial: 'Partial', gap: 'Gap', unchecked: 'Unchecked',
+    met: 'Met', partial: 'Partial', gap: 'Gap', rejected: 'Rejected', unchecked: 'Unchecked',
   };
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${REQ_STATUS_STYLES[status]}`}>
