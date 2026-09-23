@@ -60,7 +60,7 @@ export type WorkspaceStage =
 
 export type BidDecision = 'pending' | 'bid' | 'no_bid';
 
-export type RequirementStatus = 'met' | 'gap' | 'partial' | 'unchecked';
+export type RequirementStatus = 'met' | 'gap' | 'partial' | 'unchecked' | 'rejected';
 export type RequirementCategory =
   | 'technical'
   | 'financial'
@@ -104,6 +104,7 @@ export interface TenderWorkspace {
   requirements_met?: number;
   requirements_partial?: number;
   requirements_gap?: number;
+  requirements_rejected?: number;
   description?: string;
   ai_summary?: string;
   documents?: WorkspaceDocument[];
@@ -137,6 +138,8 @@ export interface Requirement {
   source?: 'rule' | 'llm' | 'manual';
   evidence_doc_ids?: string[];
   matched_doc_ids?: string[];
+  status_updated_by?: string;
+  status_updated_at?: string;
 }
 
 export interface EvidenceLink {

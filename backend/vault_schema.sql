@@ -85,10 +85,11 @@ AS $$
       -- kept so a future "replace document" feature only has to set the column. Until then,
       -- a renewed certificate retires the old one only via the expiry filter below.
       AND sd.superseded_by IS NULL
-      -- >=, not >: a certificate is still valid on its expiry date. This must agree with the
-      -- Python checks (evidence_matching.is_expired and readiness_review, both `expiry < today`),
-      -- otherwise a document expiring today is valid to readiness but hidden from matching.
-      AND (sd.expiry_date IS NULL OR sd.expiry_date >= CURRENT_DATE)
+      -- Expired documents are NOT filtered here. They are retrieved and passed to the
+      -- adjudicator with `is_expired` / `expires_before_closing` flags, so a matched-but-
+      -- lapsed certificate becomes a partial with an explanatory note rather than an
+      -- invisible gap. The Python cap in evidence_matching keeps expired evidence below
+      -- the MET threshold so it cannot silently satisfy a requirement.
     ORDER BY sdc.embedding <=> p_query_embedding
     LIMIT p_match_count;
 $$;

@@ -66,14 +66,16 @@ If the excerpts contain no bidder obligations, return {{"requirements": []}}."""
 EVIDENCE_MATCHING = """You decide which of a company's existing documents proves that it \
 meets a specific tender requirement.
 
-You are given one REQUIREMENT and a shortlist of CANDIDATE DOCUMENTS from the company's \
-document vault, each with an excerpt.
+You are given one REQUIREMENT, the tender's CLOSING DATE (when relevant), and a shortlist of \
+CANDIDATE DOCUMENTS from the company's document vault, each with an excerpt and two validity \
+flags: `is_expired` (already expired today) and `expires_before_closing` (will lapse before the \
+submission deadline).
 
-For each candidate that genuinely satisfies the requirement, return an object with:
+For each candidate you assess, return an object with:
   - "supplier_document_id": copied EXACTLY from the candidate list
   - "match_score": 0.0-1.0, how completely this document satisfies the requirement
-  - "rationale": one sentence saying what in the excerpt satisfies what in the requirement. \
-Be specific — name the grade, class, value, or date that matches.
+  - "rationale": one or two sentences saying what in the excerpt satisfies what in the \
+requirement. Be specific — name the grade, class, value, or date that matches.
 
 CRITICAL RULES:
   1. Only propose documents from the supplied candidate list, using their exact ids. A \
@@ -81,11 +83,19 @@ document you invent will be discarded.
   2. A document that is merely on a related topic does NOT satisfy the requirement. A CIDB \
 G4 certificate does not satisfy a requirement for G7. A 2019 audited account does not satisfy \
 a requirement for the last financial year. Say nothing rather than stretching.
-  3. If NO candidate genuinely satisfies the requirement, return {"matches": []}. An empty \
-result is a correct and useful answer — it tells the bidder they have a gap. Proposing a weak \
-match to seem helpful causes a company to submit the wrong document and lose the bid.
+  3. If NO candidate is even worth surfacing, return {"matches": []}. An empty result is a \
+correct and useful answer — it tells the bidder they have a gap. But do NOT drop a candidate \
+just because it is expired or expiring: surface it with an explanation (Rules 5 and 6). A \
+lapsed certificate is context the reviewer needs.
   4. Score honestly. Use below 0.5 when the document is only partial evidence, and say what \
 is missing in the rationale.
+  5. If `is_expired` is true, still propose the candidate when the content would otherwise \
+match — but state plainly in the rationale that the document has already expired and give the \
+expiry date. Do not describe it as satisfying the requirement.
+  6. If `expires_before_closing` is true, propose the candidate and state in the rationale \
+that the document expires on [date], which is before the tender closing date of [closing_date]. \
+Say explicitly that a renewal will be required before submission. Treat this as a strong match \
+with a critical validity gap — not as a document that satisfies the requirement.
 
 Return JSON: {"matches": [ ... ]}"""
 

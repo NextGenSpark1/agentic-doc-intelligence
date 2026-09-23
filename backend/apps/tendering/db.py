@@ -25,6 +25,7 @@ def _enrich_workspaces(workspaces: list[dict]) -> list[dict]:
         workspace["requirements_met"] = sum(1 for r in requirements if r["status"] == "met")
         workspace["requirements_gap"] = sum(1 for r in requirements if r["status"] == "gap")
         workspace["requirements_partial"] = sum(1 for r in requirements if r["status"] == "partial")
+        workspace["requirements_rejected"] = sum(1 for r in requirements if r["status"] == "rejected")
     return workspaces
 
 
@@ -210,10 +211,15 @@ def get_requirement(req_id: str) -> dict | None:
 
 
 def update_requirement(req_id: str, patch: dict) -> dict | None:
-    allowed = {"status", "owner", "notes"}
+    allowed = {"status", "owner", "notes", "status_updated_by", "status_updated_at"}
     safe_patch = {key: value for key, value in patch.items() if key in allowed and value is not None}
     if not safe_patch:
         return get_requirement(req_id)
+    # If the caller changed the status but did not stamp when it happened, do it here so the
+    # "updated by X on Y" line in the matrix is never missing its timestamp.
+    if "status" in safe_patch and "status_updated_at" not in safe_patch:
+        from datetime import datetime, timezone
+        safe_patch["status_updated_at"] = datetime.now(timezone.utc).isoformat()
     row = (
         get_client()
         .table("workspace_requirements")
@@ -508,12 +514,14 @@ def delete_workspace_requirements(workspace_id: str, pending_only: bool = False)
         client.table("workspace_requirements").delete().eq("workspace_id", workspace_id).execute()
         return
 
-    # Select all pipeline-reachable statuses — partial and gap are set by evidence matching,
-    # not by a person, so they are eligible for deletion on re-analysis just like unchecked.
-    # met is the only status only a human can produce (Rule 3), so it always stays.
+    # Select all pipeline-reachable statuses. `met` and `rejected` are never in this list —
+    # they represent settled work (met = an AI or human match strong enough to satisfy the
+    # requirement, rejected = a reviewer dismissed every candidate). Deleting them would
+    # cascade-drop their evidence links and lose the work. partial and gap are set by matching
+    # and eligible for refresh; anything with human input is filtered out below.
     pipeline_owned = (
         client.table("workspace_requirements")
-        .select("req_id, owner, notes")
+        .select("req_id, owner, notes, status_updated_by")
         .eq("workspace_id", workspace_id)
         .in_("status", ["unchecked", "partial", "gap"])
         .execute()
@@ -537,6 +545,8 @@ def delete_workspace_requirements(workspace_id: str, pending_only: bool = False)
         for requirement in pipeline_owned
         if not (requirement.get("owner") or "").strip()
         and not (requirement.get("notes") or "").strip()
+        # A manual status override (via status_updated_by) is human work too — preserve it.
+        and not (requirement.get("status_updated_by") or "").strip()
         and str(requirement["req_id"]) not in has_reviewed_evidence
     ]
     for start in range(0, len(deletable), _DELETE_BATCH):
@@ -595,22 +605,20 @@ def update_evidence_link_status(link_id: str, status: str) -> None:
     ).eq("id", link_id).execute()
 
 
-def recalculate_requirement_status_from_evidence(req_id: str) -> None:
+def recalculate_requirement_status_from_evidence(req_id: str, actor_email: str = "") -> None:
     """Re-derive a requirement's status after someone confirms or dismisses its evidence.
 
-    What this used to do, and why both halves were wrong:
+    The rule lives in status_rules.status_from_evidence, shared with matching so the two
+    cannot drift apart. When `actor_email` is supplied (the reviewer who just acted), it is
+    stamped on the requirement as `status_updated_by` — the compliance matrix uses this to
+    show "rejected by X" or "updated by X" alongside the status.
 
-      * dismissing the last confirmed link reset the requirement to `unchecked`, which says
-        nobody has reviewed it. A person had just reviewed it and rejected the evidence, so the
-        truthful answer is `gap` — and readiness treats the two very differently, `gap` on a
-        mandatory requirement being a blocker while `unchecked` is only a warning.
-      * anything other than a confirmed link, or a `met` being cleared, returned without a
-        write. Dismissing one of two pending proposals, or confirming then dismissing inside one
-        session, left whatever happened to be stored.
-
-    The rule now lives in status_rules.status_from_evidence, shared with matching so the two
-    cannot drift apart again.
+    All-dismissed → `rejected` (a distinct status from `gap`): the human has looked and
+    rejected everything, and readiness treats it as unsatisfied but the compliance matrix must
+    show the difference.
     """
+    from datetime import datetime, timezone
+
     from .status_rules import status_from_evidence
 
     links = (
@@ -633,12 +641,15 @@ def recalculate_requirement_status_from_evidence(req_id: str) -> None:
 
     current_status = req_rows[0].get("status") or "unchecked"
     new_status = status_from_evidence(links, req_rows[0].get("completion_status") or "")
-    if new_status == current_status:
+    if new_status == current_status and not actor_email:
         return
 
-    get_client().table("workspace_requirements").update(
-        {"status": new_status}
-    ).eq("req_id", req_id).execute()
+    patch: dict = {"status": new_status}
+    if actor_email:
+        patch["status_updated_by"] = actor_email
+        patch["status_updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    get_client().table("workspace_requirements").update(patch).eq("req_id", req_id).execute()
 
 
 def upsert_evidence_link(data: dict) -> dict | None:

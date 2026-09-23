@@ -1,5 +1,5 @@
 import { useState, type ReactElement } from 'react';
-import { CheckCircle2, XCircle, AlertCircle, Circle, BarChart3, Check, X } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertCircle, Circle, BarChart3, Check, X, Ban } from 'lucide-react';
 import { RequirementCategoryBadge } from '../Badge';
 import type { Requirement, RequirementStatus, LibraryDocument, EvidenceLink } from '../../types';
 
@@ -19,6 +19,11 @@ const STATUS_CONFIG: Record<RequirementStatus, { icon: ReactElement; label: stri
     label: 'Gap',
     bar: 'bg-red',
   },
+  rejected: {
+    icon: <Ban size={14} className="text-rose-700" />,
+    label: 'Rejected',
+    bar: 'bg-rose-700',
+  },
   unchecked: {
     icon: <Circle size={14} className="text-text-mute" />,
     label: 'Unchecked',
@@ -31,7 +36,7 @@ const SUMMARY_CARDS: {
   label: string;
   colour: string;
   icon: ReactElement;
-  countKey: 'met' | 'partial' | 'gap' | 'unchecked';
+  countKey: 'met' | 'partial' | 'gap' | 'rejected' | 'unchecked';
 }[] = [
   {
     key: 'met',
@@ -53,6 +58,13 @@ const SUMMARY_CARDS: {
     colour: 'bg-red-bg border-red/20 text-red',
     icon: <XCircle size={17} />,
     countKey: 'gap',
+  },
+  {
+    key: 'rejected',
+    label: 'Rejected',
+    colour: 'bg-rose-50 border-rose-200 text-rose-700',
+    icon: <Ban size={17} />,
+    countKey: 'rejected',
   },
   {
     key: 'unchecked',
@@ -89,6 +101,7 @@ export function ComplianceMatrixTab({
     met: requirements.filter((requirement) => requirement.status === 'met').length,
     partial: requirements.filter((requirement) => requirement.status === 'partial').length,
     gap: requirements.filter((requirement) => requirement.status === 'gap' && requirement.mandatory).length,
+    rejected: requirements.filter((requirement) => requirement.status === 'rejected').length,
     unchecked: requirements.filter((requirement) => requirement.status === 'unchecked').length,
   };
 
@@ -119,7 +132,7 @@ export function ComplianceMatrixTab({
     <div className="space-y-5">
 
       {/* Summary filter cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {SUMMARY_CARDS.map(({ key, label, colour, icon, countKey }) => (
           <button
             key={key}
@@ -158,6 +171,7 @@ export function ComplianceMatrixTab({
                 ? key === 'met' ? 'bg-green text-white'
                   : key === 'partial' ? 'bg-amber text-white'
                   : key === 'gap' ? 'bg-red text-white'
+                  : key === 'rejected' ? 'bg-rose-700 text-white'
                   : 'bg-panel-3 border border-border text-text'
                 : 'bg-panel-3 border border-border text-text-mute hover:text-text'
             }`}
@@ -196,6 +210,7 @@ export function ComplianceMatrixTab({
                       req.status === 'met' ? 'border-l-green' :
                       req.status === 'partial' ? 'border-l-amber' :
                       req.status === 'gap' ? 'border-l-red' :
+                      req.status === 'rejected' ? 'border-l-rose-700' :
                       'border-l-transparent'
                     }`}>
                       <span className="text-xs text-text-mute font-mono">{index + 1}</span>
@@ -237,6 +252,12 @@ export function ComplianceMatrixTab({
                           }`}
                         />
                       </div>
+                      {req.status_updated_by && (
+                        <p className="text-[10px] text-text-mute mt-1 leading-tight">
+                          {req.status === 'rejected' ? 'Rejected by' : 'Updated by'}{' '}
+                          <span className="font-medium text-text-mid">{req.status_updated_by}</span>
+                        </p>
+                      )}
                     </td>
 
                     {/* Evidence column */}

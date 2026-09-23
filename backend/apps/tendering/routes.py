@@ -190,6 +190,9 @@ class UpdateLibraryDocumentIn(BaseModel):
     storage_path: Optional[str] = None
 
 
+_VALID_REQUIREMENT_STATUSES = {"met", "partial", "gap", "unchecked", "rejected"}
+
+
 class UpdateRequirementIn(BaseModel):
     status: Optional[str] = None
     owner: Optional[str] = None
@@ -564,7 +567,12 @@ async def review_evidence_link(
         raise HTTPException(404, "Evidence link not found")
     await _load_workspace_or_404(link["workspace_id"], user, "Evidence link not found")
     await asyncio.to_thread(db.update_evidence_link_status, link_id, body.status)
-    await asyncio.to_thread(db.recalculate_requirement_status_from_evidence, link["req_id"])
+    # Stamp the reviewer's email on the requirement so the matrix can show
+    # "rejected by X" / "updated by X" alongside the recomputed status.
+    reviewer_email = user.get("email") or ""
+    await asyncio.to_thread(
+        db.recalculate_requirement_status_from_evidence, link["req_id"], reviewer_email
+    )
     await asyncio.to_thread(db.recalculate_workspace_readiness, link["workspace_id"])
     return {"id": link_id, "status": body.status}
 
@@ -577,15 +585,23 @@ async def update_requirement(
     body: UpdateRequirementIn,
     user: dict = Depends(get_current_user),
 ):
+    if body.status is not None and body.status not in _VALID_REQUIREMENT_STATUSES:
+        raise HTTPException(
+            400,
+            f"status must be one of: {', '.join(sorted(_VALID_REQUIREMENT_STATUSES))}",
+        )
     requirement = await asyncio.to_thread(db.get_requirement, req_id)
     if not requirement:
         raise HTTPException(404, "Requirement not found")
     workspace = await _load_workspace_or_404(
         requirement["workspace_id"], user, "Requirement not found"
     )
-    updated = await asyncio.to_thread(
-        db.update_requirement, req_id, body.model_dump(exclude_none=True)
-    )
+    patch = body.model_dump(exclude_none=True)
+    # A manual status change is audited on the requirement itself, not just the audit log —
+    # the compliance matrix shows the person and time next to the badge.
+    if body.status is not None:
+        patch["status_updated_by"] = user.get("email") or ""
+    updated = await asyncio.to_thread(db.update_requirement, req_id, patch)
     if not updated:
         raise HTTPException(500, "Update failed")
     if body.status is not None:

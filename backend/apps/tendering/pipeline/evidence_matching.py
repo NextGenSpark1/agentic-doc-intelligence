@@ -37,6 +37,17 @@ _MIN_SIMILARITY = 0.35
 # The adjudicator's own confidence floor for persisting a proposal.
 _MIN_MATCH_SCORE = 0.4
 
+# A candidate whose expiry falls before the tender closing date cannot make a requirement `met`
+# even if the document content is a strong match — the certificate will have lapsed by
+# submission. Capping the score here keeps it below MET_SCORE_THRESHOLD (0.75) but above
+# MIN_PROPOSAL_SCORE (0.6), so the match still surfaces as `partial` with a renewal note.
+_EXPIRES_BEFORE_CLOSING_CAP = 0.70
+
+# A candidate that has already expired today gets an even harsher cap — below the partial
+# threshold, so the link is saved (visible to the reviewer) but does not colour the requirement
+# as partially covered. A lapsed cert is context, not evidence.
+_ALREADY_EXPIRED_CAP = 0.55
+
 _MAX_EXCERPT_CHARS = 1_200
 
 
@@ -71,9 +82,11 @@ def shortlist_candidates(rows: list[dict], min_similarity: float = _MIN_SIMILARI
 def is_expired(document: dict, today: date | None = None) -> bool:
     """Has this vault document's expiry passed?
 
-    The `match_supplier_chunks` RPC already excludes expired documents in SQL. This is the second check,
-    for links created before an expiry lapsed — a certificate that was valid when matched and
-    has since expired must stop counting toward readiness.
+    The `match_supplier_chunks` RPC no longer filters expired documents — they are retrieved and
+    surfaced to the reviewer with an `is_expired` flag so a lapsed certificate becomes a visible
+    note rather than an invisible gap. This helper is still the single check for whether a
+    confirmed evidence link should count toward readiness (readiness_review) and for the score
+    cap in adjudication.
     """
     expiry = document.get("expiry_date")
     if not expiry:
@@ -85,14 +98,44 @@ def is_expired(document: dict, today: date | None = None) -> bool:
     return parsed < (today or datetime.now(timezone.utc).date())
 
 
+def _parse_date(value: object) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def expires_before(document: dict, cutoff: date | None) -> bool:
+    """Would the document have lapsed by the tender's closing date?
+
+    Called with `cutoff = workspace.closing_date`. A True answer disqualifies a document from
+    satisfying a requirement even when the content matches: the certificate will not be valid at
+    evaluation. Distinct from `is_expired`, which asks about today.
+    """
+    if cutoff is None:
+        return False
+    expiry = _parse_date(document.get("expiry_date"))
+    if expiry is None:
+        return False
+    return expiry < cutoff
+
+
 def validate_matches(raw: object, candidate_index: dict[str, dict],
-                     min_score: float = _MIN_MATCH_SCORE) -> list[dict]:
+                     min_score: float = _MIN_MATCH_SCORE,
+                     closing_date: date | None = None,
+                     today: date | None = None) -> list[dict]:
     """Keep only proposals grounded in a candidate we actually offered.
 
     Same discipline as requirement extraction, applied to matching: a `supplier_document_id`
     the model invented — or one from a document we never sent — is discarded. The vault
     document's identity comes from OUR candidate row, never from the model's output, so a
     hallucinated id cannot become a link to a real document.
+
+    Scores are capped for candidates whose validity is a problem: already expired documents
+    cap below the partial threshold (visible but non-covering), documents expiring before the
+    tender closing date cap below the MET threshold (surfaces as partial with a renewal note).
     """
     if not isinstance(raw, dict):
         return []
@@ -100,6 +143,7 @@ def validate_matches(raw: object, candidate_index: dict[str, dict],
     if not isinstance(items, list):
         return []
 
+    today = today or datetime.now(timezone.utc).date()
     kept: list[dict] = []
     seen: set[str] = set()
     for item in items:
@@ -117,6 +161,16 @@ def validate_matches(raw: object, candidate_index: dict[str, dict],
             score = max(0.0, min(1.0, float(item.get("match_score", 0.0))))
         except (TypeError, ValueError):
             continue
+
+        # Cap score by validity of the underlying document. Both flags are also reported in
+        # the LLM payload so the rationale can explain the reason.
+        already_expired = is_expired(candidate, today)
+        expiring_early = (not already_expired) and expires_before(candidate, closing_date)
+        if already_expired:
+            score = min(score, _ALREADY_EXPIRED_CAP)
+        elif expiring_early:
+            score = min(score, _EXPIRES_BEFORE_CLOSING_CAP)
+
         if score < min_score:
             continue
 
@@ -132,14 +186,18 @@ def validate_matches(raw: object, candidate_index: dict[str, dict],
             "matched_chunk_id": candidate.get("chunk_id"),
             "matched_text": _strip_html(candidate.get("text") or "")[:600],
             "source": "llm",
+            "already_expired": already_expired,
+            "expires_before_closing": expiring_early,
         })
     return kept
 
 
-def _payload(requirement: dict, candidates: list[dict]) -> dict:
+def _payload(requirement: dict, candidates: list[dict],
+             closing_date: date | None = None, today: date | None = None) -> dict:
     # `mandatory` is the column name on workspace_requirements. Reading `is_mandatory` here (the
     # name the extraction prompt uses in its own output) meant the adjudicator was told None for
     # every requirement, so it could not tell a must-have from a nice-to-have.
+    today = today or datetime.now(timezone.utc).date()
     return {
         "requirement": {
             "description": requirement.get("description"),
@@ -147,12 +205,17 @@ def _payload(requirement: dict, candidates: list[dict]) -> dict:
             "is_mandatory": requirement.get("mandatory"),
             "required_evidence": requirement.get("required_evidence"),
         },
+        "tender_closing_date": closing_date.isoformat() if closing_date else None,
         "candidate_documents": [
             {
                 "supplier_document_id": c.get("supplier_document_id"),
                 "title": c.get("title"),
                 "doc_type": c.get("doc_type"),
                 "expiry_date": str(c.get("expiry_date")) if c.get("expiry_date") else None,
+                "is_expired": is_expired(c, today),
+                "expires_before_closing": (
+                    (not is_expired(c, today)) and expires_before(c, closing_date)
+                ),
                 "excerpt": _strip_html(c.get("text") or "")[:_MAX_EXCERPT_CHARS],
             }
             for c in candidates
@@ -211,6 +274,11 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
                                  {"reason": "tender has no org_id"})
         return {"proposed": 0, "skipped": 0, "ungrounded_dropped": 0, "requirements_matched": 0}
 
+    # Closing date is the cutoff for "expires before closing" — a certificate valid today but
+    # lapsed at evaluation cannot satisfy a requirement, and the adjudicator needs to know.
+    closing_date = _parse_date(tender.get("closing_date"))
+    today = datetime.now(timezone.utc).date()
+
     requirements = [
         r for r in db.list_workspace_requirements_raw(tender_id)
         if (requirement_ids is None or r["req_id"] in requirement_ids)
@@ -261,13 +329,17 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
             continue
 
         # 2. Adjudicate — the model picks from what we offered and justifies each pick.
-        answer = llm_reasoning.ask(EVIDENCE_MATCHING, _payload(requirement, candidates),
-                                   workspace_id=tender_id)
+        answer = llm_reasoning.ask(
+            EVIDENCE_MATCHING,
+            _payload(requirement, candidates, closing_date=closing_date, today=today),
+            workspace_id=tender_id,
+        )
         if answer is None:
             continue  # LLM unavailable — leave the requirement unmatched rather than guess
 
         candidate_index = {str(c.get("supplier_document_id")): c for c in candidates}
-        matches = validate_matches(answer, candidate_index)
+        matches = validate_matches(answer, candidate_index,
+                                   closing_date=closing_date, today=today)
         raw_count = len(answer.get("matches") or []) if isinstance(answer, dict) else 0
         ungrounded += max(0, raw_count - len(matches))
 

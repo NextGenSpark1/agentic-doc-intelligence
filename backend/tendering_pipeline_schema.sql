@@ -72,3 +72,26 @@ ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES tend
 
 -- 8. Store the exact matched passage from the library document so the frontend can show it.
 ALTER TABLE evidence_links ADD COLUMN IF NOT EXISTS matched_text TEXT DEFAULT '';
+
+-- 9. `rejected` status: distinct from `gap`. A requirement is `rejected` when a reviewer has
+--    dismissed every candidate evidence link, or when a human manually sets it. `gap` means
+--    nothing was proposed; `rejected` means proposals were reviewed and rejected. Readiness
+--    treats both as unsatisfied but the compliance matrix must show the difference.
+DO $$ BEGIN
+    ALTER TABLE workspace_requirements
+        DROP CONSTRAINT IF EXISTS workspace_requirements_status_check;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE workspace_requirements
+        ADD CONSTRAINT workspace_requirements_status_check
+        CHECK (status IN ('unchecked', 'partial', 'gap', 'met', 'rejected'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- 10. Track who last changed the requirement status (email). Populated when a reviewer's
+--     confirm/dismiss causes a recompute, when someone manually overrides the status, or when
+--     matching writes an AI status (blank for the AI case — the actor is 'system').
+ALTER TABLE workspace_requirements ADD COLUMN IF NOT EXISTS status_updated_by TEXT DEFAULT '';
+ALTER TABLE workspace_requirements ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMPTZ;
