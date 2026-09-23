@@ -71,11 +71,17 @@ def deterministic_recommendation(report: dict) -> dict:
 
     Never "bid": with no model to weigh the case, the honest position is that the team has not
     been advised yet. Blockers are surfaced either way, which is the part that matters.
+
+    Strengths use both `mandatory_satisfied` and `mandatory_partial` so the deterministic
+    fallback also reflects proposed-but-unreviewed evidence, keeping the fallback consistent
+    with the LLM-driven path.
     """
     blockers = report.get("blocking_reasons") or []
     satisfied = report.get("satisfied") or 0
+    partial = report.get("partial") or 0
     total = report.get("total") or 0
     mandatory_satisfied = report.get("mandatory_satisfied") or 0
+    mandatory_partial = report.get("mandatory_partial") or 0
     mandatory_total = report.get("mandatory_total") or 0
 
     if report.get("submission_blocked"):
@@ -87,21 +93,72 @@ def deterministic_recommendation(report: dict) -> dict:
         summary = "No blocking issues were found by the readiness check."
 
     rationale = (
-        f"{summary} {satisfied} of {total} requirements are satisfied, including "
-        f"{mandatory_satisfied} of {mandatory_total} mandatory ones. "
+        f"{summary} {satisfied} of {total} requirements are satisfied "
+        f"({mandatory_satisfied} of {mandatory_total} mandatory), with {partial} more "
+        f"holding proposed evidence awaiting reviewer confirmation. "
         "This summary was produced without the AI advisor, which was unavailable — it restates "
         "the readiness report and is not a recommendation to bid."
     )
+    strengths: list[str] = []
+    if mandatory_satisfied:
+        strengths.append(
+            f"{mandatory_satisfied} of {mandatory_total} mandatory requirements already have "
+            f"confirmed evidence"
+        )
+    if mandatory_partial:
+        strengths.append(
+            f"{mandatory_partial} mandatory requirements have AI-proposed evidence pending "
+            f"reviewer confirmation"
+        )
     return {
         "recommendation": recommendation,
         "rationale": rationale,
-        "strengths": ([f"{mandatory_satisfied} of {mandatory_total} mandatory requirements "
-                       f"already have approved evidence"] if mandatory_satisfied else []),
+        "strengths": strengths,
         "risks": [str(reason) for reason in blockers[:_MAX_ITEMS]],
     }
 
 
-def _payload(workspace: dict, report: dict) -> dict:
+def _evidence_position(requirements: list[dict], evidence_links: list[dict]) -> dict:
+    """Group requirement + best-evidence rationale into the shape the prompt reasons over.
+
+    Confirmed evidence is a stronger strength than proposed; partial evidence should still be
+    surfaced with hedging (see BID_DECISION prompt) so the strengths list is not empty on a
+    freshly-analysed workspace where nothing has been confirmed yet.
+    """
+    links_by_req: dict[str, list[dict]] = {}
+    for link in evidence_links or []:
+        if link.get("human_review_status") == "dismissed":
+            continue
+        links_by_req.setdefault(str(link.get("req_id") or ""), []).append(link)
+
+    met_items: list[dict] = []
+    partial_items: list[dict] = []
+    for requirement in requirements or []:
+        status = requirement.get("status")
+        if status not in ("met", "partial"):
+            continue
+        req_id = str(requirement.get("req_id") or "")
+        links = links_by_req.get(req_id, [])
+        # Best link = highest-scoring non-dismissed evidence — its rationale is the reason the
+        # requirement got its status. Truncated to keep the prompt within budget.
+        best = max(links, key=lambda link: float(link.get("score") or 0.0), default=None)
+        entry = {
+            "description": (requirement.get("description") or "")[:220],
+            "category": requirement.get("category"),
+            "mandatory": bool(requirement.get("mandatory")),
+            "rationale": (best.get("rationale") or "")[:220] if best else "",
+            "review_state": "confirmed" if any(
+                link.get("human_review_status") == "confirmed" for link in links
+            ) else "pending",
+        }
+        (met_items if status == "met" else partial_items).append(entry)
+
+    return {"met": met_items[:15], "partial": partial_items[:15]}
+
+
+def _payload(workspace: dict, report: dict,
+             requirements: list[dict] | None = None,
+             evidence_links: list[dict] | None = None) -> dict:
     return {
         "tender": {
             "title": workspace.get("title"),
@@ -115,8 +172,10 @@ def _payload(workspace: dict, report: dict) -> dict:
             "score_percent": round((report.get("score") or 0) * 100),
             "submission_blocked": report.get("submission_blocked"),
             "requirements_satisfied": report.get("satisfied"),
+            "requirements_partial": report.get("partial"),
             "requirements_total": report.get("total"),
             "mandatory_satisfied": report.get("mandatory_satisfied"),
+            "mandatory_partial": report.get("mandatory_partial"),
             "mandatory_total": report.get("mandatory_total"),
             "blocking_reasons": report.get("blocking_reasons") or [],
             "gaps": [
@@ -125,6 +184,7 @@ def _payload(workspace: dict, report: dict) -> dict:
                 for gap in (report.get("gaps") or [])[:40]
             ],
         },
+        "evidence_position": _evidence_position(requirements or [], evidence_links or []),
     }
 
 
@@ -151,8 +211,11 @@ def generate(workspace_id: str) -> dict:
 
     from backend.core import llm_reasoning
 
-    answer = llm_reasoning.ask(BID_DECISION, _payload(workspace, report),
-                               workspace_id=workspace_id)
+    answer = llm_reasoning.ask(
+        BID_DECISION,
+        _payload(workspace, report, requirements=requirements, evidence_links=evidence_links),
+        workspace_id=workspace_id,
+    )
     advised = validate_recommendation(answer, report)
     source = "llm"
     if advised is None:

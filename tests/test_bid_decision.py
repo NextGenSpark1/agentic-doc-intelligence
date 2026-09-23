@@ -125,7 +125,8 @@ def generate(monkeypatch):
                         lambda ws, record: saved.append(record) or record)
     monkeypatch.setattr(db, "write_workspace_audit",
                         lambda ws, actor, action, detail=None: audits.append((action, detail)))
-    monkeypatch.setattr(bid_decision, "_payload", lambda workspace, report: {"r": report})
+    monkeypatch.setattr(bid_decision, "_payload",
+                        lambda workspace, report, **_: {"r": report})
     from backend.apps.tendering.pipeline import readiness_review
     monkeypatch.setattr(readiness_review, "build_report", lambda *a, **k: state["report"])
     monkeypatch.setattr(llm_reasoning, "ask", lambda *a, **k: state["answer"])

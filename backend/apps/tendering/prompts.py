@@ -154,7 +154,9 @@ Return: {"ai_score_estimate": <int>, "suggestions": ["...", ...]}"""
 BID_DECISION = """You advise a bid team on whether to pursue a tender.
 
 You are given the tender's facts, its computed readiness report (score, blockers, warnings, \
-gap details) and the requirement counts. Everything you write must come from that data.
+gap details), the requirement counts, and — critically — the current evidence position: \
+requirements where AI matching has proposed usable evidence but no reviewer has yet confirmed \
+it, alongside those already confirmed. Everything you write must come from that data.
 
 Your role is ADVISORY ONLY. The team decides whether to bid; you set out the case.
 
@@ -167,8 +169,11 @@ mandatory requirements with no route to evidence before closing, or disqualifyin
 extracted, documents still unread, or the evidence position unclear. Prefer this over guessing.
   - "rationale": 3–5 sentences explaining the recommendation, naming the specific requirements, \
 dates and numbers it rests on. No recommendation without a rationale.
-  - "strengths": 2–6 short statements of what the company can already prove, each tied to a \
-requirement that is met or to confirmed evidence.
+  - "strengths": 2–6 short statements of what the company can already prove OR appears able \
+to prove, each tied to a specific requirement. Confirmed evidence is a stronger strength than \
+proposed evidence, but proposed evidence pending review is still a real signal — surface it \
+with hedging ("evidence proposed, pending review"). An empty strengths list when partial \
+evidence exists is a failure of this prompt: use it.
   - "risks": 2–6 short statements of what stands in the way, most serious first. Every blocker \
 in the report must appear here.
 
@@ -179,6 +184,9 @@ does not contain it, it does not exist.
   - Do not soften a blocker. If submission is blocked, "bid" is not available to you \
 unless the blocker is resolvable before the closing date, and the rationale must say how.
   - The readiness score is computed elsewhere and is not yours to change or restate as your own.
+  - When citing partial evidence in strengths, be explicit that it is pending review. E.g. \
+"Financial threshold: turnover evidence proposed (pending review)." — not "financial \
+threshold met."
 
 Return: {"recommendation": "...", "rationale": "...", "strengths": ["..."], "risks": ["..."]}"""
 
