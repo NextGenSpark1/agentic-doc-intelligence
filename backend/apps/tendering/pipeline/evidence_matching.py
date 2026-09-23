@@ -20,6 +20,7 @@ are deliberately conservative — a similarity floor, a confidence floor, and ev
 """
 from __future__ import annotations
 
+import re
 import traceback
 from datetime import date, datetime, timezone
 
@@ -310,17 +311,29 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
             already_confirmed += 1
             continue
 
-        # 1. Retrieve — org-scoped in SQL, expired documents excluded at the source.
+        # 1. Retrieve — org-scoped in SQL. Two passes: vector similarity for meaning, keyword
+        # ILIKE for exact identifiers the embeddings routinely miss. Merged before shortlist.
         try:
             query_vec = llm.embed([_match_query(requirement)])[0]
-            rows = db.match_supplier_docs(org_id, query_vec, _CANDIDATE_POOL)
+            vector_rows = db.match_supplier_docs(org_id, query_vec, _CANDIDATE_POOL)
         except Exception as exc:
             db.write_workspace_audit(tender_id, "system", "evidence_retrieval_failed",
                                      {"req_id": requirement["req_id"],
                                       "error": f"{type(exc).__name__}: {exc}"[:300]})
             continue
 
-        candidates = shortlist_candidates(rows)
+        keyword_rows: list[dict] = []
+        keywords = extract_keywords(requirement)
+        if keywords:
+            try:
+                keyword_rows = db.match_supplier_docs_by_keyword(org_id, keywords, _SHORTLIST)
+            except Exception as exc:
+                db.write_workspace_audit(tender_id, "system", "evidence_keyword_retrieval_failed",
+                                         {"req_id": requirement["req_id"],
+                                          "error": f"{type(exc).__name__}: {exc}"[:300]})
+
+        merged_rows = merge_candidates(vector_rows, keyword_rows)
+        candidates = shortlist_candidates(merged_rows)
         if not candidates:
             # Nothing in the vault comes close. That is a finding, not a blank: the requirement
             # becomes a gap so the matrix shows what the company cannot yet prove.
@@ -407,3 +420,97 @@ def _match_query(requirement: dict) -> str:
     """
     parts = [requirement.get("required_evidence") or "", requirement.get("description") or ""]
     return " ".join(p.strip() for p in parts if p.strip())
+
+
+# Common English words we never want as keyword-search seeds: they match too much of the vault
+# and add noise to the merge. Only used for the keyword pass; the vector pass is unaffected.
+_KEYWORD_STOPWORDS = {
+    "the", "and", "for", "with", "shall", "must", "any", "all", "from", "into", "onto", "upon",
+    "will", "have", "been", "such", "each", "this", "that", "those", "these", "their", "them",
+    "which", "within", "certificate", "certification", "certified", "required", "registration",
+    "registered", "provide", "submit", "including", "include", "includes", "bidder", "tenderer",
+    "company", "document", "documents", "least", "valid", "minimum", "years",
+}
+
+# Match acronyms (SSM, CIDB, ISO), model/grade codes (G7, ISO/IEC 27001), and quoted phrases.
+_ACRONYM_RE = re.compile(r"[A-Z][A-Z0-9/\-]{1,15}")
+_QUOTED_RE = re.compile(r'"([^"]{2,60})"')
+
+
+def extract_keywords(requirement: dict, limit: int = 8) -> list[str]:
+    """Pick short exact-match seeds from a requirement.
+
+    Vector similarity is bad at short specific strings — an acronym, a grade code, a
+    registration number. The keyword pass exists to catch those, so this is deliberately
+    biased toward CAPS-heavy tokens rather than natural language. Long, common English
+    words are dropped: they add noise without covering the failure mode we care about.
+    """
+    haystack = " ".join([
+        str(requirement.get("required_evidence") or ""),
+        str(requirement.get("description") or ""),
+    ])
+    if not haystack.strip():
+        return []
+
+    seeds: list[str] = []
+    seen: set[str] = set()
+
+    def _add(term: str) -> None:
+        term = term.strip()
+        if not term:
+            return
+        key = term.lower()
+        if key in seen or key in _KEYWORD_STOPWORDS:
+            return
+        seen.add(key)
+        seeds.append(term)
+
+    # Quoted phrases first — the tender author's own emphasis.
+    for match in _QUOTED_RE.findall(haystack):
+        _add(match)
+    # Then acronyms and grade/model codes.
+    for match in _ACRONYM_RE.findall(haystack):
+        _add(match)
+    # Finally longer standalone words (>= 5 chars, not stopwords). Useful for things like
+    # "audited", "insurance", "turnover" that carry meaning even without acronyms nearby.
+    for word in re.findall(r"[A-Za-z][A-Za-z\-]{4,}", haystack):
+        _add(word)
+
+    return seeds[:limit]
+
+
+def merge_candidates(vector_rows: list[dict], keyword_rows: list[dict]) -> list[dict]:
+    """Combine the two retrieval passes into one candidate pool.
+
+    A document that appears in both passes is stronger evidence than one that appears in only
+    one — the vault knows about it and the requirement's keywords hit it. The merged score
+    reflects that: a document in both passes takes the higher of its two scores, plus a small
+    boost. Documents unique to either pass keep their own score.
+    """
+    merged: dict[str, dict] = {}
+    for row in vector_rows:
+        doc_id = str(row.get("supplier_document_id") or "")
+        if not doc_id:
+            continue
+        merged[doc_id] = dict(row)
+
+    for row in keyword_rows:
+        doc_id = str(row.get("supplier_document_id") or "")
+        if not doc_id:
+            continue
+        existing = merged.get(doc_id)
+        try:
+            keyword_score = float(row.get("similarity") or 0.0)
+        except (TypeError, ValueError):
+            keyword_score = 0.0
+        if existing is None:
+            merged[doc_id] = dict(row)
+            continue
+        try:
+            vector_score = float(existing.get("similarity") or 0.0)
+        except (TypeError, ValueError):
+            vector_score = 0.0
+        # Both passes hit — take the higher, boost slightly, cap at 1.0.
+        existing["similarity"] = min(1.0, max(vector_score, keyword_score) + 0.05)
+
+    return list(merged.values())

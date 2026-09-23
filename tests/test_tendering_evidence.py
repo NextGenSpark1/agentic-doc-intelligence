@@ -10,7 +10,9 @@ import pytest
 
 from backend.apps.tendering.pipeline.evidence_matching import (
     _match_query,
+    extract_keywords,
     is_expired,
+    merge_candidates,
     shortlist_candidates,
     validate_matches,
 )
@@ -193,3 +195,76 @@ def test_query_falls_back_to_description_alone():
 
 def test_empty_requirement_yields_empty_query():
     assert _match_query({}) == ""
+
+
+# ------------------- keyword extraction (the second retrieval pass) -------------------
+def test_acronyms_and_grade_codes_are_picked_up_as_keywords():
+    """The failure mode this pass exists for: 'SSM' and 'CIDB G7' embed nowhere near
+    a capability statement that contains those exact strings."""
+    keywords = extract_keywords({
+        "description": "The bidder shall be a Malaysian company with SSM registration.",
+        "required_evidence": "Valid CIDB G7 registration certificate",
+    })
+
+    assert "SSM" in keywords
+    assert "CIDB" in keywords
+    assert "G7" in keywords
+
+
+def test_quoted_phrases_win_over_word_frequency():
+    keywords = extract_keywords({
+        "description": 'The bidder must hold a valid "ISO/IEC 27001" certification.',
+    })
+    assert "ISO/IEC 27001" in keywords[:2]
+
+
+def test_common_english_words_are_dropped():
+    """`the`, `shall`, `certificate` and other high-frequency vault-noise words are stopwords —
+    otherwise the keyword pass returns every document in the vault."""
+    keywords = extract_keywords({
+        "description": "The bidder shall provide a certificate.",
+        "required_evidence": "",
+    })
+    assert "shall" not in [k.lower() for k in keywords]
+    assert "certificate" not in [k.lower() for k in keywords]
+
+
+def test_keyword_extraction_is_capped():
+    """Long requirement descriptions can produce a huge keyword list; the SQL RPC uses
+    ILIKE per keyword so an unbounded list would be a performance foot-gun."""
+    text = " ".join([f"KEYWORD{i}" for i in range(50)])
+    keywords = extract_keywords({"description": text})
+    assert len(keywords) <= 8
+
+
+def test_empty_requirement_yields_no_keywords():
+    assert extract_keywords({}) == []
+
+
+# ------------------- merging vector + keyword retrieval passes -------------------
+def test_documents_unique_to_one_pass_are_kept():
+    vector = [_candidate("SUP-1", similarity=0.6)]
+    keyword = [_candidate("SUP-2", similarity=0.5)]
+    merged = merge_candidates(vector, keyword)
+
+    assert {c["supplier_document_id"] for c in merged} == {"SUP-1", "SUP-2"}
+
+
+def test_documents_hit_by_both_passes_get_a_boost():
+    """A document that shows up in both retrieval passes is stronger evidence — the vault
+    knows about it and the requirement's keywords hit it. The merged score reflects that so
+    it survives shortlisting."""
+    vector = [_candidate("SUP-1", similarity=0.4)]
+    keyword = [_candidate("SUP-1", similarity=0.7)]
+    merged = merge_candidates(vector, keyword)
+
+    assert len(merged) == 1
+    assert merged[0]["similarity"] > 0.7  # boost above the higher of the two
+
+
+def test_merge_survives_malformed_similarity_values():
+    vector = [{**_candidate("SUP-1"), "similarity": "not a number"}]
+    keyword = [_candidate("SUP-1", similarity=0.6)]
+    merged = merge_candidates(vector, keyword)
+
+    assert len(merged) == 1

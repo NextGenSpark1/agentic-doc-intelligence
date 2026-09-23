@@ -105,3 +105,74 @@ DROP INDEX IF EXISTS supplier_document_chunks_org_embedding_idx;
 CREATE INDEX IF NOT EXISTS supplier_document_chunks_embedding_idx
     ON supplier_document_chunks
     USING hnsw (embedding vector_cosine_ops);
+
+-- 5. Keyword-based match. Vector similarity is bad at short exact strings — company registration
+--    numbers, "SSM", "PMP", "CIDB G7", "REST API", "ISO/IEC 27001". A capability statement that
+--    literally contains the SSM number can score well below the 0.35 vector cutoff because the
+--    embedding for a specific 12-digit id sits nowhere near the embedding for "SSM
+--    registration". This function catches those cases by ILIKE-matching chunk text and document
+--    titles against a list of keywords lifted from the requirement, so the adjudicator sees the
+--    document even when the semantic search missed it.
+--
+--    The `similarity` field is the fraction of keywords the chunk (or its parent document title)
+--    covers. It is deliberately not a cosine score: a chunk with 3 of 3 keywords is far more
+--    interesting than one with 3 of 10, and the caller merges these results with vector hits by
+--    ranking rather than by direct comparison.
+CREATE OR REPLACE FUNCTION match_supplier_chunks_by_keyword(
+    p_org_id      TEXT,
+    p_keywords    TEXT[],
+    p_match_count INT DEFAULT 6
+)
+RETURNS TABLE (
+    supplier_document_id TEXT,
+    chunk_id             TEXT,
+    text                 TEXT,
+    page                 INT,
+    title                TEXT,
+    doc_type             TEXT,
+    expiry_date          DATE,
+    library_doc_id       TEXT,
+    similarity           FLOAT
+)
+LANGUAGE sql STABLE
+AS $$
+    WITH keyword_matches AS (
+        SELECT
+            sdc.supplier_document_id,
+            sdc.chunk_id,
+            sdc.text,
+            sdc.page,
+            sd.title,
+            sd.doc_type,
+            sd.expiry_date,
+            sd.library_doc_id,
+            (
+                SELECT COUNT(*)::FLOAT
+                FROM unnest(p_keywords) AS kw
+                WHERE kw <> ''
+                  AND (sdc.text ILIKE '%' || kw || '%'
+                       OR sd.title ILIKE '%' || kw || '%')
+            ) AS matched_terms,
+            GREATEST(COALESCE(array_length(p_keywords, 1), 0), 1) AS total_terms
+        FROM supplier_document_chunks sdc
+        INNER JOIN supplier_documents sd
+            ON sd.supplier_document_id = sdc.supplier_document_id
+        WHERE sdc.org_id = p_org_id
+          AND sd.org_id = p_org_id
+          AND sd.superseded_by IS NULL
+    )
+    SELECT
+        supplier_document_id,
+        chunk_id,
+        text,
+        page,
+        title,
+        doc_type,
+        expiry_date,
+        library_doc_id,
+        matched_terms / total_terms AS similarity
+    FROM keyword_matches
+    WHERE matched_terms > 0
+    ORDER BY matched_terms DESC, length(text) ASC
+    LIMIT p_match_count;
+$$;

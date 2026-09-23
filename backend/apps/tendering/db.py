@@ -874,6 +874,34 @@ def update_supplier_document(supplier_document_id: str, patch: dict) -> dict | N
     return row[0] if row else None
 
 
+def match_supplier_docs_by_keyword(org_id: str, keywords: list[str], top_k: int = 6) -> list[dict]:
+    """Keyword-based retrieval to complement vector similarity.
+
+    Vector search misses exact identifiers ("SSM", registration numbers, "PMP", "REST API"),
+    because a specific string sits nowhere near the semantic neighbourhood of the requirement
+    text. This is the second retrieval pass — cheap ILIKE against chunk text and document
+    titles — that catches those cases. Returns an empty list when no keywords are usable so
+    the caller can skip the RPC round-trip.
+    """
+    clean = [kw.strip() for kw in keywords if kw and kw.strip()]
+    if not clean:
+        return []
+    try:
+        return (
+            get_client()
+            .rpc("match_supplier_chunks_by_keyword", {
+                "p_org_id": org_id,
+                "p_keywords": clean,
+                "p_match_count": top_k,
+            })
+            .execute()
+            .data
+        ) or []
+    except Exception:
+        # The RPC is optional infrastructure. Failing here must not sink the whole match run.
+        return []
+
+
 def match_supplier_docs(org_id: str, query_embedding: list[float], top_k: int = 12) -> list[dict]:
     return (
         get_client()
