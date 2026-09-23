@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, Sparkles, ThumbsUp, ThumbsDown, Download } from 'lucide-react';
+import { Loader2, Sparkles, ThumbsUp, ThumbsDown, Download, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { updateWorkspace, generateBidDecision } from '../../api/tenders';
 import { BidDecisionBadge } from '../Badge';
@@ -184,6 +184,15 @@ export function BidDecisionTab({
                 {formatDate(report.generated_at ?? report.analysed_at ?? '', { day: 'numeric', month: 'short', year: 'numeric' })}
               </p>
             </div>
+            <button
+              onClick={handleGenerate}
+              disabled={generating}
+              className="flex items-center gap-1.5 px-4 py-2 bg-panel-2 border border-border text-text-mid hover:text-text hover:bg-panel-3 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+              title="Regenerate bid decision report"
+            >
+              {generating ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              Regenerate
+            </button>
             <button
               onClick={handleExport}
               disabled={exporting}
