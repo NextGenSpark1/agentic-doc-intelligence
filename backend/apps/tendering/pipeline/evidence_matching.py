@@ -59,6 +59,13 @@ def shortlist_candidates(rows: list[dict], min_similarity: float = _MIN_SIMILARI
     Deduplicates to the best excerpt per vault document: five excerpts from one certificate is
     one piece of evidence, and spending the adjudicator's attention on all five crowds out a
     different document that might actually be the right answer.
+
+    Rows tagged with `_sources` containing "keyword" bypass the cosine similarity floor. The
+    two retrieval passes score on different scales — cosine similarity for the vector pass,
+    matched_keywords/total_keywords for the keyword pass — and comparing them directly is why
+    a document containing the exact SSM registration number could score 2/8 = 0.25 in the
+    keyword pass and get dropped before the LLM saw it. Vector-only rows still respect the
+    floor because a low cosine there is genuine evidence of irrelevance.
     """
     best_by_document: dict[str, dict] = {}
     for row in rows:
@@ -66,7 +73,8 @@ def shortlist_candidates(rows: list[dict], min_similarity: float = _MIN_SIMILARI
             similarity = float(row.get("similarity") or 0.0)
         except (TypeError, ValueError):
             continue
-        if similarity < min_similarity:
+        sources = row.get("_sources") or set()
+        if "keyword" not in sources and similarity < min_similarity:
             continue
         doc_id = str(row.get("supplier_document_id") or "")
         if not doc_id:
@@ -500,27 +508,36 @@ def merge_candidates(vector_rows: list[dict], keyword_rows: list[dict]) -> list[
     both passes gets a small boost so it survives the shortlist.
     """
     merged: dict[str, dict] = {}
-    seen_in_both: set[str] = set()
-    from_vector: set[str] = set()
-    from_keyword: set[str] = set()
 
-    def _place(row: dict, source_set: set[str]) -> None:
+    def _place(row: dict, source: str) -> None:
         doc_id = str(row.get("supplier_document_id") or "")
         if not doc_id:
             return
-        source_set.add(doc_id)
         existing = merged.get(doc_id)
-        if existing is None or _row_similarity(row) > _row_similarity(existing):
-            merged[doc_id] = dict(row)
+        if existing is None:
+            new_row = dict(row)
+            new_row["_sources"] = {source}
+            merged[doc_id] = new_row
+            return
+        # Preserve accumulated source tags across passes so shortlist_candidates can decide
+        # whether to bypass the similarity floor for this document.
+        existing_sources = set(existing.get("_sources") or set()) | {source}
+        if _row_similarity(row) > _row_similarity(existing):
+            new_row = dict(row)
+            new_row["_sources"] = existing_sources
+            merged[doc_id] = new_row
+        else:
+            existing["_sources"] = existing_sources
 
     for row in vector_rows:
-        _place(row, from_vector)
+        _place(row, "vector")
     for row in keyword_rows:
-        _place(row, from_keyword)
+        _place(row, "keyword")
 
-    seen_in_both = from_vector & from_keyword
-    for doc_id in seen_in_both:
-        row = merged[doc_id]
-        row["similarity"] = min(1.0, _row_similarity(row) + 0.05)
+    # A document surfaced by both passes is stronger evidence than one seen by only one — the
+    # vault knows about it and the requirement's exact terms hit it. Small boost so it survives.
+    for row in merged.values():
+        if {"vector", "keyword"}.issubset(row.get("_sources") or set()):
+            row["similarity"] = min(1.0, _row_similarity(row) + 0.05)
 
     return list(merged.values())

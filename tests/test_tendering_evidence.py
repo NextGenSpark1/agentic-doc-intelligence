@@ -270,6 +270,28 @@ def test_merge_survives_malformed_similarity_values():
     assert len(merged) == 1
 
 
+def test_keyword_only_hits_survive_the_similarity_floor():
+    """The regression this test guards: keyword-pass rows were filtered by the same 0.35
+    cosine cutoff as vector rows, but keyword score = matched/total keywords. A document that
+    contains the exact SSM registration number could score 2/8 = 0.25 and be dropped before
+    the LLM ever saw it. Now, rows tagged as coming from the keyword pass bypass the floor."""
+    keyword_only = _candidate("SUP-1", similarity=0.25)
+    merged = merge_candidates([], [keyword_only])
+    kept = shortlist_candidates(merged, min_similarity=0.35)
+
+    assert [c["supplier_document_id"] for c in kept] == ["SUP-1"]
+
+
+def test_vector_only_hit_still_respects_similarity_floor():
+    """Complement of the previous test: for vector-only hits a low cosine really is a signal
+    that the document is not relevant, so the floor still applies."""
+    vector_only = _candidate("SUP-1", similarity=0.25)
+    merged = merge_candidates([vector_only], [])
+    kept = shortlist_candidates(merged, min_similarity=0.35)
+
+    assert kept == []
+
+
 def test_merge_keeps_the_best_chunk_when_a_doc_has_many():
     """The regression this test guards: the old merge did `merged[doc_id] = row` in a loop, so
     a document's LAST chunk overwrote its best chunk. Vector search returns best-first, so we
