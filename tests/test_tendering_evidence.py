@@ -268,3 +268,23 @@ def test_merge_survives_malformed_similarity_values():
     merged = merge_candidates(vector, keyword)
 
     assert len(merged) == 1
+
+
+def test_merge_keeps_the_best_chunk_when_a_doc_has_many():
+    """The regression this test guards: the old merge did `merged[doc_id] = row` in a loop, so
+    a document's LAST chunk overwrote its best chunk. Vector search returns best-first, so we
+    were systematically feeding the adjudicator the worst excerpt from each document — that
+    caused false "cert found but excerpt doesn't show scope"-style negatives on documents we
+    had actually retrieved correctly."""
+    vector = [
+        _candidate("SUP-1", similarity=0.82, chunk_id="scope-chunk",
+                   text="Scope of certification: design, supply, installation of BMS."),
+        _candidate("SUP-1", similarity=0.69, chunk_id="dates-chunk",
+                   text="Certificate issued 2024-01-15, valid until 2027-01-14."),
+        _candidate("SUP-1", similarity=0.48, chunk_id="header-chunk",
+                   text="ISO 9001 Certificate — Registration No. 12345."),
+    ]
+    merged = merge_candidates(vector, [])
+
+    assert len(merged) == 1
+    assert merged[0]["chunk_id"] == "scope-chunk"

@@ -479,38 +479,48 @@ def extract_keywords(requirement: dict, limit: int = 8) -> list[str]:
     return seeds[:limit]
 
 
-def merge_candidates(vector_rows: list[dict], keyword_rows: list[dict]) -> list[dict]:
-    """Combine the two retrieval passes into one candidate pool.
+def _row_similarity(row: dict) -> float:
+    try:
+        return float(row.get("similarity") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
 
-    A document that appears in both passes is stronger evidence than one that appears in only
-    one — the vault knows about it and the requirement's keywords hit it. The merged score
-    reflects that: a document in both passes takes the higher of its two scores, plus a small
-    boost. Documents unique to either pass keep their own score.
+
+def merge_candidates(vector_rows: list[dict], keyword_rows: list[dict]) -> list[dict]:
+    """Combine the two retrieval passes into one candidate pool, keeping the best chunk per doc.
+
+    The bug this fixes: the old loop was `merged[doc_id] = dict(row)` on every iteration, so
+    the LAST chunk of a document overwrote earlier chunks — and vector search returns chunks
+    best-first, so we systematically kept the WORST excerpt from each document. The adjudicator
+    then sometimes received the ISO cert's validity-dates chunk instead of its scope chunk and
+    returned "cert found but the excerpt does not show the scope" — a self-inflicted false
+    negative on a document we had already retrieved correctly.
+
+    Now: dedupe by document, keeping the highest-similarity chunk. A document that appears in
+    both passes gets a small boost so it survives the shortlist.
     """
     merged: dict[str, dict] = {}
-    for row in vector_rows:
-        doc_id = str(row.get("supplier_document_id") or "")
-        if not doc_id:
-            continue
-        merged[doc_id] = dict(row)
+    seen_in_both: set[str] = set()
+    from_vector: set[str] = set()
+    from_keyword: set[str] = set()
 
-    for row in keyword_rows:
+    def _place(row: dict, source_set: set[str]) -> None:
         doc_id = str(row.get("supplier_document_id") or "")
         if not doc_id:
-            continue
+            return
+        source_set.add(doc_id)
         existing = merged.get(doc_id)
-        try:
-            keyword_score = float(row.get("similarity") or 0.0)
-        except (TypeError, ValueError):
-            keyword_score = 0.0
-        if existing is None:
+        if existing is None or _row_similarity(row) > _row_similarity(existing):
             merged[doc_id] = dict(row)
-            continue
-        try:
-            vector_score = float(existing.get("similarity") or 0.0)
-        except (TypeError, ValueError):
-            vector_score = 0.0
-        # Both passes hit — take the higher, boost slightly, cap at 1.0.
-        existing["similarity"] = min(1.0, max(vector_score, keyword_score) + 0.05)
+
+    for row in vector_rows:
+        _place(row, from_vector)
+    for row in keyword_rows:
+        _place(row, from_keyword)
+
+    seen_in_both = from_vector & from_keyword
+    for doc_id in seen_in_both:
+        row = merged[doc_id]
+        row["similarity"] = min(1.0, _row_similarity(row) + 0.05)
 
     return list(merged.values())
