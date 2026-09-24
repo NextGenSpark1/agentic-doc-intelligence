@@ -54,16 +54,24 @@ def is_satisfied(requirement: dict, links: list[dict], library_docs: dict[str, d
                  today: date) -> bool:
     """Is this requirement actually met?
 
-    Two ways: a human marked it met/complete, or it has at least one confirmed evidence link
-    to a library document that has not expired. A pending AI proposal does not count.
+    The status field is authoritative: matching sets `met` when a proposal clears the MET
+    threshold, and a manual override can set it too. A reviewer's confirm records agreement
+    but does NOT upgrade a partial requirement to met — so this function no longer treats
+    "any confirmed link" as satisfied on its own.
+
+    The one remaining live check is expiry: if a requirement is `met` but every non-dismissed
+    evidence link points at a document that has since lapsed, the requirement no longer holds.
+    A manual met or completion_status=complete without any linked evidence is respected.
     """
-    if requirement.get("status") == "met":
-        return True
     if requirement.get("completion_status") == "complete":
         return True
-    for link in links:
-        if link.get("human_review_status") != "confirmed":
-            continue
+    if requirement.get("status") != "met":
+        return False
+    non_dismissed = [link for link in links if link.get("human_review_status") != "dismissed"]
+    if not non_dismissed:
+        # `met` with no linked evidence — a manual override; trust the status.
+        return True
+    for link in non_dismissed:
         document = library_docs.get(link.get("doc_id") or "")
         if document is None:
             continue

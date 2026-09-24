@@ -62,19 +62,28 @@ def _gap_types(gaps):
 
 
 # --------------------------- satisfaction ---------------------------
-def test_approved_evidence_satisfies_a_requirement():
-    assert is_satisfied(_requirement(), [_link()], {"LIB-1": _library_doc()}, TODAY) is True
+def test_a_met_requirement_with_valid_evidence_is_satisfied():
+    """The status field is authoritative — satisfaction follows from status=met, not from the
+    link's review state alone. In production, recalculate_requirement_status_from_evidence
+    keeps them consistent: a confirmed high-score link becomes status=met, then is_satisfied
+    reads that status and treats it as satisfied provided the underlying doc is still valid."""
+    assert is_satisfied(_requirement(status="met"), [_link()],
+                        {"LIB-1": _library_doc()}, TODAY) is True
 
 
-def test_pending_evidence_does_not_satisfy():
-    """Rule 3: the AI proposing evidence is not the same as the team having it."""
-    assert is_satisfied(_requirement(), [_link(status="pending")],
-                        {"LIB-1": _library_doc()}, TODAY) is False
-
-
-def test_expired_evidence_does_not_satisfy():
-    assert is_satisfied(_requirement(), [_link()],
+def test_a_met_requirement_whose_evidence_has_expired_is_no_longer_satisfied():
+    """Trap this exists to catch: a cert that was valid when matched has since lapsed. The
+    status still says met but readiness treats it as unsatisfied on this date."""
+    assert is_satisfied(_requirement(status="met"), [_link()],
                         {"LIB-1": _library_doc(expiry="2026-01-01")}, TODAY) is False
+
+
+def test_a_partial_requirement_is_not_satisfied():
+    """Behaviour change: a confirmed partial link no longer flips a requirement to satisfied.
+    Partial is partial — the score is the deciding signal, and confirming it means the
+    reviewer agrees with the partial assessment."""
+    assert is_satisfied(_requirement(status="partial"), [_link()],
+                        {"LIB-1": _library_doc()}, TODAY) is False
 
 
 def test_status_met_satisfies_without_evidence():
@@ -86,13 +95,13 @@ def test_manual_completion_satisfies_without_evidence():
     assert is_satisfied(_requirement(completion="complete"), [], {}, TODAY) is True
 
 
-def test_link_to_a_missing_library_document_does_not_satisfy():
-    assert is_satisfied(_requirement(), [_link(doc="LIB-GONE")], {}, TODAY) is False
+def test_a_gap_requirement_is_not_satisfied_however_many_links_it_has():
+    assert is_satisfied(_requirement(), [_link()], {"LIB-1": _library_doc()}, TODAY) is False
 
 
 # ------------------------------ scoring ------------------------------
 def test_score_is_one_when_everything_is_satisfied():
-    result = compute_score([_requirement()], [_link()], [_library_doc()], TODAY)
+    result = compute_score([_requirement(status="met")], [_link()], [_library_doc()], TODAY)
     assert result["score"] == 1.0
     assert result["mandatory_satisfied"] == 1
 
@@ -102,11 +111,18 @@ def test_score_is_zero_when_nothing_is_satisfied():
 
 
 def test_mandatory_requirements_weigh_more_than_optional():
-    requirements = [_requirement("REQ-1", mandatory=True), _requirement("REQ-2", mandatory=False)]
     library = [_library_doc("LIB-1")]
 
-    mandatory_met = compute_score(requirements, [_link("REQ-1")], library, TODAY)["score"]
-    optional_met = compute_score(requirements, [_link("REQ-2")], library, TODAY)["score"]
+    mandatory_met_requirements = [
+        _requirement("REQ-1", mandatory=True, status="met"),
+        _requirement("REQ-2", mandatory=False),
+    ]
+    optional_met_requirements = [
+        _requirement("REQ-1", mandatory=True),
+        _requirement("REQ-2", mandatory=False, status="met"),
+    ]
+    mandatory_met = compute_score(mandatory_met_requirements, [_link("REQ-1")], library, TODAY)["score"]
+    optional_met = compute_score(optional_met_requirements, [_link("REQ-2")], library, TODAY)["score"]
 
     assert mandatory_met == 0.75      # 3 of 4 weight
     assert optional_met == 0.25       # 1 of 4 weight
@@ -233,7 +249,7 @@ def test_unassigned_requirement_is_only_informational():
 
 # ---------------------------- the report ----------------------------
 def test_fully_ready_workspace_is_not_blocked():
-    report = build_report(_workspace(), [_requirement()], [_link()], [_document()],
+    report = build_report(_workspace(), [_requirement(status="met")], [_link()], [_document()],
                           [_library_doc(expiry="2027-01-01")], TODAY)
     assert report["score"] == 1.0
     assert report["submission_blocked"] is False
@@ -250,7 +266,7 @@ def test_blockers_are_listed_first():
 
 def test_a_high_score_can_still_be_blocked():
     """The central design point: a percentage must never hide a disqualifying gap."""
-    requirements = [_requirement(f"REQ-{i}", mandatory=False) for i in range(9)]
+    requirements = [_requirement(f"REQ-{i}", mandatory=False, status="met") for i in range(9)]
     requirements.append(_requirement("REQ-BLOCK", mandatory=True))
     links = [_link(f"REQ-{i}", f"LIB-{i}") for i in range(9)]
     library = [_library_doc(f"LIB-{i}") for i in range(9)]
@@ -295,6 +311,6 @@ def test_deterministic_narrative_does_not_declare_a_bid_ready():
 
 
 def test_narrative_reports_the_mandatory_fraction():
-    report = build_report(_workspace(), [_requirement()], [_link()], [_document()],
+    report = build_report(_workspace(), [_requirement(status="met")], [_link()], [_document()],
                           [_library_doc(expiry="2027-01-01")], TODAY)
     assert "1 of 1 mandatory" in deterministic_narrative(report)

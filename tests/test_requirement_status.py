@@ -32,8 +32,18 @@ def _link(status="pending", score=0.65):
 
 # ── the rules ──────────────────────────────────────────────────────────────────
 
-def test_confirmed_evidence_means_met():
-    assert status_from_evidence([_link("confirmed")]) == "met"
+def test_a_confirmed_partial_link_stays_partial():
+    """Behaviour change: confirming a link is the reviewer saying "I agree with the AI
+    assessment" — it does NOT upgrade the status. A confirmed link with a partial-score
+    (below MET_SCORE_THRESHOLD) keeps the requirement partial. Only manual override
+    changes the actual status."""
+    assert status_from_evidence([_link("confirmed", 0.65)]) == "partial"
+
+
+def test_a_confirmed_high_score_link_is_met_because_of_the_score():
+    """Same threshold rule as for pending: score at/above MET_SCORE_THRESHOLD → met.
+    Confirmation records the reviewer's agreement; the score is what determines status."""
+    assert status_from_evidence([_link("confirmed", 0.9)]) == "met"
 
 
 def test_work_marked_complete_means_met_whatever_the_evidence_says():
@@ -66,8 +76,10 @@ def test_no_evidence_at_all_is_a_gap():
     assert status_from_evidence([]) == "gap"
 
 
-def test_one_confirmed_link_outweighs_dismissed_ones():
-    links = [_link("dismissed"), _link("confirmed"), _link("pending")]
+def test_a_high_score_confirmed_link_wins_over_dismissed_ones():
+    """The reviewer confirmed a strong AI proposal and dismissed weaker candidates — the
+    requirement is met on the strength of the confirmed link's score."""
+    links = [_link("dismissed"), _link("confirmed", 0.9), _link("pending", 0.5)]
     assert status_from_evidence(links) == "met"
 
 
@@ -152,10 +164,20 @@ def _recalc(monkeypatch, links, requirement, actor_email=""):
     return written
 
 
-def test_confirming_evidence_marks_the_requirement_met(monkeypatch):
-    written = _recalc(monkeypatch, [_link("confirmed")], {"status": "partial"})
+def test_confirming_a_high_score_link_marks_the_requirement_met(monkeypatch):
+    """A confirmed link whose score meets the MET threshold takes the requirement to met.
+    (The confirmation itself doesn't upgrade — the score does, whether pending or confirmed.)"""
+    written = _recalc(monkeypatch, [_link("confirmed", 0.9)], {"status": "partial"})
     assert len(written) == 1
     assert written[0]["status"] == "met"
+
+
+def test_confirming_a_partial_score_link_keeps_the_requirement_partial(monkeypatch):
+    """Behaviour change: confirming is agreement, not an upgrade. A partial-scored link
+    stays partial after confirmation. The reviewer's action is captured on the link's
+    human_review_status field; the requirement status only follows the score."""
+    written = _recalc(monkeypatch, [_link("confirmed", 0.65)], {"status": "partial"})
+    assert written == []  # already partial, no status change needed
 
 
 def test_dismissing_the_last_confirmed_link_leaves_a_rejected(monkeypatch):
@@ -175,13 +197,13 @@ def test_dismissing_one_of_two_proposals_still_updates_the_status(monkeypatch):
 
 def test_no_write_when_the_status_is_already_right_and_no_reviewer_stamp(monkeypatch):
     """Idempotent for pipeline retriggers, which have no actor email to stamp."""
-    written = _recalc(monkeypatch, [_link("confirmed")], {"status": "met"})
+    written = _recalc(monkeypatch, [_link("confirmed", 0.9)], {"status": "met"})
     assert written == []
 
 
 def test_reviewer_email_is_stamped_even_when_status_does_not_change(monkeypatch):
     """The compliance matrix wants to show who reconfirmed a met status, even mid-review."""
-    written = _recalc(monkeypatch, [_link("confirmed")], {"status": "met"},
+    written = _recalc(monkeypatch, [_link("confirmed", 0.9)], {"status": "met"},
                       actor_email="reviewer@example.com")
     assert len(written) == 1
     assert written[0]["status_updated_by"] == "reviewer@example.com"
