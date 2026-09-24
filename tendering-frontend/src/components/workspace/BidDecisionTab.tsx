@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Loader2, Sparkles, ThumbsUp, ThumbsDown, Download, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { updateWorkspace, generateBidDecision } from '../../api/tenders';
+import { updateWorkspace } from '../../api/tenders';
 import { BidDecisionBadge } from '../Badge';
 import { formatDate, formatCurrency } from '../../lib/utils';
 import type { BidDecisionReport, TenderWorkspace } from '../../types';
@@ -10,17 +10,21 @@ export function BidDecisionTab({
   report,
   workspace,
   onWorkspaceChange,
-  onReportGenerated,
+  onGenerate,
+  generating = false,
 }: {
   report: BidDecisionReport | null;
   workspace: TenderWorkspace;
   onWorkspaceChange?: (patch: Partial<TenderWorkspace>) => void;
-  onReportGenerated?: (report: BidDecisionReport) => void;
+  onGenerate?: () => Promise<void> | void;
+  // Owned by TenderDetailPage so the spinner survives tab switches — the actual API call is
+  // triggered from there too, meaning a mid-flight generate does not lose its promise when the
+  // Bid Decision tab unmounts.
+  generating?: boolean;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState<'bid' | 'no_bid' | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [generating, setGenerating] = useState(false);
 
   async function handleExport() {
     if (!report) return;
@@ -137,16 +141,10 @@ export function BidDecisionTab({
   }
 
   async function handleGenerate() {
-    setGenerating(true);
-    try {
-      const generated = await generateBidDecision(workspace.id);
-      onReportGenerated?.(generated);
-      toast.success('Bid decision report generated');
-    } catch {
-      toast.error('Failed to generate bid decision — ensure analysis has completed');
-    } finally {
-      setGenerating(false);
-    }
+    // Delegates to the page-level handler so the in-flight promise, the spinner and the toast
+    // all survive a tab switch. The onGenerate callback owns setting `generating` back to false.
+    if (!onGenerate) return;
+    await onGenerate();
   }
 
   async function handleConfirm(decision: 'bid' | 'no_bid') {

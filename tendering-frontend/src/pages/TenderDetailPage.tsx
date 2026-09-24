@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import {
   ArrowLeft, FileText, Loader2,
-  ClipboardCheck, BarChart3, ThumbsUp, MessageSquare,
+  ClipboardCheck, BarChart3, ThumbsUp, MessageSquare, Sparkles,
 } from 'lucide-react';
-import { getWorkspace, getRequirements, getBidDecision, getLibraryDocuments, getEvidenceLinks, reviewEvidenceLink } from '../api/tenders';
+import { getWorkspace, getRequirements, getBidDecision, getLibraryDocuments, getEvidenceLinks, reviewEvidenceLink, generateBidDecision } from '../api/tenders';
 import { StageBadge, BidDecisionBadge } from '../components/Badge';
 import { SummaryTab } from '../components/workspace/SummaryTab';
 import { RequirementsTab } from '../components/workspace/RequirementsTab';
@@ -33,7 +34,9 @@ export function TenderDetailPage() {
   const [workspace, setWorkspace] = useState<TenderWorkspace | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('summary');
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>(CHAT_STARTER);
+  const [generatingBidDecision, setGeneratingBidDecision] = useState(false);
   const prevStageRef = useRef<string | null>(null);
+  const analysisStartRef = useRef(0);
 
   const { data: fetchedWorkspace, isLoading: loadingWorkspace } = useQuery({
     queryKey: ['workspace', id],
@@ -86,9 +89,64 @@ export function TenderDetailPage() {
         queryClient.invalidateQueries({ queryKey: ['bid-report', id] });
         queryClient.invalidateQueries({ queryKey: ['evidence-links', id] });
       }
+      // Track when analysis begins so the polling loop knows how long it's been running.
+      if (patch.stage === 'analysing' && analysisStartRef.current === 0) {
+        analysisStartRef.current = Date.now();
+      }
       return updated;
     });
   }, [id, queryClient]);
+
+  // Workspace-level analysis polling. Lives here (not in SummaryTab) so it keeps running while
+  // the user reads requirements or the compliance matrix — otherwise the loading toast stays
+  // stuck at 'running' because the transition detector was unmounted with the tab.
+  const isAnalysing = workspace?.stage === 'analysing';
+  useEffect(() => {
+    if (!id || !isAnalysing) return;
+    if (analysisStartRef.current === 0) {
+      analysisStartRef.current = Date.now();
+    }
+    const interval = setInterval(async () => {
+      try {
+        const updated = await getWorkspace(id);
+        if (updated.stage !== 'analysing') {
+          if (updated.stage === 'preparing') {
+            toast.success('Analysis complete — check the Requirements tab', { id: 'analysis' });
+          }
+          analysisStartRef.current = 0;
+          handleWorkspaceChange({
+            stage: updated.stage,
+            ai_summary: updated.ai_summary,
+            readiness_score: updated.readiness_score,
+          });
+          queryClient.invalidateQueries({ queryKey: ['workspace', id] });
+        } else if (Date.now() - analysisStartRef.current > 10 * 60 * 1000) {
+          toast.error('Analysis is taking too long — check Railway logs for errors',
+                      { id: 'analysis' });
+          analysisStartRef.current = 0;
+        }
+      } catch { /* silent — next poll retries */ }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [id, isAnalysing, handleWorkspaceChange, queryClient]);
+
+  // Bid decision generation lives at page level so leaving the Bid Decision tab does not lose
+  // the spinner or the request. BidDecisionTab reads `generatingBidDecision` as a prop.
+  const handleGenerateBidDecision = useCallback(async () => {
+    if (!id || generatingBidDecision) return;
+    setGeneratingBidDecision(true);
+    toast.loading('Generating bid decision…', { id: 'bid-decision' });
+    try {
+      const generated = await generateBidDecision(id);
+      queryClient.setQueryData(['bid-report', id], generated);
+      toast.success('Bid decision generated', { id: 'bid-decision' });
+    } catch {
+      toast.error('Failed to generate bid decision — ensure analysis has completed',
+                  { id: 'bid-decision' });
+    } finally {
+      setGeneratingBidDecision(false);
+    }
+  }, [id, generatingBidDecision, queryClient]);
 
   if (loading) {
     return (
@@ -164,6 +222,24 @@ export function TenderDetailPage() {
           </div>
         </div>
 
+        {/* Running-operation banner — always visible while an op is in flight, on every tab */}
+        {(isAnalysing || generatingBidDecision) && (
+          <div className="bg-teal/10 border-t border-teal/20">
+            <div className="max-w-6xl mx-auto px-6 py-2 flex items-center gap-2 text-xs text-teal">
+              <Loader2 size={13} className="animate-spin flex-shrink-0" />
+              <span className="font-medium">
+                {isAnalysing && generatingBidDecision
+                  ? 'Running analysis and generating bid decision…'
+                  : isAnalysing
+                    ? 'Running analysis — extracting requirements and matching evidence…'
+                    : 'Generating bid decision…'}
+              </span>
+              <Sparkles size={11} className="flex-shrink-0 ml-auto opacity-60" />
+              <span className="opacity-70 text-[11px]">You can switch tabs — this keeps running.</span>
+            </div>
+          </div>
+        )}
+
         {/* Tab bar */}
         <div className="max-w-6xl mx-auto px-6">
           <div className="flex gap-0 -mb-px overflow-x-auto">
@@ -217,7 +293,8 @@ export function TenderDetailPage() {
             report={bidReport}
             workspace={workspace}
             onWorkspaceChange={handleWorkspaceChange}
-            onReportGenerated={(generated) => queryClient.setQueryData(['bid-report', id], generated)}
+            onGenerate={handleGenerateBidDecision}
+            generating={generatingBidDecision}
           />
         )}
         {activeTab === 'chat' && (
