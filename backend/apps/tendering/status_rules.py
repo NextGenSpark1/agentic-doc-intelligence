@@ -10,7 +10,8 @@ The statuses:
                     work complete, by a manual status override, OR by any (pending or confirmed)
                     evidence link whose score meets the MET threshold with an underlying document
                     that is valid through the tender closing date. Confirming a partial link is
-                    the reviewer's agreement, not an upgrade — the status stays partial.
+                    the reviewer's agreement, not an upgrade — the status stays partial (but it
+                    never drops below partial either: see status_from_evidence).
   * ``partial``   — evidence is proposed and worth reviewing but does not conclusively prove the
                     requirement (medium score, or the document expires before the closing date).
   * ``gap``       — nothing has been proposed and no evidence exists.
@@ -51,6 +52,10 @@ def _valid_links(links: list[dict]) -> list[dict]:
     return [link for link in links if link.get("human_review_status") != "dismissed"]
 
 
+def _confirmed_links(links: list[dict]) -> list[dict]:
+    return [link for link in links if link.get("human_review_status") == "confirmed"]
+
+
 def _best_valid_score(links: list[dict]) -> float:
     return max((_score(link) for link in _valid_links(links)), default=0.0)
 
@@ -77,6 +82,16 @@ def status_from_evidence(links: list[dict], completion_status: str = "",
     """
     if completion_status == "complete":
         return MET
+
+    # A confirmed link is a person saying "this document is evidence for this requirement". That
+    # is worth at least `partial`, whatever the model scored it. Scoring confirmed and pending
+    # links identically meant confirming a 0.55 proposal produced `gap` — the reviewer's positive
+    # action left the matrix reading as if no evidence existed, and clicking Confirm appeared to
+    # do nothing at all. Confirmation still does not reach `met` on its own: that needs the score,
+    # a manual override, or completed work.
+    confirmed = _confirmed_links(links)
+    if confirmed:
+        return MET if max(_score(link) for link in confirmed) >= met_threshold else PARTIAL
 
     valid = _valid_links(links)
     if valid:

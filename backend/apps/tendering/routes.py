@@ -598,9 +598,12 @@ async def update_requirement(
     )
     patch = body.model_dump(exclude_none=True)
     # A manual status change is audited on the requirement itself, not just the audit log —
-    # the compliance matrix shows the person and time next to the badge.
+    # the compliance matrix shows the person and time next to the badge. `status_source` marks it
+    # as a person's decision, which stops a later recompute (triggered by confirming or dismissing
+    # any link on this requirement) from quietly replacing it.
     if body.status is not None:
         patch["status_updated_by"] = user.get("email") or ""
+        patch["status_source"] = "manual"
     updated = await asyncio.to_thread(db.update_requirement, req_id, patch)
     if not updated:
         raise HTTPException(500, "Update failed")

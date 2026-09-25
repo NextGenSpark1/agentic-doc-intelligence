@@ -95,3 +95,14 @@ END $$;
 --     matching writes an AI status (blank for the AI case — the actor is 'system').
 ALTER TABLE workspace_requirements ADD COLUMN IF NOT EXISTS status_updated_by TEXT DEFAULT '';
 ALTER TABLE workspace_requirements ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMPTZ;
+
+-- 11. WHAT set the status, which `status_updated_by` cannot say on its own: a reviewer's
+--     confirm/dismiss also stamps their email, so the two cases were indistinguishable.
+--     Without this, a recompute triggered by confirming some unrelated link silently replaced a
+--     status a person had set by hand.
+--        'ai'     — evidence matching derived it from proposal scores
+--        'review' — recomputed after a reviewer confirmed or dismissed a link
+--        'manual' — a person set it directly, and no recompute may overwrite it
+--     This file is idempotent: re-run the whole thing in the SQL editor, whether or not the
+--     earlier sections have already been applied.
+ALTER TABLE workspace_requirements ADD COLUMN IF NOT EXISTS status_source TEXT DEFAULT '';

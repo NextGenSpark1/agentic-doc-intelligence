@@ -249,7 +249,9 @@ def test_a_medium_score_proposed_match_sets_the_requirement_to_partial(matching)
 
     result = evidence_matching.match("ws-1")
 
-    assert updates == [("REQ-1", {"status": "partial"})]
+    # status_source marks this as the AI's reading, which is what keeps a later review
+    # recompute from overwriting a status a person set by hand.
+    assert updates == [("REQ-1", {"status": "partial", "status_source": "ai"})]
     assert result["statuses_set"] == 1
 
 
@@ -261,7 +263,9 @@ def test_a_high_score_proposed_match_sets_the_requirement_to_met(matching):
 
     evidence_matching.match("ws-1")
 
-    assert updates == [("REQ-1", {"status": "met"})]
+    # status_source marks this as the AI's reading, which is what keeps a later review
+    # recompute from overwriting a status a person set by hand.
+    assert updates == [("REQ-1", {"status": "met", "status_source": "ai"})]
 
 
 def test_a_requirement_with_nothing_in_the_vault_becomes_a_gap(matching):
@@ -270,7 +274,9 @@ def test_a_requirement_with_nothing_in_the_vault_becomes_a_gap(matching):
 
     evidence_matching.match("ws-1")
 
-    assert updates == [("REQ-1", {"status": "gap"})]
+    # status_source marks this as the AI's reading, which is what keeps a later review
+    # recompute from overwriting a status a person set by hand.
+    assert updates == [("REQ-1", {"status": "gap", "status_source": "ai"})]
 
 
 def test_a_weak_match_leaves_a_gap_rather_than_claiming_partial_cover(matching):
@@ -279,7 +285,9 @@ def test_a_weak_match_leaves_a_gap_rather_than_claiming_partial_cover(matching):
 
     evidence_matching.match("ws-1")
 
-    assert updates == [("REQ-1", {"status": "gap"})]
+    # status_source marks this as the AI's reading, which is what keeps a later review
+    # recompute from overwriting a status a person set by hand.
+    assert updates == [("REQ-1", {"status": "gap", "status_source": "ai"})]
 
 
 def test_a_failing_status_write_does_not_lose_the_matching_run(matching, monkeypatch):

@@ -211,7 +211,8 @@ def get_requirement(req_id: str) -> dict | None:
 
 
 def update_requirement(req_id: str, patch: dict) -> dict | None:
-    allowed = {"status", "owner", "notes", "status_updated_by", "status_updated_at"}
+    allowed = {"status", "owner", "notes", "status_updated_by", "status_updated_at",
+               "status_source"}
     safe_patch = {key: value for key, value in patch.items() if key in allowed and value is not None}
     if not safe_patch:
         return get_requirement(req_id)
@@ -541,7 +542,7 @@ def delete_workspace_requirements(workspace_id: str, pending_only: bool = False)
     # and eligible for refresh; anything with human input is filtered out below.
     pipeline_owned = (
         client.table("workspace_requirements")
-        .select("req_id, owner, notes, status_updated_by")
+        .select("req_id, owner, notes, status_updated_by, status_source")
         .eq("workspace_id", workspace_id)
         .in_("status", ["unchecked", "partial", "gap"])
         .execute()
@@ -565,7 +566,10 @@ def delete_workspace_requirements(workspace_id: str, pending_only: bool = False)
         for requirement in pipeline_owned
         if not (requirement.get("owner") or "").strip()
         and not (requirement.get("notes") or "").strip()
-        # A manual status override (via status_updated_by) is human work too — preserve it.
+        # A manual status override is human work too — preserve it. `status_updated_by` alone
+        # is not the test: a review recompute stamps it as well, and a `partial` that a reviewer
+        # merely touched is still a pipeline row worth refreshing.
+        and (requirement.get("status_source") or "") != "manual"
         and not (requirement.get("status_updated_by") or "").strip()
         and str(requirement["req_id"]) not in has_reviewed_evidence
     ]
@@ -651,7 +655,7 @@ def recalculate_requirement_status_from_evidence(req_id: str, actor_email: str =
 
     req_rows = (
         get_client().table("workspace_requirements")
-        .select("status, completion_status")
+        .select("status, completion_status, status_source")
         .eq("req_id", req_id)
         .execute()
         .data
@@ -660,11 +664,19 @@ def recalculate_requirement_status_from_evidence(req_id: str, actor_email: str =
         return
 
     current_status = req_rows[0].get("status") or "unchecked"
+
+    # A status a person set by hand is not ours to recompute. Reviewing a link says something
+    # about that link; it does not revisit someone's explicit decision about the requirement —
+    # and because a review also stamps `status_updated_by`, that column alone cannot tell the two
+    # apart, which is why `status_source` exists.
+    if (req_rows[0].get("status_source") or "") == "manual":
+        return
+
     new_status = status_from_evidence(links, req_rows[0].get("completion_status") or "")
     if new_status == current_status and not actor_email:
         return
 
-    patch: dict = {"status": new_status}
+    patch: dict = {"status": new_status, "status_source": "review"}
     if actor_email:
         patch["status_updated_by"] = actor_email
         patch["status_updated_at"] = datetime.now(timezone.utc).isoformat()

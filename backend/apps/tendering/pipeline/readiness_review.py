@@ -148,7 +148,8 @@ def compute_gaps(
                     req_id=req_id,
                 ))
 
-            if not is_satisfied(requirement, links, library_index, today):
+            satisfied = is_satisfied(requirement, links, library_index, today)
+            if not satisfied:
                 if not links:
                     gaps.append(_gap(
                         "mandatory_requirement_unmet" if mandatory else "requirement_unmet",
@@ -171,8 +172,20 @@ def compute_gaps(
                                  f"No owner assigned: \"{description}\"", req_id=req_id))
 
             # ---- evidence expiry, checked against the closing date ----
+            # Every link a reviewer has not dismissed, which is the same set is_satisfied() reads.
+            # Checking only confirmed links left the worst case invisible: matching can set a
+            # requirement to `met` from a *pending* proposal, and it runs before summarise fills in
+            # the closing date — so on a first analysis the expiry score cap does not apply, the
+            # requirement counts as satisfied, and the certificate lapsing before evaluation
+            # produced no gap at all. Confirming the link was what surfaced it, which had reviewing
+            # the evidence making the report worse and leaving it alone hiding the problem.
+            #
+            # Severity follows whether the workspace is leaning on the document: a blocker when the
+            # requirement counts as satisfied or a person confirmed the link, otherwise a warning —
+            # an unmet requirement already has its own gap, and a stale proposal attached to it
+            # should not block a submission on its own.
             for link in links:
-                if link.get("human_review_status") != "confirmed":
+                if link.get("human_review_status") == "dismissed":
                     continue
                 document = library_index.get(link.get("doc_id") or "")
                 if document is None:
@@ -180,16 +193,18 @@ def compute_gaps(
                 expiry = _parse_date(document.get("expiry_date"))
                 if not expiry:
                     continue
+                relied_upon = satisfied or link.get("human_review_status") == "confirmed"
+                expiry_severity = BLOCKER if relied_upon else WARNING
                 if expiry < today:
                     gaps.append(_gap(
-                        "evidence_expired", BLOCKER,
+                        "evidence_expired", expiry_severity,
                         f"'{document.get('title')}' expired on {expiry.isoformat()} and cannot be "
                         f"submitted for: \"{description}\"",
                         req_id=req_id, doc_id=document["doc_id"],
                     ))
                 elif closing and expiry < closing:
                     gaps.append(_gap(
-                        "evidence_expires_before_closing", BLOCKER,
+                        "evidence_expires_before_closing", expiry_severity,
                         f"'{document.get('title')}' expires {expiry.isoformat()}, before the closing "
                         f"date ({closing.isoformat()}) — it will have lapsed at evaluation.",
                         req_id=req_id, doc_id=document["doc_id"],

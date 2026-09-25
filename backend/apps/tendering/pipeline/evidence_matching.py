@@ -237,15 +237,20 @@ def _apply_status(requirement: dict, links: list[dict]) -> int:
 
     Matching used to leave every requirement on `unchecked` however much it found, so a finished
     analysis produced a compliance matrix with nothing in the status column and a readiness score
-    that read as if nobody had looked. What it may write is bounded by status_rules: `partial`
-    when a proposal is worth reviewing, `gap` when there is nothing to show — never `met`, which
-    stays a human's word (Rule 3).
+    that read as if nobody had looked. What it may write is bounded by status_rules, which refuses
+    to touch a `met`, a `rejected`, or anything a reviewer has already weighed in on.
+
+    The write is tagged `status_source="ai"`, which is what lets the review path tell a status it
+    derived from a status a person set by hand — and what lets the matrix show the difference.
 
     A failure here is swallowed on purpose: the evidence link is already saved, and losing the
     whole matching run over a status write would cost more than the status is worth.
     """
     from .. import db
     from ..status_rules import status_after_matching
+
+    if (requirement.get("status_source") or "") == "manual":
+        return 0  # a person set this status; matching does not revisit it
 
     new_status = status_after_matching(
         links,
@@ -255,7 +260,8 @@ def _apply_status(requirement: dict, links: list[dict]) -> int:
     if new_status is None:
         return 0
     try:
-        db.update_requirement(requirement["req_id"], {"status": new_status})
+        db.update_requirement(requirement["req_id"],
+                              {"status": new_status, "status_source": "ai"})
         return 1
     except Exception:  # noqa: BLE001
         traceback.print_exc()

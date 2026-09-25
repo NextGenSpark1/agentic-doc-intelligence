@@ -1,12 +1,19 @@
 """Requirement extraction — RFP documents become structured workspace requirements.
 
-Rule pass first (deterministic, always lands), then LLM pass (adds what rules miss).
-Grounding guardrail: every LLM requirement must cite the chunk_id of an excerpt we
-actually sent — ungrounded rows are dropped before hitting the database. Page and
-source_doc come from OUR chunk row, never from the model output.
+The rule pass runs first and deterministically, but it no longer lands as-is: its rows are sent
+to the LLM as `draft_requirements` and the model returns one unified, deduplicated set. That is
+what removes section-header noise and near-duplicates, and it means a rule draft the model does
+not carry forward is not inserted. Drafts for excerpts the model returned nothing for at all are
+counted as `rule_drafts_dropped` in the result and the audit row, with samples — so an obligation
+disappearing between the rule pass and the database is visible rather than silent.
 
-If the LLM is unavailable the rule rows still land, so a workspace never comes back
-empty because Groq was having a bad afternoon.
+Grounding guardrail: every LLM requirement must cite the chunk_id of an excerpt we actually sent
+— ungrounded rows are dropped before hitting the database. Page and source_doc come from OUR
+chunk row, never from the model output.
+
+If the LLM is unavailable the rule rows still land (per batch, and for the whole document if no
+batch succeeded), so a workspace never comes back empty because a provider was having a bad
+afternoon.
 """
 from __future__ import annotations
 
@@ -225,6 +232,8 @@ def extract(workspace_id: str) -> dict:
     core_documents = db.list_core_documents_for_workspace(workspace_id)
 
     inserted = skipped = ungrounded = already_present = 0
+    drafts_dropped = 0
+    dropped_samples: list[str] = []
     insert_errors = 0
     first_insert_error: str | None = None
     rule_count = llm_count = 0
@@ -278,6 +287,19 @@ def extract(workspace_id: str) -> dict:
                         unified_rows.append(row)
                 continue
             any_llm_succeeded = True
+            # Which excerpts did the model actually answer for? A draft whose excerpt produced no
+            # requirement at all was not merged into a better-worded one — it was left behind, and
+            # if it was a real obligation nobody finds out unless we say so.
+            referenced_chunk_ids = {
+                str(item.get("chunk_id") or "")
+                for item in (answer.get("requirements") or [])
+                if isinstance(item, dict)
+            } if isinstance(answer, dict) else set()
+            for draft in batch_drafts:
+                if str(draft.get("chunk_id") or "") not in referenced_chunk_ids:
+                    drafts_dropped += 1
+                    if len(dropped_samples) < 3:
+                        dropped_samples.append(str(draft.get("description") or "")[:160])
             validated = validate_llm_requirements(answer, chunk_index)
             raw_count = len(answer.get("requirements") or []) if isinstance(answer, dict) else 0
             ungrounded += max(0, raw_count - len(validated))
@@ -324,7 +346,10 @@ def extract(workspace_id: str) -> dict:
         "ungrounded_dropped": ungrounded,
         "from_rules_draft": rule_count,
         "from_unified": llm_count,
+        "rule_drafts_dropped": drafts_dropped,
     }
+    if dropped_samples:
+        result["rule_drafts_dropped_samples"] = dropped_samples
     if first_insert_error:
         result["first_insert_error"] = first_insert_error
     db.write_workspace_audit(workspace_id, "system", "requirements_extracted", result)
