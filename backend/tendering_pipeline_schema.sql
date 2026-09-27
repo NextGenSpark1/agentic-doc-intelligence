@@ -106,3 +106,16 @@ ALTER TABLE workspace_requirements ADD COLUMN IF NOT EXISTS status_updated_at TI
 --     This file is idempotent: re-run the whole thing in the SQL editor, whether or not the
 --     earlier sections have already been applied.
 ALTER TABLE workspace_requirements ADD COLUMN IF NOT EXISTS status_source TEXT DEFAULT '';
+
+-- 12. WHERE a document's expiry date came from. Until now the only source was the upload form,
+--     so a certificate uploaded without its expiry typed in looked permanent and every expiry
+--     rule in the platform silently did nothing — even though the date is printed on the
+--     document. Vault extraction now reads labelled dates out of the text and fills the field
+--     when it is empty, marking it as unconfirmed so the UI can ask a person to ratify it.
+--        'manual'   — a person typed or confirmed it; authoritative
+--        'document' — read off the document text, awaiting confirmation
+--     Blank means the pre-existing case: typed at upload, before this column existed.
+--     Both tables carry the date (library_documents drives the library UI and readiness,
+--     supplier_documents drives evidence matching), so both carry the source.
+ALTER TABLE library_documents  ADD COLUMN IF NOT EXISTS expiry_source TEXT DEFAULT '';
+ALTER TABLE supplier_documents ADD COLUMN IF NOT EXISTS expiry_source TEXT DEFAULT '';

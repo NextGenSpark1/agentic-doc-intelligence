@@ -20,6 +20,7 @@ Three design commitments:
 """
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timezone
 
 _MANDATORY_WEIGHT = 3
@@ -29,6 +30,33 @@ _EXPIRY_WARNING_DAYS = 30
 _CLOSING_SOON_DAYS = 7
 
 BLOCKER, WARNING, INFO = "blocker", "warning", "info"
+
+# Requirements that do not merely ask for a document, but for one that is still in force at a
+# point in time. Those are the only ones where a missing expiry date is a problem: a CV or a
+# project reference has no expiry and never needed one.
+_VALIDITY_SENSITIVE_RE = re.compile(
+    r"\bremain(?:s|ing)?\s+valid\b"
+    r"|\bvalid\b[^.]{0,60}\bclosing\s+date\b"
+    r"|\bvalid\s+(?:on|at|as\s+at|through|throughout|until)\b"
+    r"|\bin\s+force\b"
+    r"|\bmust\s+not\s+(?:have\s+)?expire",
+    re.IGNORECASE,
+)
+
+
+def needs_proof_of_validity(requirement: dict) -> bool:
+    """Does this requirement ask for evidence that is still valid at a given date?
+
+    Matched on the requirement's own wording rather than on the document's category, because it
+    is the tender that decides whether validity matters — "hold a CIDB G7 registration" and "hold
+    a CIDB G7 registration valid on the closing date" ask for different things from the same
+    certificate.
+    """
+    text = " ".join([
+        str(requirement.get("description") or ""),
+        str(requirement.get("required_evidence") or ""),
+    ])
+    return bool(_VALIDITY_SENSITIVE_RE.search(text))
 
 
 def _parse_date(value: object) -> date | None:
@@ -184,6 +212,7 @@ def compute_gaps(
             # requirement counts as satisfied or a person confirmed the link, otherwise a warning —
             # an unmet requirement already has its own gap, and a stale proposal attached to it
             # should not block a submission on its own.
+            validity_unknown_reported = False
             for link in links:
                 if link.get("human_review_status") == "dismissed":
                     continue
@@ -191,10 +220,31 @@ def compute_gaps(
                 if document is None:
                     continue
                 expiry = _parse_date(document.get("expiry_date"))
-                if not expiry:
-                    continue
                 relied_upon = satisfied or link.get("human_review_status") == "confirmed"
-                expiry_severity = BLOCKER if relied_upon else WARNING
+                if not expiry:
+                    # No expiry recorded is treated everywhere else as "never lapses", which is
+                    # right for a CV or a project reference and wrong for a certificate the tender
+                    # requires to be valid on a date. Nothing reads dates out of the document
+                    # itself, so a certificate uploaded without its expiry typed in looks
+                    # permanent — and a requirement that turns on validity gets answered by a
+                    # document whose validity nobody can check. Say so instead of assuming.
+                    if needs_proof_of_validity(requirement) and not validity_unknown_reported:
+                        validity_unknown_reported = True
+                        gaps.append(_gap(
+                            "evidence_validity_unknown",
+                            BLOCKER if (relied_upon and mandatory) else WARNING,
+                            f"No expiry date recorded for '{document.get('title')}', so its "
+                            f"validity at the closing date cannot be confirmed for: "
+                            f"\"{description}\"",
+                            req_id=req_id, doc_id=document.get("doc_id"),
+                        ))
+                    continue
+                # Mandatory counts as well as relied-upon: a mandatory requirement whose only
+                # evidence has lapsed is already blocked for being unmet, and "the policy expired
+                # on 31 August" is the line that tells the bid team what to actually do — it must
+                # not sit below a generic "evidence not approved" blocker as a mere warning.
+                # Optional requirements still only warn, so old proposals cannot block a bid.
+                expiry_severity = BLOCKER if (mandatory or relied_upon) else WARNING
                 if expiry < today:
                     gaps.append(_gap(
                         "evidence_expired", expiry_severity,

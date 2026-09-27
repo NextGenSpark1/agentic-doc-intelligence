@@ -138,9 +138,16 @@ def _index_workspace_chunks(workspace_id: str, document_id: str, chunks: list[di
 
 
 def run_workspace_analysis(workspace_id: str) -> dict:
-    """Full pipeline for a workspace: extract requirements → summarise → readiness review.
+    """Full pipeline: extract requirements → summarise → match evidence → readiness review.
 
-    Order matters: evidence matching needs requirements, and the summary reports on both.
+    Order matters, and it used to be wrong. Matching ran before summarise, but summarise is what
+    reads the closing date out of the tender document — so on a workspace's first analysis the
+    matcher had no closing date to compare against. Every "must be valid on the closing date"
+    rule silently did nothing: a certificate expiring days before submission could not be capped
+    below `met`, and came back looking like proof. Summarising first costs nothing (it needs only
+    the requirements, which exist by then) and gives matching the one date its expiry rules hang
+    on.
+
     A stage that fails is audited and the run continues.
     """
     from .. import db
@@ -150,16 +157,16 @@ def run_workspace_analysis(workspace_id: str) -> dict:
     try:
         requirements_result = extract_requirements.extract(workspace_id)
 
-        # Evidence matching runs immediately after extraction so the readiness review can
-        # count how many requirements already have a proposed match in the vault.
+        summary_result = summarise_tender.summarise(workspace_id)
+
+        # After summarise, so the workspace carries its closing date: matching re-reads the
+        # workspace and uses that date to cap evidence that will have lapsed by submission.
         try:
             evidence_matching.match(workspace_id)
         except Exception as exc:
             traceback.print_exc()
             db.write_workspace_audit(workspace_id, "system", "evidence_matching_failed",
                                      {"error": str(exc)[:500]})
-
-        summary_result = summarise_tender.summarise(workspace_id)
 
         try:
             readiness_result = readiness_review.review(workspace_id)
@@ -170,7 +177,7 @@ def run_workspace_analysis(workspace_id: str) -> dict:
             readiness_result = {}
 
         result = {
-            "stages_run": ["extract_requirements", "evidence_matching", "summarise_tender", "readiness_review"],
+            "stages_run": ["extract_requirements", "summarise_tender", "evidence_matching", "readiness_review"],
             **requirements_result,
             "days_until_closing": summary_result.get("days_until_closing"),
             "readiness_score": readiness_result.get("score"),

@@ -410,7 +410,8 @@ def delete_library_document(doc_id: str) -> None:
 
 
 def update_library_document(doc_id: str, patch: dict) -> dict | None:
-    allowed = {"title", "filename", "category", "file_type", "issue_date", "expiry_date", "tags", "url", "verification_status"}
+    allowed = {"title", "filename", "category", "file_type", "issue_date", "expiry_date",
+               "expiry_source", "tags", "url", "verification_status"}
     safe_patch = {key: value for key, value in patch.items() if key in allowed and value is not None}
     if not safe_patch:
         return None
@@ -607,15 +608,59 @@ def list_workspace_requirements_raw(workspace_id: str) -> list[dict]:
     ) or []
 
 
+def annotate_link_validity(links: list[dict], library_docs: list[dict],
+                           closing_date: object, today=None) -> list[dict]:
+    """Attach each link's document title and validity to it. Pure — no DB.
+
+    The reviewer decides on an evidence card, so the card is where "this certificate is expired"
+    has to appear. Matching works these flags out and then drops them before saving, and the
+    library page shows expiry badges the compliance matrix never sees — so the one screen where
+    somebody approves evidence was the one screen that could not tell them the document had
+    lapsed.
+
+    Computed on read rather than stored: expiry is a fact about today, and a flag written during
+    analysis is wrong the morning after the certificate runs out.
+    """
+    from datetime import datetime, timezone
+
+    from .validity import expires_before, is_expired, parse_date
+
+    today = today or datetime.now(timezone.utc).date()
+    cutoff = parse_date(closing_date)
+    by_id = {str(doc.get("doc_id")): doc for doc in library_docs or []}
+
+    for link in links:
+        document = by_id.get(str(link.get("doc_id") or ""))
+        if document is None:
+            continue
+        expired = is_expired(document, today)
+        link["document_title"] = document.get("title")
+        link["expiry_date"] = document.get("expiry_date")
+        link["expiry_source"] = document.get("expiry_source") or ""
+        link["is_expired"] = expired
+        # Only one of the two is ever true: a document that has already lapsed is expired, not
+        # "expiring before closing".
+        link["expires_before_closing"] = (not expired) and expires_before(document, cutoff)
+    return links
+
+
 def list_evidence_links(workspace_id: str) -> list[dict]:
-    return (
-        get_client()
+    client = get_client()
+    links = (
+        client
         .table("evidence_links")
         .select("*")
         .eq("workspace_id", workspace_id)
         .execute()
         .data
     ) or []
+    if not links:
+        return []
+
+    workspace = get_tendering_workspace(workspace_id) or {}
+    org_id = workspace.get("org_id")
+    library_docs = list_library_documents(org_id) if org_id else []
+    return annotate_link_validity(links, library_docs, workspace.get("closing_date"))
 
 
 def get_evidence_link(link_id: str) -> dict | None:

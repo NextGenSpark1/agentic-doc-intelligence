@@ -72,9 +72,73 @@ def process_supplier_document(supplier_document_id: str) -> None:
         except Exception:
             pass
 
+    # Step 3: read the dates off the document, for the fields nobody filled in. Never fatal —
+    # a document with no readable dates is the normal case for a CV or a project reference.
+    try:
+        _backfill_dates(document, parsed, supplier_document_id, org_id)
+    except Exception:  # noqa: BLE001
+        traceback.print_exc()
+
     db.update_supplier_document(supplier_document_id, {
         "extraction_status": "done",
         "page_count": parsed.get("page_count") or 0,
+    })
+
+
+def _document_text(parsed: dict) -> str:
+    """The document's text, whichever shape ADE returned it in."""
+    markdown = (parsed.get("markdown") or "").strip()
+    if markdown:
+        return markdown
+    return "\n".join(chunk.get("text") or "" for chunk in (parsed.get("chunks") or []))
+
+
+def _backfill_dates(document: dict, parsed: dict, supplier_document_id: str, org_id: str) -> None:
+    """Fill blank issue/expiry dates from the document's own text.
+
+    Expiry dates only ever came from the upload form, so a certificate uploaded without one
+    looked permanent: the score caps could not hold it below `met`, readiness raised no expiry
+    gap, and a registration lapsing before the closing date read as proof. The date is printed
+    on the document — this reads it.
+
+    Two rules keep it honest. It never overwrites a date a person entered: a blank field is the
+    only thing it touches. And what it writes is marked `expiry_source="document"`, meaning
+    read-but-not-confirmed, so the UI can ask someone to ratify it before it is treated as
+    settled (Rule 3 — the platform surfaces, a human decides).
+
+    The dates go to both tables: library_documents drives the library UI and the readiness
+    report, supplier_documents drives evidence matching, and the two disagreeing is its own bug.
+    """
+    from .. import db
+    from ..validity import SOURCE_DOCUMENT, extract_dates
+
+    wanted = {
+        field: value
+        for field, value in extract_dates(_document_text(parsed)).items()
+        if not document.get(field)          # a person's entry always wins
+    }
+    if not wanted:
+        return
+
+    patch = dict(wanted)
+    if "expiry_date" in patch:
+        patch["expiry_source"] = SOURCE_DOCUMENT
+    db.update_supplier_document(supplier_document_id, patch)
+
+    library_doc_id = document.get("library_doc_id")
+    if library_doc_id:
+        db.update_library_document(str(library_doc_id), patch)
+
+    # The vault is org-scoped, so there is no case or workspace to hang this on — the detail
+    # carries the document ids instead, matching how the other vault audit rows are written.
+    from backend.core import db_core
+
+    db_core.write_audit(None, "system", "vault_dates_read_from_document", {
+        "org_id": org_id,
+        "supplier_document_id": supplier_document_id,
+        "library_doc_id": str(library_doc_id) if library_doc_id else None,
+        "title": document.get("title"),
+        **wanted,
     })
 
 

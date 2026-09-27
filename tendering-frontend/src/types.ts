@@ -154,6 +154,16 @@ export interface EvidenceLink {
   matched_chunk_id?: string;
   source?: string;
   created_at?: string;
+  // Validity of the backing document, computed when the links are read rather than stored, so a
+  // certificate that lapses tomorrow is not still flagged valid the day after. Absent when the
+  // library document could not be found.
+  document_title?: string;
+  expiry_date?: string | null;
+  // 'manual' = a person entered the date, 'document' = read off the document and not yet
+  // confirmed, '' = entered before the platform tracked this.
+  expiry_source?: 'manual' | 'document' | '';
+  is_expired?: boolean;
+  expires_before_closing?: boolean;
 }
 
 export interface BidDecisionReport {
