@@ -26,8 +26,14 @@ from datetime import date, datetime, timezone
 
 from backend.core.text_utils import strip_html as _strip_html
 
-# Retrieval breadth per requirement. Wider than the final shortlist because the adjudicator is
-# what decides; retrieval only has to not miss.
+# Retrieval breadth per requirement, counted in DOCUMENTS. Both search functions return one row
+# per document — each document's best-matching chunk — so this is "consider up to twelve
+# documents", not "take the twelve best passages in the vault". Those are very different
+# questions, and asking the second one is what hid the audited financials and the project
+# manager's CV behind a capability statement that mentions everything.
+#
+# Wider than the final shortlist because the adjudicator is what decides; retrieval only has to
+# not miss.
 _CANDIDATE_POOL = 12
 _SHORTLIST = 6
 
@@ -49,7 +55,21 @@ _EXPIRES_BEFORE_CLOSING_CAP = 0.70
 # as partially covered. A lapsed cert is context, not evidence.
 _ALREADY_EXPIRED_CAP = 0.55
 
-_MAX_EXCERPT_CHARS = 1_200
+# How much of a candidate document the adjudicator is shown.
+#
+# It used to be a single chunk, and that was the bug behind "the AI cannot see obvious evidence".
+# Retrieval returns the chunk closest to the REQUIREMENT, which is routinely the chunk that
+# echoes the requirement's own wording rather than the one holding the answer. On the audited
+# financial summary the winning chunk was "designed to test a tender requirement for minimum
+# average annual turnover of RM 5,000,000" — a restatement of the requirement with no figures in
+# it — while "Three-Year Average Annual Revenue: RM 7,166,667" two chunks away was never shown.
+# The model was asked whether the wrong paragraph proved the requirement, said no, and the
+# requirement came out as a gap against a document ranked first at 0.800.
+#
+# The excerpt is now the matched passage together with its neighbours in page order. Vault
+# documents are certificates, CVs and summaries — a few pages at most — so in practice the model
+# sees the whole document, which is what a human reviewer would read.
+_MAX_EXCERPT_CHARS = 3_000
 
 
 def shortlist_candidates(rows: list[dict], min_similarity: float = _MIN_SIMILARITY,
@@ -58,7 +78,10 @@ def shortlist_candidates(rows: list[dict], min_similarity: float = _MIN_SIMILARI
 
     Deduplicates to the best excerpt per vault document: five excerpts from one certificate is
     one piece of evidence, and spending the adjudicator's attention on all five crowds out a
-    different document that might actually be the right answer.
+    different document that might actually be the right answer. Retrieval now returns one row
+    per document, so this is a safety net over the merge rather than the place the crowding is
+    solved — it was never able to solve it here, because by this point the documents that lost
+    the chunk-level race are already gone.
 
     Rows tagged with `_sources` containing "keyword" bypass the cosine similarity floor. The
     two retrieval passes score on different scales — cosine similarity for the vector pass,
@@ -134,7 +157,8 @@ def expires_before(document: dict, cutoff: date | None) -> bool:
 def validate_matches(raw: object, candidate_index: dict[str, dict],
                      min_score: float = _MIN_MATCH_SCORE,
                      closing_date: date | None = None,
-                     today: date | None = None) -> list[dict]:
+                     today: date | None = None,
+                     drops: dict | None = None) -> list[dict]:
     """Keep only proposals grounded in a candidate we actually offered.
 
     Same discipline as requirement extraction, applied to matching: a `supplier_document_id`
@@ -145,7 +169,16 @@ def validate_matches(raw: object, candidate_index: dict[str, dict],
     Scores are capped for candidates whose validity is a problem: already expired documents
     cap below the partial threshold (visible but non-covering), documents expiring before the
     tender closing date cap below the MET threshold (surfaces as partial with a renewal note).
+
+    Pass `drops` to learn WHY proposals were discarded. A run reporting "28 dropped" cannot be
+    acted on: a model citing documents that were never sent is a grounding problem, scores under
+    the floor are a threshold problem, and missing rationales are a prompt problem, and they are
+    fixed in completely different places.
     """
+    def _drop(reason: str) -> None:
+        if drops is not None:
+            drops[reason] = drops.get(reason, 0) + 1
+
     if not isinstance(raw, dict):
         return []
     items = raw.get("matches")
@@ -157,18 +190,23 @@ def validate_matches(raw: object, candidate_index: dict[str, dict],
     seen: set[str] = set()
     for item in items:
         if not isinstance(item, dict):
+            _drop("malformed")
             continue
         doc_id = str(item.get("supplier_document_id") or "")
         candidate = candidate_index.get(doc_id)
         if candidate is None:
-            continue  # ungrounded — not one of the candidates we supplied
+            # The model named a document we never sent it.
+            _drop("ungrounded")
+            continue
         if doc_id in seen:
+            _drop("duplicate_document")
             continue  # one link per (requirement, document)
         seen.add(doc_id)
 
         try:
             score = max(0.0, min(1.0, float(item.get("match_score", 0.0))))
         except (TypeError, ValueError):
+            _drop("unreadable_score")
             continue
 
         # Cap score by validity of the underlying document. Both flags are also reported in
@@ -181,10 +219,12 @@ def validate_matches(raw: object, candidate_index: dict[str, dict],
             score = min(score, _EXPIRES_BEFORE_CLOSING_CAP)
 
         if score < min_score:
+            _drop("score_below_floor")
             continue
 
         rationale = str(item.get("rationale") or "").strip()
         if not rationale:
+            _drop("no_rationale")
             continue  # Rule 2 for matching: a proposal must say why, or it is not persisted
 
         kept.append({
@@ -199,6 +239,44 @@ def validate_matches(raw: object, candidate_index: dict[str, dict],
             "expires_before_closing": expiring_early,
         })
     return kept
+
+
+def build_excerpt(chunks: list[dict], matched_chunk_id: str,
+                  budget: int = _MAX_EXCERPT_CHARS) -> str:
+    """The matched passage plus as much of what surrounds it as the budget allows.
+
+    Grows outwards from the match in page order, so the adjudicator reads the evidence in
+    context rather than as one orphaned line. Falls back to the start of the document when the
+    matched chunk cannot be found among the document's chunks.
+    """
+    keep = [(chunk, str(chunk.get("text") or "").strip()) for chunk in chunks]
+    keep = [(chunk, text) for chunk, text in keep if text]
+    if not keep:
+        return ""
+
+    ordered = [text for _chunk, text in keep]
+    start = next((index for index, (chunk, _text) in enumerate(keep)
+                  if str(chunk.get("chunk_id") or "") == str(matched_chunk_id or "")), 0)
+
+    selected = [ordered[start]]
+    used = len(ordered[start])
+    before, after = start - 1, start + 1
+    # Alternate outwards so the match keeps context on both sides, nearest first.
+    while before >= 0 or after < len(ordered):
+        for index in (after, before):
+            if not 0 <= index < len(ordered):
+                continue
+            text = ordered[index]
+            if used + len(text) + 1 > budget:
+                continue
+            if index > start:
+                selected.append(text)
+            else:
+                selected.insert(0, text)
+            used += len(text) + 1
+        before -= 1
+        after += 1
+    return "\n".join(selected)[:budget]
 
 
 def _payload(requirement: dict, candidates: list[dict],
@@ -225,7 +303,11 @@ def _payload(requirement: dict, candidates: list[dict],
                 "expires_before_closing": (
                     (not is_expired(c, today)) and expires_before(c, closing_date)
                 ),
-                "excerpt": _strip_html(c.get("text") or "")[:_MAX_EXCERPT_CHARS],
+                # `excerpt` is the matched passage in context, attached by the caller. The bare
+                # chunk is the fallback for when the document's other chunks could not be read.
+                "excerpt": _strip_html(
+                    c.get("excerpt") or c.get("text") or ""
+                )[:_MAX_EXCERPT_CHARS],
             }
             for c in candidates
         ],
@@ -314,6 +396,13 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
     }
 
     proposed = skipped = ungrounded = matched_requirements = no_candidates = 0
+    no_proposal_from_model = 0
+    # Why validation discarded proposals, by reason — see validate_matches.
+    drops: dict[str, int] = {}
+    # A vault document's chunks, read once per run rather than once per requirement: with fifty
+    # requirements and a handful of candidates each, the same certificate would otherwise be
+    # fetched hundreds of times.
+    chunks_by_document: dict[str, list[dict]] = {}
     left_unchanged = save_errors = already_confirmed = statuses_set = 0
     first_save_error: str | None = None
 
@@ -348,6 +437,23 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
 
         merged_rows = merge_candidates(vector_rows, keyword_rows)
         candidates = shortlist_candidates(merged_rows)
+        # Widen each candidate from its matched chunk to that passage in context. Without this
+        # the model judges a document on one paragraph, and the paragraph retrieval picks is the
+        # one that echoes the requirement rather than the one that answers it.
+        for candidate in candidates:
+            document_id = str(candidate.get("supplier_document_id") or "")
+            if document_id and document_id not in chunks_by_document:
+                try:
+                    chunks_by_document[document_id] = db.list_supplier_chunks(document_id) or []
+                except Exception as exc:  # noqa: BLE001
+                    db.write_workspace_audit(tender_id, "system", "evidence_context_failed",
+                                             {"supplier_document_id": document_id,
+                                              "error": f"{type(exc).__name__}: {exc}"[:300]})
+                    chunks_by_document[document_id] = []
+            chunks = chunks_by_document.get(document_id) or []
+            if chunks:
+                candidate["excerpt"] = build_excerpt(chunks, candidate.get("chunk_id"))
+
         if not candidates:
             # Nothing in the vault comes close. That is a finding, not a blank: the requirement
             # becomes a gap so the matrix shows what the company cannot yet prove.
@@ -366,9 +472,13 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
 
         candidate_index = {str(c.get("supplier_document_id")): c for c in candidates}
         matches = validate_matches(answer, candidate_index,
-                                   closing_date=closing_date, today=today)
+                                   closing_date=closing_date, today=today, drops=drops)
         raw_count = len(answer.get("matches") or []) if isinstance(answer, dict) else 0
         ungrounded += max(0, raw_count - len(matches))
+        # How many requirements the model answered with nothing at all — distinct from answering
+        # with something that was then discarded, and pointing at a different fix.
+        if raw_count == 0:
+            no_proposal_from_model += 1
 
         if matches:
             matched_requirements += 1
@@ -412,6 +522,8 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
         "left_unchanged": left_unchanged,
         "save_errors": save_errors,
         "ungrounded_dropped": ungrounded,
+        "dropped_by_reason": drops,
+        "no_proposal_from_model": no_proposal_from_model,
         "statuses_set": statuses_set,
         "requirements_matched": matched_requirements,
         "requirements_considered": len(requirements),

@@ -14,6 +14,14 @@ from __future__ import annotations
 import argparse
 import sys
 
+# Run from anywhere: `python scripts/<name>.py` puts scripts/ on the path, not the repo root,
+# so `backend` would not import.
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)

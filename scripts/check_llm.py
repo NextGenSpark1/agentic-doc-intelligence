@@ -16,6 +16,14 @@ from __future__ import annotations
 
 import sys
 
+# Run from anywhere: `python scripts/<name>.py` puts scripts/ on the path, not the repo root,
+# so `backend` would not import.
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
 # The DB column both chunk tables use — an embedding model of a different width cannot be stored,
 # and one of the same width from a different provider stores fine but makes search meaningless.
 _EXPECTED_EMBEDDING_DIMENSIONS = 1536

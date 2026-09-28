@@ -36,10 +36,13 @@ def run(monkeypatch):
     from backend.core import llm, llm_reasoning
     monkeypatch.setattr(llm, "embed", lambda texts: [[0.1] * 4 for _ in texts])
 
+    # A test can put its own model answer in state["answer"] to exercise the validation path.
+    state["answer"] = {"matches": [{"supplier_document_id": "SUP-1", "match_score": 0.9,
+                                    "rationale": "The certificate names CIDB G7."}]}
+
     def fake_ask(system_prompt, payload, **kwargs):
         adjudicated.append(payload["requirement"]["description"])
-        return {"matches": [{"supplier_document_id": "SUP-1", "match_score": 0.9,
-                             "rationale": "The certificate names CIDB G7."}]}
+        return state["answer"]
 
     monkeypatch.setattr(llm_reasoning, "ask", fake_ask)
     return state, adjudicated
@@ -86,3 +89,57 @@ def test_requirement_ids_still_narrow_the_run(run):
     evidence_matching.match("ws-1", requirement_ids=["REQ-2"])
 
     assert adjudicated == ["Provide audited accounts"]
+
+
+# ── why proposals were discarded ───────────────────────────────────────────────
+
+def test_each_drop_reason_is_counted_separately():
+    """"28 dropped" cannot be acted on. A model naming documents it was never sent is a
+    grounding problem; scores under the floor are a threshold problem; a missing rationale is a
+    prompt problem. They are fixed in three different places."""
+    from backend.apps.tendering.pipeline.evidence_matching import validate_matches
+
+    candidates = {"SUP-1": {"supplier_document_id": "SUP-1", "library_doc_id": "LIB-1",
+                            "chunk_id": "c1", "text": "CIDB G7"}}
+    raw = {"matches": [
+        {"supplier_document_id": "SUP-NEVER-SENT", "match_score": 0.9, "rationale": "invented"},
+        {"supplier_document_id": "SUP-1", "match_score": 0.2, "rationale": "weak"},
+        {"supplier_document_id": "SUP-1", "match_score": 0.9, "rationale": ""},
+        "not even a dict",
+    ]}
+    drops: dict = {}
+
+    kept = validate_matches(raw, candidates, drops=drops)
+
+    assert kept == []
+    assert drops == {"ungrounded": 1, "score_below_floor": 1, "duplicate_document": 1,
+                     "malformed": 1}
+
+
+def test_a_clean_answer_records_no_drops():
+    from backend.apps.tendering.pipeline.evidence_matching import validate_matches
+
+    candidates = {"SUP-1": {"supplier_document_id": "SUP-1", "library_doc_id": "LIB-1",
+                            "chunk_id": "c1", "text": "CIDB G7"}}
+    drops: dict = {}
+
+    kept = validate_matches(
+        {"matches": [{"supplier_document_id": "SUP-1", "match_score": 0.9,
+                      "rationale": "The certificate names CIDB G7."}]},
+        candidates, drops=drops)
+
+    assert len(kept) == 1
+    assert drops == {}
+
+
+def test_the_run_reports_the_breakdown_and_silent_requirements(run):
+    """A requirement the model answered with nothing is a different problem from one whose
+    answer was discarded, and the audit row has to tell them apart."""
+    state, _adjudicated = run
+    state["answer"] = {"matches": []}
+
+    result = evidence_matching.match("ws-1")
+
+    assert result["no_proposal_from_model"] == 2
+    assert result["proposed"] == 0
+    assert result["dropped_by_reason"] == {}

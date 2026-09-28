@@ -61,36 +61,55 @@ RETURNS TABLE (
 )
 LANGUAGE sql STABLE
 AS $$
+    -- One row per DOCUMENT, each carrying that document's best-matching chunk.
+    --
+    -- This used to rank every chunk in the vault and take the top p_match_count of them, which
+    -- made retrieval a popularity contest between chunks rather than between documents. A
+    -- company capability statement mentions everything — certifications, HVAC, IoT, insurance,
+    -- turnover — so for almost any requirement it could occupy most of the returned rows, and
+    -- the specific document that actually proves the requirement (the audited financials, the
+    -- project manager's CV) never reached the adjudicator at all. The caller deduplicated to one
+    -- chunk per document afterwards, which was too late: the crowding had already happened.
+    --
+    -- The LATERAL runs the vector search once per document, so the cost scales with the number
+    -- of documents in the vault rather than the number of chunks, and no document can crowd out
+    -- another however verbose it is.
     SELECT
-        sdc.supplier_document_id,
-        sdc.chunk_id,
-        sdc.text,
-        sdc.page,
+        sd.supplier_document_id,
+        best.chunk_id,
+        best.text,
+        best.page,
         sd.title,
         sd.doc_type,
         sd.expiry_date,
         sd.library_doc_id,
-        1 - (sdc.embedding <=> p_query_embedding) AS similarity
-    FROM supplier_document_chunks sdc
-    INNER JOIN supplier_documents sd
-        ON sd.supplier_document_id = sdc.supplier_document_id
-    WHERE sdc.org_id = p_org_id
-      -- Both sides are scoped, not just the chunk. org_id is copied onto each chunk at index
-      -- time, so a chunk whose org ever disagreed with its parent document's would otherwise
-      -- leak another company's evidence into this org's matches. This is the vault's tenant
-      -- isolation boundary, so it is enforced twice.
-      AND sd.org_id = p_org_id
-      AND sdc.embedding IS NOT NULL
-      -- No application code sets superseded_by yet, so today this excludes nothing. It is
-      -- kept so a future "replace document" feature only has to set the column. Until then,
-      -- a renewed certificate retires the old one only via the expiry filter below.
+        1 - best.distance AS similarity
+    FROM supplier_documents sd
+    CROSS JOIN LATERAL (
+        SELECT
+            sdc.chunk_id,
+            sdc.text,
+            sdc.page,
+            sdc.embedding <=> p_query_embedding AS distance
+        FROM supplier_document_chunks sdc
+        WHERE sdc.supplier_document_id = sd.supplier_document_id
+          AND sdc.org_id = p_org_id
+          AND sdc.embedding IS NOT NULL
+        ORDER BY sdc.embedding <=> p_query_embedding
+        LIMIT 1
+    ) best
+    WHERE sd.org_id = p_org_id
+      -- Both sides are scoped, not just the document. org_id is copied onto each chunk at
+      -- index time (see the LATERAL above), so a chunk whose org ever disagreed with its parent
+      -- document's would otherwise leak another company's evidence into this org's matches.
+      -- This is the vault's tenant isolation boundary, so it is enforced twice.
       AND sd.superseded_by IS NULL
       -- Expired documents are NOT filtered here. They are retrieved and passed to the
       -- adjudicator with `is_expired` / `expires_before_closing` flags, so a matched-but-
       -- lapsed certificate becomes a partial with an explanatory note rather than an
       -- invisible gap. The Python cap in evidence_matching keeps expired evidence below
       -- the MET threshold so it cannot silently satisfy a requirement.
-    ORDER BY sdc.embedding <=> p_query_embedding
+    ORDER BY best.distance
     LIMIT p_match_count;
 $$;
 
@@ -161,18 +180,31 @@ AS $$
           AND sd.org_id = p_org_id
           AND sd.superseded_by IS NULL
     )
+    -- Best chunk per document, then the best documents — the same rule the vector search
+    -- follows. Ranking raw chunks let one document's several keyword hits fill the whole
+    -- result and hide every other document that also matched.
+    , best_per_document AS (
+        SELECT DISTINCT ON (keyword_matches.supplier_document_id) keyword_matches.*
+        FROM keyword_matches
+        WHERE keyword_matches.matched_terms > 0
+        ORDER BY
+            keyword_matches.supplier_document_id,
+            keyword_matches.matched_terms DESC,
+            -- Shortest wins the tie: a keyword sitting in a tight line ("Grade: G7") is better
+            -- evidence than the same keyword buried in a page of prose.
+            length(keyword_matches.text) ASC
+    )
     SELECT
-        supplier_document_id,
-        chunk_id,
-        text,
-        page,
-        title,
-        doc_type,
-        expiry_date,
-        library_doc_id,
-        matched_terms / total_terms AS similarity
-    FROM keyword_matches
-    WHERE matched_terms > 0
-    ORDER BY matched_terms DESC, length(text) ASC
+        best_per_document.supplier_document_id,
+        best_per_document.chunk_id,
+        best_per_document.text,
+        best_per_document.page,
+        best_per_document.title,
+        best_per_document.doc_type,
+        best_per_document.expiry_date,
+        best_per_document.library_doc_id,
+        best_per_document.matched_terms / best_per_document.total_terms AS similarity
+    FROM best_per_document
+    ORDER BY best_per_document.matched_terms DESC, length(best_per_document.text) ASC
     LIMIT p_match_count;
 $$;
