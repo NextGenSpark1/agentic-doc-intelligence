@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Library, Upload, Search, AlertCircle, CheckCircle2, Clock,
-  FileText, Download, Calendar, Plus, FolderOpen, X, CloudUpload, Trash2, Cpu, Loader2,
+  FileText, Download, Calendar, Plus, FolderOpen, X, CloudUpload, Trash2, Cpu, Loader2, Pencil,
 } from 'lucide-react';
-import { getLibraryDocuments, addLibraryDocument, deleteLibraryDocument, replaceLibraryDocument, extractLibraryDocument, getLibraryDocumentExtraction, verifyLibraryDocument } from '../api/tenders';
+import { getLibraryDocuments, addLibraryDocument, deleteLibraryDocument, replaceLibraryDocument, extractLibraryDocument, getLibraryDocumentExtraction, verifyLibraryDocument, updateLibraryDocument } from '../api/tenders';
 import { supabase } from '../lib/supabase';
 import { DocCategoryBadge, VerificationBadge } from '../components/Badge';
 import type { LibraryDocument, DocCategory, VerificationStatus } from '../types';
@@ -331,15 +331,18 @@ function DocCard({
   onReplaced,
   onExtracted,
   onVerified,
+  onEdited,
 }: {
   doc: LibraryDocument;
   onDeleted: () => void;
   onReplaced: () => void;
   onExtracted: () => void;
   onVerified: () => void;
+  onEdited: () => void;
 }) {
   const [showReplace, setShowReplace] = useState(false);
   const [showViewer, setShowViewer] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const dateExpired = !!doc.expiry_date && new Date(doc.expiry_date) < new Date();
@@ -393,14 +396,23 @@ function DocCard({
             </h3>
             <p className="text-[11px] text-text-mute mt-0.5 truncate">{doc.filename}</p>
           </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); handleDelete(); }}
-            disabled={deleting}
-            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-text-mute hover:text-red hover:bg-red-bg transition-all"
-            title="Delete"
-          >
-            {deleting ? <div className="w-3.5 h-3.5 border-2 border-red/30 border-t-red rounded-full animate-spin" /> : <Trash2 size={13} />}
-          </button>
+          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowEdit(true); }}
+              className="p-1.5 rounded-lg text-text-mute hover:text-teal hover:bg-teal/10 transition-colors"
+              title="Edit metadata"
+            >
+              <Pencil size={13} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleDelete(); }}
+              disabled={deleting}
+              className="p-1.5 rounded-lg text-text-mute hover:text-red hover:bg-red-bg transition-colors"
+              title="Delete"
+            >
+              {deleting ? <div className="w-3.5 h-3.5 border-2 border-red/30 border-t-red rounded-full animate-spin" /> : <Trash2 size={13} />}
+            </button>
+          </div>
         </div>
 
         {/* Badges */}
@@ -495,7 +507,159 @@ function DocCard({
           onClose={() => setShowReplace(false)}
         />
       )}
+      {showEdit && (
+        <EditMetadataModal
+          doc={doc}
+          onSaved={() => { onEdited(); setShowEdit(false); }}
+          onClose={() => setShowEdit(false)}
+        />
+      )}
     </>
+  );
+}
+
+// Edit doc metadata modal — hits PATCH /library/{doc_id}. Backend already accepted title,
+// category, issue_date, expiry_date and tags on that endpoint; this is just the UI. When a
+// person changes the expiry, the backend stamps `expiry_source = 'manual'`, so the
+// "Auto-read from document" note disappears for that row.
+const EDITABLE_CATEGORIES: DocCategory[] = [
+  'registration', 'certification', 'financial', 'technical', 'personnel', 'other',
+];
+
+function EditMetadataModal({
+  doc,
+  onSaved,
+  onClose,
+}: {
+  doc: LibraryDocument;
+  onSaved: () => void;
+  onClose: () => void;
+}) {
+  const [form, setForm] = useState({
+    title: doc.title ?? '',
+    category: (doc.category ?? 'other') as DocCategory,
+    // <input type="date"> wants '' when the field is empty; the API accepts null to clear.
+    issue_date: doc.issue_date ?? '',
+    expiry_date: doc.expiry_date ?? '',
+    tags: (doc.tags ?? []).join(', '),
+  });
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!form.title.trim()) {
+      toast.error('Title is required');
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateLibraryDocument(doc.doc_id, {
+        title: form.title.trim(),
+        category: form.category,
+        // Empty date input → null explicitly clears the field on the backend.
+        issue_date: form.issue_date ? form.issue_date : null,
+        expiry_date: form.expiry_date ? form.expiry_date : null,
+        tags: form.tags
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+      });
+      toast.success('Document updated');
+      onSaved();
+    } catch {
+      toast.error('Update failed');
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-panel rounded-xl border border-border shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div>
+            <h3 className="text-sm font-semibold text-text">Edit document</h3>
+            <p className="text-[11px] text-text-mute mt-0.5 truncate max-w-[260px]">{doc.filename}</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-panel-2 text-text-mute hover:text-text transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="px-5 py-5 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-text-mute uppercase tracking-wide mb-1.5">Title</label>
+            <input
+              type="text"
+              value={form.title}
+              onChange={(e) => setForm((previous) => ({ ...previous, title: e.target.value }))}
+              className="w-full px-3 py-2 text-sm bg-canvas border border-border rounded-lg outline-none focus:border-teal transition-colors"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-text-mute uppercase tracking-wide mb-1.5">Category</label>
+            <select
+              value={form.category}
+              onChange={(e) => setForm((previous) => ({ ...previous, category: e.target.value as DocCategory }))}
+              className="w-full px-3 py-2 text-sm bg-canvas border border-border rounded-lg outline-none focus:border-teal transition-colors capitalize"
+            >
+              {EDITABLE_CATEGORIES.map((category) => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-text-mute uppercase tracking-wide mb-1.5">Issue Date</label>
+              <input
+                type="date"
+                value={form.issue_date}
+                onChange={(e) => setForm((previous) => ({ ...previous, issue_date: e.target.value }))}
+                className="w-full px-3 py-2 text-sm bg-canvas border border-border rounded-lg outline-none focus:border-teal transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-text-mute uppercase tracking-wide mb-1.5">Expiry Date</label>
+              <input
+                type="date"
+                value={form.expiry_date}
+                onChange={(e) => setForm((previous) => ({ ...previous, expiry_date: e.target.value }))}
+                className="w-full px-3 py-2 text-sm bg-canvas border border-border rounded-lg outline-none focus:border-teal transition-colors"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-text-mute uppercase tracking-wide mb-1.5">Tags</label>
+            <input
+              type="text"
+              placeholder="comma, separated, tags"
+              value={form.tags}
+              onChange={(e) => setForm((previous) => ({ ...previous, tags: e.target.value }))}
+              className="w-full px-3 py-2 text-sm bg-canvas border border-border rounded-lg outline-none focus:border-teal transition-colors"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-2 px-5 py-4 border-t border-border">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2 text-xs font-medium text-text-mid border border-border rounded-lg hover:bg-panel-2 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-white bg-teal rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
+          >
+            {saving ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+            Save changes
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -826,6 +990,7 @@ export function DocumentLibraryPage() {
               onReplaced={() => queryClient.invalidateQueries({ queryKey: ['library-docs'] })}
               onExtracted={() => queryClient.invalidateQueries({ queryKey: ['library-docs'] })}
               onVerified={() => queryClient.invalidateQueries({ queryKey: ['library-docs'] })}
+              onEdited={() => queryClient.invalidateQueries({ queryKey: ['library-docs'] })}
             />
           ))}
         </div>

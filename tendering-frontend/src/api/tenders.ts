@@ -120,6 +120,23 @@ export const deleteLibraryDocument = (docId: string): Promise<void> =>
 export const replaceLibraryDocument = (docId: string, data: { url: string; filename?: string; storage_path?: string }): Promise<LibraryDocument> =>
   api.patch<LibraryDocument>(`/tendering/library/${docId}`, data).then((r) => r.data);
 
+// Edit a library document's metadata (title, category, dates, tags). Same backend endpoint as
+// replace / verify / extract, just called from the library card's Edit button. `expiry_date`
+// accepts a YYYY-MM-DD string or null (null clears the field). When a person edits an expiry
+// date the backend stamps `expiry_source = 'manual'`, so the "auto-read from document" note
+// stops being shown for that row.
+export const updateLibraryDocument = (
+  docId: string,
+  data: {
+    title?: string;
+    category?: string;
+    issue_date?: string | null;
+    expiry_date?: string | null;
+    tags?: string[];
+  },
+): Promise<LibraryDocument> =>
+  api.patch<LibraryDocument>(`/tendering/library/${docId}`, data).then((r) => r.data);
+
 export const extractLibraryDocument = (docId: string): Promise<{ status: string }> =>
   api.post<{ status: string }>(`/tendering/library/${docId}/extract`).then((r) => r.data);
 
