@@ -1,7 +1,29 @@
 import { useState, type ReactElement } from 'react';
-import { CheckCircle2, XCircle, AlertCircle, Circle, BarChart3, Check, X, Ban } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertCircle, Circle, BarChart3, Check, X, Ban, AlertTriangle } from 'lucide-react';
 import { RequirementCategoryBadge } from '../Badge';
 import type { Requirement, RequirementStatus, LibraryDocument, EvidenceLink } from '../../types';
+
+// Small helper — renders a pill next to an evidence link when the underlying document has an
+// expiry problem. The two states we surface here mirror the backend flags carried on the link:
+//   is_expired            = document has already lapsed today; cannot satisfy anything at all
+//   expires_before_closing = still valid now but will have lapsed by the tender's closing date,
+//                            so it cannot cover a "must be valid at closing" requirement
+// Nothing is rendered when both flags are false — the common case of a permanently-valid doc.
+function ExpiryWarning({ link }: { link: EvidenceLink }) {
+  if (!link.is_expired && !link.expires_before_closing) return null;
+  const label = link.is_expired
+    ? `Expired${link.expiry_date ? ` ${link.expiry_date}` : ''}`
+    : `Expires${link.expiry_date ? ` ${link.expiry_date}` : ''} — before closing`;
+  const tone = link.is_expired
+    ? 'bg-red-bg text-red border-red/30'
+    : 'bg-amber-bg text-amber border-amber/40';
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border ${tone}`}>
+      <AlertTriangle size={9} />
+      {label}
+    </span>
+  );
+}
 
 const STATUS_CONFIG: Record<RequirementStatus, { icon: ReactElement; label: string; bar: string }> = {
   met: {
@@ -265,11 +287,12 @@ export function ComplianceMatrixTab({
                       <div className="space-y-2">
                         {/* Confirmed links */}
                         {confirmedLinks.map((link) => (
-                          <div key={link.id} className="flex items-center gap-1.5">
+                          <div key={link.id} className="flex flex-wrap items-center gap-1.5">
                             <CheckCircle2 size={11} className="text-green flex-shrink-0" />
                             <span className="text-[11px] text-green font-medium truncate max-w-[160px]">
                               {libraryDocMap[link.doc_id] ?? 'Vault document'}
                             </span>
+                            <ExpiryWarning link={link} />
                             <button
                               onClick={() => handleReview(link.id, 'dismissed')}
                               disabled={reviewing === link.id}
@@ -284,9 +307,12 @@ export function ComplianceMatrixTab({
                         {/* Pending proposals */}
                         {pendingLinks.map((link) => (
                           <div key={link.id} className="bg-amber-bg border border-amber/20 rounded-lg px-2 py-1.5">
-                            <p className="text-[11px] font-medium text-amber-700 mb-1">
-                              {libraryDocMap[link.doc_id] ?? 'Vault document'}
-                            </p>
+                            <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                              <p className="text-[11px] font-medium text-amber-700">
+                                {libraryDocMap[link.doc_id] ?? 'Vault document'}
+                              </p>
+                              <ExpiryWarning link={link} />
+                            </div>
                             {link.rationale && (
                               <p className="text-[10px] text-text-mute leading-snug mb-1">
                                 {link.rationale}
