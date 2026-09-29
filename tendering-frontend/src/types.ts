@@ -199,6 +199,12 @@ export interface LibraryDocument {
   uploaded_at: string;
   issue_date?: string;
   expiry_date?: string;
+  // How the expiry date was populated. 'manual' = a person typed it on upload / edit,
+  // 'document' = the vault extractor read it off the PDF text and it has not been ratified
+  // by a human yet, '' or missing = legacy record from before the platform tracked this.
+  // The library UI shows a "Auto-read from document" note when this is 'document' so a
+  // reviewer knows to confirm the date before the platform relies on it.
+  expiry_source?: 'manual' | 'document' | '';
   verification_status: VerificationStatus;
   tags?: string[];
   used_in_tenders?: number;

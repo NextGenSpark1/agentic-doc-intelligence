@@ -409,9 +409,19 @@ function DocCard({
           <VerificationBadge status={doc.verification_status} />
         </div>
 
-        {/* Expiry */}
+        {/* Expiry — the date pill, plus a small note when the date was auto-read from the PDF
+            text rather than entered by hand. The vault extractor writes these on upload so the
+            library can display an expiry without a human retyping it, but the "document" source
+            means read-but-not-confirmed — a reviewer should still ratify it before the platform
+            leans on it for readiness. */}
         <div className="mb-3">
           <ExpiryTag expiry_date={doc.expiry_date} />
+          {doc.expiry_source === 'document' && doc.expiry_date && (
+            <p className="mt-1 flex items-center gap-1 text-[10px] text-text-mute italic">
+              <FileText size={9} />
+              Auto-read from document · edit to confirm
+            </p>
+          )}
         </div>
 
         {/* Used in tenders */}
