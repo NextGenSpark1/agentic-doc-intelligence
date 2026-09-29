@@ -140,6 +140,11 @@ export interface Requirement {
   matched_doc_ids?: string[];
   status_updated_by?: string;
   status_updated_at?: string;
+  // Who last set the requirement's status. 'ai' = matching wrote it, 'review' = a reviewer's
+  // confirm/dismiss recomputed it, 'manual' = a human explicitly overrode it. The compliance
+  // matrix uses this to distinguish an AI-set met from a human-set met — the old
+  // `status_updated_by` field could not, because a review stamped it too.
+  status_source?: 'ai' | 'review' | 'manual';
 }
 
 export interface EvidenceLink {

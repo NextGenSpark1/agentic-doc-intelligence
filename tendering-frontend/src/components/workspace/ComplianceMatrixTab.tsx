@@ -25,6 +25,35 @@ function ExpiryWarning({ link }: { link: EvidenceLink }) {
   );
 }
 
+// Who last wrote the requirement's status. 'ai' means matching itself set it during analysis,
+// 'review' means a reviewer's confirm/dismiss recomputed it, 'manual' means someone explicitly
+// overrode the status from the matrix. Showing the source here is the whole reason
+// backend/status_rules distinguishes them — the reviewer needs to know whether a met came from
+// the model or from a person before they trust it.
+function StatusSourcePill({ source }: { source: Requirement['status_source'] }) {
+  if (!source) return null;
+  const config = {
+    ai: { label: 'AI', tone: 'bg-panel-3 text-text-mute border-border' },
+    review: { label: 'Reviewed', tone: 'bg-teal/10 text-teal border-teal/30' },
+    manual: { label: 'Manual', tone: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  }[source];
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide border ${config.tone}`}>
+      {config.label}
+    </span>
+  );
+}
+
+// The action verb depends on which source actually set the status. A reviewer's confirm gets
+// "Reviewed by", a manual override gets "Set by", a rejected requirement gets "Rejected by"
+// (regardless of source, since rejection is inherently a review action).
+function statusActionLabel(req: Requirement): string {
+  if (req.status === 'rejected') return 'Rejected by';
+  if (req.status_source === 'manual') return 'Set by';
+  if (req.status_source === 'review') return 'Reviewed by';
+  return 'Updated by';
+}
+
 const STATUS_CONFIG: Record<RequirementStatus, { icon: ReactElement; label: string; bar: string }> = {
   met: {
     icon: <CheckCircle2 size={14} className="text-green" />,
@@ -262,9 +291,10 @@ export function ComplianceMatrixTab({
 
                     {/* Status */}
                     <td className="px-3 py-4">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         {icon}
                         <span className="text-[11px] text-text-mid font-medium">{label}</span>
+                        <StatusSourcePill source={req.status_source} />
                       </div>
                       <div className="mt-1.5 w-16 h-1 bg-canvas-deep rounded-full overflow-hidden">
                         <div
@@ -276,7 +306,7 @@ export function ComplianceMatrixTab({
                       </div>
                       {req.status_updated_by && (
                         <p className="text-[10px] text-text-mute mt-1 leading-tight">
-                          {req.status === 'rejected' ? 'Rejected by' : 'Updated by'}{' '}
+                          {statusActionLabel(req)}{' '}
                           <span className="font-medium text-text-mid">{req.status_updated_by}</span>
                         </p>
                       )}
