@@ -277,3 +277,42 @@ def test_extraction_actually_runs_the_backfill(monkeypatch):
     dates = next(patch for patch in written if "expiry_date" in patch)
     assert dates["expiry_date"] == "2026-11-20"
     assert dates["expiry_source"] == SOURCE_DOCUMENT
+
+
+# ── layouts the parser actually produces ───────────────────────────────────────
+# The CIDB certificate's expiry was missed in a real run while the insurance policy's was read.
+# The parser reads a key-value block as a table and returns HTML with one cell per line, so the
+# label and its date arrive on separate lines.
+
+CIDB_AS_HTML_CELLS = (
+    "<tr>\n<td>Effective Date:</td>\n<td>21 November 2025</td>\n</tr>\n"
+    "<tr>\n<td>Expiry Date:</td>\n<td>20 November 2026</td>\n</tr>\n"
+    "<tr>\n<td>Status as at 10 September 2026:</td>\n<td>ACTIVE</td>\n</tr>"
+)
+
+
+@pytest.mark.parametrize("text", [
+    CIDB_AS_HTML_CELLS,
+    "<table><tr><td>Expiry Date:</td><td>20 November 2026</td></tr></table>",
+    "| Expiry Date | 20 November 2026 |",
+    "Expiry Date:\n20 November 2026",
+    "**Expiry Date:** 20 November 2026",
+    "Expiry&nbsp;Date: 20&nbsp;November&nbsp;2026",
+])
+def test_the_expiry_is_read_however_the_parser_lays_it_out(text):
+    assert extract_dates(text)["expiry_date"] == "2026-11-20"
+
+
+def test_the_cidb_table_gives_up_both_dates():
+    assert extract_dates(CIDB_AS_HTML_CELLS) == {"issue_date": "2025-11-21",
+                                                 "expiry_date": "2026-11-20"}
+
+
+def test_a_bare_label_does_not_borrow_a_date_from_a_labelled_row():
+    """'Issue Date' standing alone must not take the expiry printed on the next row."""
+    assert extract_dates("Issue Date\nExpiry Date: 20 November 2026") == {
+        "expiry_date": "2026-11-20"}
+
+
+def test_a_bare_label_does_not_borrow_a_status_date():
+    assert extract_dates("Expiry Date\nStatus as at 10 September 2026: ACTIVE") == {}

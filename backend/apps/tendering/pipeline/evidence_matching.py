@@ -26,6 +26,14 @@ from datetime import date, datetime, timezone
 
 from backend.core.text_utils import strip_html as _strip_html
 
+from ..status_rules import (
+    MIN_EVIDENCE_SCORE,
+    PARTIALLY_PROVES,
+    PROVES,
+    RELATED_ONLY,
+    VERDICT_SCORES,
+)
+
 # Retrieval breadth per requirement, counted in DOCUMENTS. Both search functions return one row
 # per document — each document's best-matching chunk — so this is "consider up to twelve
 # documents", not "take the twelve best passages in the vault". Those are very different
@@ -41,19 +49,30 @@ _SHORTLIST = 6
 # a missed match costs a human a search, a wrong match costs a disqualified bid.
 _MIN_SIMILARITY = 0.35
 
-# The adjudicator's own confidence floor for persisting a proposal.
-_MIN_MATCH_SCORE = 0.4
+# Below this a proposal is not saved at all. Defined with the other bands in status_rules.
+_MIN_MATCH_SCORE = MIN_EVIDENCE_SCORE
 
-# A candidate whose expiry falls before the tender closing date cannot make a requirement `met`
-# even if the document content is a strong match — the certificate will have lapsed by
-# submission. Capping the score here keeps it below MET_SCORE_THRESHOLD (0.75) but above
-# MIN_PROPOSAL_SCORE (0.6), so the match still surfaces as `partial` with a renewal note.
-_EXPIRES_BEFORE_CLOSING_CAP = 0.70
+# Validity caps, expressed as the best verdict a document may earn rather than as free-standing
+# numbers, so they stay inside the right band whatever the thresholds are moved to.
+#
+# A document that lapses before the closing date can at most PARTIALLY prove a requirement, however
+# strong its content: the certificate will be invalid at submission, so the match surfaces as
+# `partial` with a renewal note rather than as `met`.
+_EXPIRES_BEFORE_CLOSING_CAP = VERDICT_SCORES[PARTIALLY_PROVES]
 
-# A candidate that has already expired today gets an even harsher cap — below the partial
-# threshold, so the link is saved (visible to the reviewer) but does not colour the requirement
-# as partially covered. A lapsed cert is context, not evidence.
-_ALREADY_EXPIRED_CAP = 0.55
+# A document that has already lapsed is only RELATED: saved so the reviewer sees it and the reason,
+# but it does not colour the requirement at all. A lapsed cert is context, not evidence.
+_ALREADY_EXPIRED_CAP = VERDICT_SCORES[RELATED_ONLY]
+
+# How the model may spell a verdict, mapped to the canonical one. Anything else is not a verdict.
+_VERDICT_ALIASES = {
+    "proves": PROVES, "proven": PROVES, "satisfies": PROVES, "fully_proves": PROVES,
+    "partially_proves": PARTIALLY_PROVES, "partial": PARTIALLY_PROVES,
+    "partially_satisfies": PARTIALLY_PROVES,
+    "related_only": RELATED_ONLY, "related": RELATED_ONLY,
+}
+# Verdicts that say "this is not evidence" — dropped, but counted under their own reason.
+_NON_EVIDENCE_VERDICTS = {"does_not_prove", "not_related", "none", "no_match", "unrelated"}
 
 # How much of a candidate document the adjudicator is shown.
 #
@@ -166,9 +185,10 @@ def validate_matches(raw: object, candidate_index: dict[str, dict],
     document's identity comes from OUR candidate row, never from the model's output, so a
     hallucinated id cannot become a link to a real document.
 
-    Scores are capped for candidates whose validity is a problem: already expired documents
-    cap below the partial threshold (visible but non-covering), documents expiring before the
-    tender closing date cap below the MET threshold (surfaces as partial with a renewal note).
+    Each proposal carries a verdict — proves / partially_proves / related_only — and is scored
+    from the bands in status_rules, not from a number the model chose. Validity then caps it: a
+    document already expired is at most related, one expiring before the closing date at most
+    partially proves (surfaces as partial with a renewal note).
 
     Pass `drops` to learn WHY proposals were discarded. A run reporting "28 dropped" cannot be
     acted on: a model citing documents that were never sent is a grounding problem, scores under
@@ -203,10 +223,26 @@ def validate_matches(raw: object, candidate_index: dict[str, dict],
             continue  # one link per (requirement, document)
         seen.add(doc_id)
 
-        try:
-            score = max(0.0, min(1.0, float(item.get("match_score", 0.0))))
-        except (TypeError, ValueError):
-            _drop("unreadable_score")
+        # The verdict is the answer; its score comes from the bands in status_rules, so the model
+        # cannot land a "partially proves" outside the partial band however it phrases things.
+        # A bare decimal is still accepted for a model that ignores the verdict instruction, so
+        # a provider change degrades the matching rather than emptying it.
+        raw_verdict = str(item.get("verdict") or "").strip().lower().replace(" ", "_").replace("-", "_")
+        verdict = _VERDICT_ALIASES.get(raw_verdict)
+        if verdict is not None:
+            score = VERDICT_SCORES[verdict]
+        elif raw_verdict in _NON_EVIDENCE_VERDICTS:
+            _drop("judged_not_evidence")
+            continue
+        elif "match_score" in item:
+            try:
+                score = max(0.0, min(1.0, float(item.get("match_score"))))
+            except (TypeError, ValueError):
+                _drop("unreadable_score")
+                continue
+        else:
+            # Neither a verdict we know nor a number — there is nothing to judge it by.
+            _drop("unknown_verdict" if raw_verdict else "no_verdict")
             continue
 
         # Cap score by validity of the underlying document. Both flags are also reported in
@@ -231,6 +267,9 @@ def validate_matches(raw: object, candidate_index: dict[str, dict],
             "supplier_document_id": doc_id,
             "doc_id": candidate.get("library_doc_id"),  # FK to library_documents
             "score": score,
+            # None when the model answered with a bare decimal instead of a verdict — counted by
+            # the run, so a model drifting off the contract shows up in the audit row.
+            "verdict": verdict,
             "rationale": rationale,
             "matched_chunk_id": candidate.get("chunk_id"),
             "matched_text": _strip_html(candidate.get("text") or "")[:600],
@@ -399,6 +438,10 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
     no_proposal_from_model = 0
     # Why validation discarded proposals, by reason — see validate_matches.
     drops: dict[str, int] = {}
+    # What the model said about the proposals it kept. `numeric_score` counts answers that came
+    # back as a bare decimal instead of a verdict: if that number climbs, the model has drifted
+    # off the contract and the scoring is back to trusting its decimals.
+    verdicts: dict[str, int] = {}
     # A vault document's chunks, read once per run rather than once per requirement: with fifty
     # requirements and a handful of candidates each, the same certificate would otherwise be
     # fetched hundreds of times.
@@ -483,6 +526,8 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
         if matches:
             matched_requirements += 1
         for m in matches:
+            verdict_key = m.get("verdict") or "numeric_score"
+            verdicts[verdict_key] = verdicts.get(verdict_key, 0) + 1
             if not m.get("doc_id"):
                 # No library document linked to this vault doc — can't create an evidence link.
                 skipped += 1
@@ -523,6 +568,7 @@ def match(tender_id: str, requirement_ids: list[str] | None = None) -> dict:
         "save_errors": save_errors,
         "ungrounded_dropped": ungrounded,
         "dropped_by_reason": drops,
+        "verdicts": verdicts,
         "no_proposal_from_model": no_proposal_from_model,
         "statuses_set": statuses_set,
         "requirements_matched": matched_requirements,

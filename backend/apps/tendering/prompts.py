@@ -78,33 +78,40 @@ CANDIDATE DOCUMENTS from the company's document vault, each with an excerpt and 
 flags: `is_expired` (already expired today) and `expires_before_closing` (will lapse before the \
 submission deadline).
 
-For each candidate you assess, return an object with:
+For each candidate worth surfacing, return an object with:
   - "supplier_document_id": copied EXACTLY from the candidate list
-  - "match_score": 0.0-1.0, how completely this document satisfies the requirement
-  - "rationale": one or two sentences saying what in the excerpt satisfies what in the \
-requirement. Be specific — name the grade, class, value, or date that matches.
+  - "verdict": exactly one of
+      "proves"            — the excerpt satisfies EVERY condition the requirement states: the \
+grade, class, amount, period, scope, role or credential it asks for is shown, and meets the bar.
+      "partially_proves"  — genuine evidence for this requirement that covers some of its \
+conditions but not all. For example: the required years of experience are shown but a required \
+certification is not; the capability is shown but not the specific quantity or commitment asked \
+for; two of three required projects are evidenced.
+      "related_only"      — on the right subject, and a reviewer should see it for this \
+requirement, but it does not satisfy it. For example: a lower grade than required, an amount \
+below the threshold, an internal statement where independent certification is required.
+  - "rationale": one or two sentences naming what in the excerpt meets which condition — the \
+grade, value, date or credential — and, for anything short of "proves", what is missing.
 
 CRITICAL RULES:
   1. Only propose documents from the supplied candidate list, using their exact ids. A \
 document you invent will be discarded.
-  2. A document that is merely on a related topic does NOT satisfy the requirement. A CIDB \
-G4 certificate does not satisfy a requirement for G7. A 2019 audited account does not satisfy \
-a requirement for the last financial year. Say nothing rather than stretching.
-  3. If NO candidate is even worth surfacing, return {"matches": []}. An empty result is a \
-correct and useful answer — it tells the bidder they have a gap. But do NOT drop a candidate \
-just because it is expired or expiring: surface it with an explanation (Rules 5 and 6). A \
-lapsed certificate is context the reviewer needs.
-  4. Score honestly. Use below 0.5 when the document is only partial evidence, and say what \
-is missing in the rationale.
-  5. If `is_expired` is true, still propose the candidate when the content would otherwise \
-match — but state plainly in the rationale that the document has already expired and give the \
-expiry date. Do not describe it as satisfying the requirement.
-  6. If `expires_before_closing` is true, propose the candidate and state in the rationale \
-that the document expires on [date], which is before the tender closing date of [closing_date]. \
-Say explicitly that a renewal will be required before submission. Treat this as a strong match \
-with a critical validity gap — not as a document that satisfies the requirement.
+  2. Leave out a candidate that merely shares a topic. "related_only" is for a document a \
+reviewer would want in front of them for THIS requirement, not for everything on the same \
+subject. A CIDB G4 certificate is related_only for a G7 requirement; a brochure that mentions \
+construction in passing is not worth surfacing at all.
+  3. If NO candidate is worth surfacing, return {"matches": []}. An empty result is a correct \
+and useful answer — it tells the bidder they have a gap.
+  4. Judge the CONTENT. Do not lower a verdict because a document is expired or expiring — the \
+system applies validity separately, from the two flags. But never leave a candidate out for that \
+reason either: a lapsed certificate is context the reviewer needs.
+  5. If `is_expired` is true, say plainly in the rationale that the document has already expired \
+and give its expiry date.
+  6. If `expires_before_closing` is true, say in the rationale that the document expires on \
+[date], before the tender closing date of [closing_date], and that a renewal will be required \
+before submission.
 
-Return JSON: {"matches": [ ... ]}"""
+Return JSON: {"matches": [{"supplier_document_id": "...", "verdict": "...", "rationale": "..."}]}"""
 
 
 READINESS_REVIEW = """You write a short readiness statement for a bid team preparing to \

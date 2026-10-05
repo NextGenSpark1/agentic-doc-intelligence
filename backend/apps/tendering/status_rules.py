@@ -27,16 +27,41 @@ GAP = "gap"
 REJECTED = "rejected"
 UNCHECKED = "unchecked"
 
-# A proposal below this does not colour a requirement as partially covered. Matching persists
-# anything from 0.4 up, but 0.4 is "worth a person's glance", not "we appear to have this" — and
-# a compliance matrix that looks half-covered on weak guesses is worse than one that looks empty.
+# ── The score bands. Every evidence threshold in the product lives here. ────────────────────────
+#
+#   0.0 ──────── 0.4 ──────────── 0.6 ──────────── 0.75 ──────────── 1.0
+#      not saved  │  saved, but gap  │    partial     │       met
+#
+# Below MIN_EVIDENCE_SCORE a proposal is not saved at all. Between that and MIN_PROPOSAL_SCORE it
+# is saved for a reviewer to see but does not colour the requirement — "worth a glance" is not
+# "we appear to have this", and a matrix that looks half-covered on weak guesses is worse than one
+# that looks empty. MET_SCORE_THRESHOLD is kept high because a wrong `met` costs a bid: the team
+# stops looking, submits, and is disqualified.
+MIN_EVIDENCE_SCORE = 0.4
 MIN_PROPOSAL_SCORE = 0.6
-
-# At or above this pending score, matching may propose `met` directly rather than `partial`.
-# Kept high because a wrong `met` costs a bid: the team stops looking, submits, and is
-# disqualified. The evidence-matching stage caps scores for documents expiring before the closing
-# date at MET_SCORE_THRESHOLD - 0.05, so an expiring cert cannot slip through as met.
 MET_SCORE_THRESHOLD = 0.75
+
+# ── What the adjudicator answers, and what that answer is worth. ─────────────────────────────────
+#
+# The model used to be asked for a decimal match_score, and its instructions said to score partial
+# evidence "below 0.5" — while partial status started at 0.6 and anything under 0.4 was thrown
+# away. Following its own instructions, it could never produce a partial requirement: partial
+# evidence was either discarded or shown as a gap. The prompt and these thresholds were written
+# separately and had drifted apart, and nothing connected them.
+#
+# So the model now answers with a verdict, and the score is derived here from the bands above —
+# the middle of the band each verdict belongs to. Moving a threshold moves the verdict's score
+# with it; there is no second copy of the scale for a prompt edit to contradict. (A model that
+# answers with only a decimal still works: validate_matches falls back to it.)
+PROVES = "proves"
+PARTIALLY_PROVES = "partially_proves"
+RELATED_ONLY = "related_only"
+
+VERDICT_SCORES = {
+    PROVES: round((MET_SCORE_THRESHOLD + 1.0) / 2, 3),                          # 0.875 -> met
+    PARTIALLY_PROVES: round((MIN_PROPOSAL_SCORE + MET_SCORE_THRESHOLD) / 2, 3),  # 0.675 -> partial
+    RELATED_ONLY: round((MIN_EVIDENCE_SCORE + MIN_PROPOSAL_SCORE) / 2, 3),       # 0.5   -> gap
+}
 
 
 def _score(link: dict) -> float:

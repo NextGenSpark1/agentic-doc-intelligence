@@ -124,22 +124,55 @@ def extract_dates(text: str) -> dict:
     guesswork. The label is what makes it evidence.
 
     Returns ISO strings under `issue_date` / `expiry_date`, omitting whichever was not found.
+
+    A label and its date are usually on one line, but the parser does not always keep them
+    together: a key-value block it reads as a table comes back as HTML with one cell per line, so
+    "Expiry Date:" and "20 November 2026" arrive on separate lines. That is how the CIDB
+    certificate's expiry was missed while the insurance policy's — laid out as plain lines — was
+    read. So tags are stripped first, and a label standing on its own line takes its date from the
+    next line.
     """
     if not text:
         return {}
+    lines = [line.strip(" \t|*:") for line in _clean(text[:_MAX_TEXT_CHARS]).splitlines()]
+    lines = [line for line in lines if line]
+
     found: dict[str, str] = {}
-    for line in text[:_MAX_TEXT_CHARS].splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        dates = _dates_in(stripped)
+    for index, line in enumerate(lines):
+        dates = _dates_in(line)
+        if not dates and _is_bare_label(line) and index + 1 < len(lines):
+            following = lines[index + 1]
+            # Only borrow the next line's date if that line is a bare value. A line with its own
+            # colon is a labelled row with its own meaning ("Status as at 10 September 2026:
+            # ACTIVE", "Expiry Date: ..." under a bare "Issue Date") and its date is not ours.
+            if ":" not in following and not _is_bare_label(following):
+                dates = _dates_in(following)
         if not dates:
             continue
-        if "expiry_date" not in found and _EXPIRY_LABELS.search(stripped):
+        if "expiry_date" not in found and _EXPIRY_LABELS.search(line):
             found["expiry_date"] = dates[0].isoformat()
-        elif "expiry_date" not in found and _PERIOD_LABELS.search(stripped) and len(dates) > 1:
+        elif "expiry_date" not in found and _PERIOD_LABELS.search(line) and len(dates) > 1:
             # A period runs from the earlier date to the later one; the later one is the expiry.
             found["expiry_date"] = max(dates).isoformat()
-        if "issue_date" not in found and _ISSUE_LABELS.search(stripped):
+        if "issue_date" not in found and _ISSUE_LABELS.search(line):
             found["issue_date"] = dates[0].isoformat()
     return found
+
+
+_TAG_RE = re.compile(r"<[^>]+>")
+_MAX_BARE_LABEL_CHARS = 40
+
+
+def _clean(text: str) -> str:
+    """Drop HTML tags (keeping line structure) and decode entities like &nbsp;."""
+    import html
+
+    return html.unescape(_TAG_RE.sub(" ", text))
+
+
+def _is_bare_label(line: str) -> bool:
+    """A short line that is only a date label, e.g. "Expiry Date" — its value is on the next."""
+    if len(line) > _MAX_BARE_LABEL_CHARS:
+        return False
+    return bool(_EXPIRY_LABELS.search(line) or _ISSUE_LABELS.search(line)
+                or _PERIOD_LABELS.search(line))
