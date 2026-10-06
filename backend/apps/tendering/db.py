@@ -412,7 +412,15 @@ def delete_library_document(doc_id: str) -> None:
 def update_library_document(doc_id: str, patch: dict) -> dict | None:
     allowed = {"title", "filename", "category", "file_type", "issue_date", "expiry_date",
                "expiry_source", "tags", "url", "verification_status"}
-    safe_patch = {key: value for key, value in patch.items() if key in allowed and value is not None}
+    # Nullable fields can be explicitly cleared by passing null — "no expiry on this doc" is a
+    # legitimate state. The non-nullable ones (title, category, verification_status, etc.) still
+    # drop None so a replace that only sets `storage_path` cannot wipe the title by accident.
+    nullable = {"issue_date", "expiry_date", "expiry_source", "tags", "url"}
+    safe_patch = {
+        key: value
+        for key, value in patch.items()
+        if key in allowed and (value is not None or key in nullable)
+    }
     if not safe_patch:
         return None
     row = (
@@ -920,6 +928,11 @@ def repoint_supplier_document(library_doc_id: str, storage_path: str,
 
 
 def update_supplier_document(supplier_document_id: str, patch: dict) -> dict | None:
+    # The library and vault tables use slightly different column names for the issue date —
+    # library_documents.issue_date vs supplier_documents.issued_date — and _backfill_dates
+    # writes the library-side name to both. Remap here rather than in every caller.
+    if "issue_date" in patch:
+        patch = {**patch, "issued_date": patch.pop("issue_date")}
     row = (
         get_client()
         .table("supplier_documents")

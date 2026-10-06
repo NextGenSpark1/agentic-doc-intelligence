@@ -641,7 +641,12 @@ async def update_library_document(
 
     # storage_path lives on the vault row; everything else on the library row. A replace that
     # sends nothing but the new path is valid, so an empty metadata patch is not an error.
-    patch = body.model_dump(exclude_none=True)
+    # - exclude_unset so an explicit null from the Edit modal (clearing a date) is preserved;
+    #   exclude_none would drop it and the clear would silently be a no-op.
+    # - mode='json' serialises Pydantic date objects into ISO strings, which the Supabase
+    #   client's httpx JSON encoder can serialise; the raw mode leaves `date` objects that
+    #   crash the request with "Object of type date is not JSON serializable".
+    patch = body.model_dump(exclude_unset=True, mode="json")
     patch.pop("storage_path", None)
     if patch:
         updated = await asyncio.to_thread(db.update_library_document, doc_id, patch)
