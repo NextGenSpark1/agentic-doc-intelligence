@@ -930,9 +930,12 @@ def repoint_supplier_document(library_doc_id: str, storage_path: str,
 def update_supplier_document(supplier_document_id: str, patch: dict) -> dict | None:
     # The library and vault tables use slightly different column names for the issue date —
     # library_documents.issue_date vs supplier_documents.issued_date — and _backfill_dates
-    # writes the library-side name to both. Remap here rather than in every caller.
+    # writes the library-side name to both. Remap here rather than in every caller. Copy so we
+    # don't mutate the caller's dict — it is reused for the library update, which expects the
+    # library-side column name back.
     if "issue_date" in patch:
-        patch = {**patch, "issued_date": patch.pop("issue_date")}
+        patch = dict(patch)
+        patch["issued_date"] = patch.pop("issue_date")
     row = (
         get_client()
         .table("supplier_documents")
