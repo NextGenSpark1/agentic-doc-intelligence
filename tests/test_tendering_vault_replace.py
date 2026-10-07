@@ -35,6 +35,13 @@ def client(monkeypatch):
                         lambda doc_id, patch: calls.append(("update_library", doc_id, patch)) or {"doc_id": doc_id})
     monkeypatch.setattr(routes.db, "repoint_supplier_document",
                         lambda doc_id, path, filename=None: calls.append(("repoint", doc_id, path, filename)))
+    # Library edits that touch title/expiry_date/issue_date are mirrored to the vault row
+    # so matching and the library UI don't disagree. These two mocks keep the test from
+    # hitting Supabase when that mirroring path runs.
+    monkeypatch.setattr(routes.db, "get_supplier_document_by_library_doc",
+                        lambda doc_id: {"supplier_document_id": f"sup-{doc_id}"})
+    monkeypatch.setattr(routes.db, "update_supplier_document",
+                        lambda sid, patch: calls.append(("update_supplier", sid, patch)))
     return TestClient(app), calls
 
 
@@ -49,13 +56,18 @@ def test_replacing_the_file_repoints_the_vault_row(client):
     assert ("repoint", DOC, NEW_PATH, "renewed.pdf") in calls
 
 
-def test_metadata_only_edits_leave_the_vault_alone(client):
-    """Renaming a document must not invalidate its extraction."""
+def test_metadata_edits_sync_to_the_vault_without_invalidating_extraction(client):
+    """Renaming a document must not invalidate its extraction, but the title must still
+    reach the vault row — otherwise the library and the vault read different titles for the
+    same file and matching surfaces a stale name to the reviewer. The sync writes the title;
+    it must NOT call repoint, which clears the chunk index and forces a re-extract."""
     api, calls = client
 
     api.patch(f"/tendering/library/{DOC}", json={"title": "CIDB G7 (renewed)"})
 
-    assert [call[0] for call in calls] == ["update_library"]
+    assert [call[0] for call in calls] == ["update_library", "update_supplier"]
+    supplier_call = next(call for call in calls if call[0] == "update_supplier")
+    assert supplier_call[2] == {"title": "CIDB G7 (renewed)"}
 
 
 def test_a_replace_carrying_only_the_new_path_is_accepted(client):
