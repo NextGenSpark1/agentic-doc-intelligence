@@ -648,10 +648,33 @@ async def update_library_document(
     #   crash the request with "Object of type date is not JSON serializable".
     patch = body.model_dump(exclude_unset=True, mode="json")
     patch.pop("storage_path", None)
+    # When a reviewer sets or clears the expiry by hand, stamp expiry_source=manual so the
+    # library UI no longer shows the "auto-read from document" note for that row.
+    if "expiry_date" in patch:
+        patch["expiry_source"] = "manual"
     if patch:
         updated = await asyncio.to_thread(db.update_library_document, doc_id, patch)
         if not updated:
             raise HTTPException(500, "Update failed")
+
+        # Mirror the fields the vault cares about to supplier_documents, otherwise the two
+        # rows drift: evidence matching reads from supplier_documents, so clearing an expiry
+        # here but not there leaves retrieval seeing a date that no longer exists in the UI,
+        # and the Re-extract auto-reader skips the field because the vault row says it's
+        # already set. title, expiry_date and issue_date (remapped to issued_date on the
+        # vault side) are the only fields on both tables.
+        vault_patch = {
+            key: value for key, value in patch.items()
+            if key in {"title", "expiry_date", "issue_date"}
+        }
+        if vault_patch:
+            vault_doc = await asyncio.to_thread(db.get_supplier_document_by_library_doc, doc_id)
+            if vault_doc:
+                await asyncio.to_thread(
+                    db.update_supplier_document,
+                    vault_doc["supplier_document_id"],
+                    vault_patch,
+                )
 
     if body.storage_path:
         await asyncio.to_thread(db.repoint_supplier_document, doc_id, body.storage_path, body.filename)
